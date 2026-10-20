@@ -1,35 +1,137 @@
-# Gradle files
+# ==========================================================
+# Kotlin Multiplatform / Gradle
+# ==========================================================
 .gradle/
-build/
 .kotlin/
-
-# Local configuration file (sdk path, etc)
+**/build/
+!src/**/build/
+out/
 local.properties
-
-# Log/OS Files
 *.log
+hs_err_pid*
+*.hprof
+replay_pid*
 
-# Android Studio generated files and folders
+# Kotlin/Native & CocoaPods caches
+.konan/
+kotlin-js-store/
+**/cinterop/build/
+
+# ==========================================================
+# IDEs (IntelliJ IDEA / Android Studio / Fleet / VS Code)
+# ==========================================================
+.idea/
+*.iml
+*.ipr
+*.iws
+.fleet/
+.vscode/
+*.swp
+*~
+
+# ==========================================================
+# Android
+# ==========================================================
 captures/
 .externalNativeBuild/
 .cxx/
-*.aab
+.navigation/
 *.apk
+*.aab
+*.ap_
+*.dex
+output.json
 output-metadata.json
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
 
-# IntelliJ
-*.iml
-.idea/
-misc.xml
-deploymentTargetDropDown.xml
-render.experimental.xml
-
-# Keystore files
+# Signing & secrets
 *.jks
 *.keystore
-
-# Google Services (e.g. APIs or Firebase)
+keystore.properties
 google-services.json
 
-# Android Profiling
-*.hprof
+# ==========================================================
+# iOS / Xcode
+# ==========================================================
+xcuserdata/
+DerivedData/
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcodeproj/project.xcworkspace/
+*.xcodeproj/project.xcworkspace/*
+!*.xcodeproj/project.xcworkspace/contents.xcworkspacedata
+!*.xcodeproj/project.xcworkspace/xcshareddata/
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata/
+**/xcshareddata/WorkspaceSettings.xcsettings
+*.xcscmblueprint
+*.xccheckout
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+*.mobileprovision
+*.p12
+*.cer
+GoogleService-Info.plist
+
+# CocoaPods / Carthage / SwiftPM
+Pods/
+Carthage/Build/
+Carthage/Checkouts/
+.build/
+.swiftpm/
+Package.resolved.bak
+
+# Fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
+
+# ==========================================================
+# Desktop (Compose for Desktop packaging)
+# ==========================================================
+*.dmg
+*.msi
+*.deb
+*.rpm
+*.exe
+
+# ==========================================================
+# Server (Ktor)
+# ==========================================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+logs/
+uploads/
+*.db
+*.sqlite
+*.h2.db
+*.mv.db
+*.trace.db
+
+# ==========================================================
+# Web / JS (wasm/js targets)
+# ==========================================================
+node_modules/
+.npm/
+yarn-error.log
+
+# ==========================================================
+# OS
+# ==========================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+ehthumbs.db
+Desktop.ini
