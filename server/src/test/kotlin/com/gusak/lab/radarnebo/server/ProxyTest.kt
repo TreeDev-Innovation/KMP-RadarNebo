@@ -2,7 +2,9 @@ package com.gusak.lab.radarnebo.server
 
 import com.gusak.lab.radarnebo.tracking.DronePositionsResponse
 import com.gusak.lab.radarnebo.tracking.DroneTracksResponse
+import com.gusak.lab.radarnebo.data.ActiveAlertsResponse
 import com.gusak.lab.radarnebo.data.AlertsApi
+import com.gusak.lab.radarnebo.data.ThreatType
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -17,6 +19,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -56,9 +59,13 @@ class ProxyTest {
             respond("boom", HttpStatusCode.InternalServerError)
         }
         val config = ProxyConfig(upstreamToken = "t", maxUpstreamPerMinute = 50, pollInterval = 1.seconds)
-        val poller = UpstreamPoller(
-            config, HttpClient(engine) { expectSuccess = false }, ProxyState(),
-            limiter = UpstreamRateLimiter(config.effectivePerMinute, clock = { testScheduler.currentTime }),
+        val poller = AlertsPoller(
+            config,
+            UpstreamAlertsSource(
+                config, HttpClient(engine) { expectSuccess = false },
+                UpstreamRateLimiter(config.effectivePerMinute, clock = { testScheduler.currentTime }),
+            ),
+            ProxyState(),
             clock = { testScheduler.currentTime },
         )
         val job = launch { poller.run() }
@@ -87,9 +94,13 @@ class ProxyTest {
         }
         val state = ProxyState()
         val config = ProxyConfig(upstreamToken = "secret")
-        val poller = UpstreamPoller(
-            config, HttpClient(engine) { expectSuccess = false }, state,
-            limiter = UpstreamRateLimiter(config.effectivePerMinute, clock = { testScheduler.currentTime }),
+        val poller = AlertsPoller(
+            config,
+            UpstreamAlertsSource(
+                config, HttpClient(engine) { expectSuccess = false },
+                UpstreamRateLimiter(config.effectivePerMinute, clock = { testScheduler.currentTime }),
+            ),
+            state,
             clock = { testScheduler.currentTime },
         )
         assertEquals(15_000, poller.pollOnce())
@@ -111,9 +122,13 @@ class ProxyTest {
         }
         val config = ProxyConfig(upstreamToken = "secret", clientKeys = setOf("app-key"))
         val state = ProxyState()
-        val poller = UpstreamPoller(
-            config, HttpClient(upstream) { expectSuccess = false }, state,
-            limiter = UpstreamRateLimiter(config.effectivePerMinute, clock = { now }, sleep = { now += it }),
+        val poller = AlertsPoller(
+            config,
+            UpstreamAlertsSource(
+                config, HttpClient(upstream) { expectSuccess = false },
+                UpstreamRateLimiter(config.effectivePerMinute, clock = { now }, sleep = { now += it }),
+            ),
+            state,
             clock = { now },
         )
         application { radarProxy(config, state, poller, startPoller = false, clock = { now }) }
@@ -152,5 +167,37 @@ class ProxyTest {
 
         val health = client.get("/health").bodyAsText()
         assertTrue("\"upstreamBudgetPerMinute\":6" in health, health)
+    }
+
+    @Test
+    fun demoFeedServesEveryThreatClassAndTracksMissiles() = testApplication {
+        var now = 1_800_000_000_000L
+        // The test reads the feed hundreds of times in a few seconds; lift the per-client limit.
+        val config = ProxyConfig(upstreamToken = null, clientRequestsPerMinute = 100_000)
+        val state = ProxyState()
+        val source = alertsSourceFor(config) { error("demo mode never creates an upstream client") }
+        assertIs<SimulatedAlertsSource>(source)
+        val poller = AlertsPoller(config, SimulatedAlertsSource(clock = { now }), state, clock = { now })
+        application { radarProxy(config, state, poller, startPoller = false, clock = { now }) }
+
+        // Three hours of the simulated feed, one poll a minute, as clients see it.
+        val types = mutableSetOf<String>()
+        val trackTypes = mutableSetOf<ThreatType>()
+        repeat(180) {
+            poller.pollOnce()
+            val alerts = AlertsApi.json.decodeFromString(ActiveAlertsResponse.serializer(), client.get("/v1/alerts/active.json").bodyAsText())
+            alerts.alerts.flatMapTo(types) { alert -> alert.threats.map { it.threatType } }
+            val tracks = AlertsApi.json.decodeFromString(DroneTracksResponse.serializer(), client.get("/v1/drones/tracks.json").bodyAsText())
+            tracks.tracks.mapTo(trackTypes) { it.type }
+            now += 60_000L
+        }
+        assertEquals((ThreatType.entries - ThreatType.Unknown).map { it.apiValue }.toSet(), types)
+        assertEquals(
+            setOf(ThreatType.Drones, ThreatType.CruiseMissiles, ThreatType.GuidedBombs),
+            trackTypes,
+            "drones and cruise missiles fly tracked routes; the simulation publishes KAB flights",
+        )
+        val health = client.get("/health").bodyAsText()
+        assertTrue("\"demo\":true" in health && "\"upstreamRequestsTotal\":0" in health, health)
     }
 }

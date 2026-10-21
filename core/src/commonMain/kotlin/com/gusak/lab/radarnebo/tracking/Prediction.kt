@@ -117,7 +117,7 @@ object TrackPredictor {
         val position = TrackInterpolator.positionAt(track, now) ?: return null
         val heading = position.headingDeg ?: return null
         val (_, rawSpeed) = TrackInterpolator.motion(s[s.lastIndex - 1], s.last())
-        val speed = rawSpeed.coerceIn(MIN_SPEED_KMH, TrackInterpolator.MAX_SPEED_KMH)
+        val speed = rawSpeed.coerceIn(MIN_SPEED_KMH, TrackKinematics.of(track).maxSpeedKmh)
 
         val h = heading * PI / 180.0
         val hx = sin(h)

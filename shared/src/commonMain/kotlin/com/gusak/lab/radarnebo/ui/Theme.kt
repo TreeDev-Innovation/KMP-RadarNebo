@@ -35,6 +35,9 @@ data class RadarColors(
     /** Labels and selection rings drawn straight onto the map. */
     val mapLabel: Color,
     val glyphOutline: Color,
+    /** City dots and the city names shown once zoomed in. */
+    val cityDot: Color,
+    val cityLabel: Color,
     /** Liquid glass: tint over the blurred backdrop, rim highlight and the selected-item lens. */
     val glassTint: Color,
     val glassRimLight: Color,
@@ -59,6 +62,8 @@ data class RadarColors(
             onOverlayMuted = Color(0x99FFFFFF),
             mapLabel = Color.White,
             glyphOutline = Color(0x99000000),
+            cityDot = Color(0xB39FB8CF),
+            cityLabel = Color(0xCCC8D6E4),
             glassTint = Color(0x1FFFFFFF),
             glassRimLight = Color(0x80FFFFFF),
             glassRimShade = Color(0x14FFFFFF),
@@ -82,6 +87,8 @@ data class RadarColors(
             onOverlayMuted = Color(0x990E1822),
             mapLabel = Color(0xFF0E1822),
             glyphOutline = Color(0xB3FFFFFF),
+            cityDot = Color(0xFF8396A9),
+            cityLabel = Color(0xFF3A4D60),
             glassTint = Color(0x73FFFFFF),
             glassRimLight = Color(0xF2FFFFFF),
             glassRimShade = Color(0x1A0E1822),

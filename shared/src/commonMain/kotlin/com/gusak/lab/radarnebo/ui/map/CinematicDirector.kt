@@ -1,5 +1,7 @@
 package com.gusak.lab.radarnebo.ui.map
 
+import androidx.compose.ui.platform.LocalInspectionMode
+import kotlinx.coroutines.awaitCancellation
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -106,13 +108,18 @@ object ShotPlanner {
     private fun zoomForSpan(spanKm: Float) = (UKRAINE_SPAN_KM / spanKm).coerceIn(1.5f, MapCamera.MAX_ZOOM)
 }
 
+/**
+ * Runs the cinematic camera through [CinematicShot]s. With [start], it opens already framing that shot
+ * and holds it: IDE previews and screenshots render only the first frames, before any fly-to.
+ */
 @Stable
-class CinematicDirector {
-    private val cx = Animatable(MapCamera.Overview.center.x)
-    private val cy = Animatable(MapCamera.Overview.center.y)
-    private val zoom = Animatable(MapCamera.Overview.zoom)
+class CinematicDirector(private val start: CinematicShot? = null) {
+    private val startCenter = start?.let { MapProjection.toWorld(it.focus) } ?: MapCamera.Overview.center
+    private val cx = Animatable(startCenter.x)
+    private val cy = Animatable(startCenter.y)
+    private val zoom = Animatable(start?.zoom ?: MapCamera.Overview.zoom)
 
-    var currentShot by mutableStateOf<CinematicShot?>(null)
+    var currentShot by mutableStateOf(start)
         private set
     var shotIndex by mutableStateOf(0)
         private set
@@ -122,6 +129,11 @@ class CinematicDirector {
     val camera: MapCamera get() = MapCamera(Offset(cx.value, cy.value), zoom.value)
 
     suspend fun run(shots: State<List<CinematicShot>>) {
+        if (start != null) {
+            shotCount = shots.value.size
+            shotIndex = shots.value.indexOf(start).coerceAtLeast(0)
+            awaitCancellation()
+        }
         var index = 0
         var lastKey: String? = null
         while (true) {
@@ -167,7 +179,12 @@ class CinematicDirector {
 
 @Composable
 fun rememberCinematicDirector(shots: List<CinematicShot>): CinematicDirector {
-    val director = remember { CinematicDirector() }
+    val preview = LocalInspectionMode.current
+    val director = remember {
+        // The shot the live director would pick first: a threat near a favorite, else the first in order.
+        val first = shots.firstOrNull { it.kind == CinematicShot.Kind.ThreatNearFavorite } ?: shots.firstOrNull()
+        CinematicDirector(start = if (preview) first else null)
+    }
     val latest = rememberUpdatedState(shots)
     LaunchedEffect(director) { director.run(latest) }
     return director

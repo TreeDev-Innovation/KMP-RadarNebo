@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -73,6 +74,8 @@ import kotlin.math.abs
 class GlassBackdrop internal constructor(
     internal val content: GraphicsLayer,
     internal val blurred: GraphicsLayer,
+    /** False where the backdrop can't be recorded (Android Studio previews): glass falls back to a frosted tint. */
+    internal val enabled: Boolean,
 ) {
     internal var sourceOrigin by mutableStateOf(Offset.Zero)
 
@@ -80,17 +83,26 @@ class GlassBackdrop internal constructor(
     internal var version by mutableIntStateOf(0)
 }
 
+/**
+ * Whether recording and blurring the backdrop works in IDE previews on this platform. Android
+ * previews render with Layoutlib, which doesn't reliably support recorded graphics layers with a
+ * blur render effect; desktop previews render with Skia like the app, so they keep the real glass.
+ */
+internal expect val glassBackdropWorksInPreview: Boolean
+
 @Composable
 fun rememberGlassBackdrop(): GlassBackdrop {
     val content = rememberGraphicsLayer()
     val blurred = rememberGraphicsLayer()
-    return remember(content, blurred) { GlassBackdrop(content, blurred) }
+    val enabled = !LocalInspectionMode.current || glassBackdropWorksInPreview
+    return remember(content, blurred, enabled) { GlassBackdrop(content, blurred, enabled) }
 }
 
 /** Records everything this node (and its children) draws, for glass surfaces placed above it. */
 fun Modifier.glassBackdropSource(backdrop: GlassBackdrop): Modifier = this
     .onGloballyPositioned { backdrop.sourceOrigin = it.positionInRoot() }
     .drawWithContent {
+        if (!backdrop.enabled) return@drawWithContent drawContent()
         backdrop.content.record { this@drawWithContent.drawContent() }
         drawLayer(backdrop.content)
         backdrop.version++
@@ -118,6 +130,12 @@ fun Modifier.liquidGlass(
             backdrop.version // re-draw whenever the content behind changes
             val outline = shape.createOutline(size, layoutDirection, this)
             val clip = Path().apply { addOutline(outline) }
+            if (!backdrop.enabled) {
+                // Frosted stand-in: no backdrop to blur, so an opaque-enough overlay keeps labels readable.
+                clipPath(clip) { drawRect(colors.overlay) }
+                drawOutline(outline, colors.glassRimLight, style = Stroke(1.dp.toPx()))
+                return@drawBehind
+            }
             val radius = blurRadius.toPx()
             backdrop.blurred.renderEffect = BlurEffect(radius, radius, TileMode.Clamp)
             backdrop.blurred.colorFilter = saturate

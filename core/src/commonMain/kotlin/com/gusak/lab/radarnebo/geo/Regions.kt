@@ -173,6 +173,11 @@ object Regions {
         return oblastByPolygon(point)
     }
 
+    /** The city (any settlement with city status) closest to [point], and how far away it is in km. */
+    fun nearestCity(point: GeoPoint): Pair<MapCity, Double> = UkraineCities.all
+        .map { it to GeoMath.distanceKm(point, GeoPoint(it.lat.toDouble(), it.lon.toDouble())) }
+        .minBy { it.second }
+
     /** Polygon-only lookup, without the settlement shortcut. */
     fun oblastByPolygon(point: GeoPoint): Int? = UkraineGeometry.oblasts.firstOrNull { GeoMath.contains(it.lonLat, point) }?.uid
 

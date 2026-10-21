@@ -2,6 +2,7 @@ package com.gusak.lab.radarnebo.geo
 
 import kotlin.math.PI
 import kotlin.math.asin
+import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -15,6 +16,24 @@ object GeoMath {
         val h = sin(dLat / 2).let { it * it } +
             cos(a.lat.toRadians()) * cos(b.lat.toRadians()) * sin(dLon / 2).let { it * it }
         return 2 * EARTH_RADIUS_KM * asin(sqrt(h))
+    }
+
+    /** Direction from [from] to [to] in degrees clockwise from north. */
+    fun bearingDeg(from: GeoPoint, to: GeoPoint): Double {
+        val dx = (to.lon - from.lon) * cos(from.lat.toRadians())
+        val dy = to.lat - from.lat
+        return (atan2(dx, dy) * 180.0 / PI + 360.0) % 360.0
+    }
+
+    /** The point [distanceKm] from [from] in direction [bearingDeg] (degrees clockwise from north). */
+    fun destination(from: GeoPoint, bearingDeg: Double, distanceKm: Double): GeoPoint {
+        val lat1 = from.lat.toRadians()
+        val lon1 = from.lon.toRadians()
+        val bearing = bearingDeg.toRadians()
+        val d = distanceKm / EARTH_RADIUS_KM
+        val lat2 = asin(sin(lat1) * cos(d) + cos(lat1) * sin(d) * cos(bearing))
+        val lon2 = lon1 + atan2(sin(bearing) * sin(d) * cos(lat1), cos(d) - sin(lat1) * sin(lat2))
+        return GeoPoint(lat2 * 180.0 / PI, lon2 * 180.0 / PI)
     }
 
     /** Ray casting point-in-polygon test over packed lon,lat pairs. */

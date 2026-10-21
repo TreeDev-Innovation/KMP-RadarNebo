@@ -34,6 +34,13 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import com.gusak.lab.radarnebo.data.AppSettings
 import com.gusak.lab.radarnebo.data.ThemeMode
+import com.gusak.lab.radarnebo.tracking.TargetClassifier
+import com.gusak.lab.radarnebo.tracking.TargetProfile
+import com.gusak.lab.radarnebo.ui.map.TargetIcon
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.font.FontWeight
 import kotlin.math.roundToInt
 
 @Composable
@@ -125,7 +132,34 @@ fun SettingsScreen(
             }
             Switch(settings.dronesOnly, onCheckedChange = { v -> onChange { it.copy(dronesOnly = v) } })
         }
+
+        Text("Target types", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "How each threat is drawn on the map. Red is a red-level alert, amber a yellow-level one.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        TargetClassifier.all.forEach { TargetTypeRow(it) }
         Spacer(Modifier.height(bottomInset))
+    }
+}
+
+/** Legend entry: the icon in both alert colours, the class, typical models and what it does. */
+@Composable
+private fun TargetTypeRow(profile: TargetProfile) {
+    Row(verticalAlignment = Alignment.Top) {
+        Row(Modifier.background(radarColors.mapBackground, RoundedCornerShape(8.dp)).padding(4.dp)) {
+            TargetIcon(profile.kind, headingDeg = 0f, color = radarColors.danger, size = 30.dp)
+            TargetIcon(profile.kind, headingDeg = 0f, color = radarColors.warning, size = 30.dp)
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(profile.kind.label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            Text(
+                listOfNotNull(profile.model, profile.cruiseSpeedKmh?.let { "${it.first}–${it.last} km/h" }).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(profile.role, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -150,6 +184,18 @@ private fun IntSlider(label: String, value: Int, range: IntRange, suffix: String
 @Composable
 private fun SettingsScreenDarkPreview() {
     RadarTheme(ThemeMode.Dark) { Surface { SettingsScreen(AppSettings(themeMode = ThemeMode.Dark), onChange = {}) } }
+}
+
+@Preview(name = "Settings · target types", widthDp = 420, heightDp = 1000)
+@Composable
+private fun SettingsTargetTypesPreview() {
+    RadarTheme(ThemeMode.Dark) {
+        Surface {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                TargetClassifier.all.forEach { TargetTypeRow(it) }
+            }
+        }
+    }
 }
 
 @Preview(name = "Settings · light", widthDp = 420, heightDp = 1000)

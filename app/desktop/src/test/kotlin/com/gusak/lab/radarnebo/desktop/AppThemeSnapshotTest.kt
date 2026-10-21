@@ -13,6 +13,8 @@ import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import com.gusak.lab.radarnebo.App
 import com.gusak.lab.radarnebo.data.InMemoryStorage
 import com.gusak.lab.radarnebo.data.ThemeMode
+import com.gusak.lab.radarnebo.di.isolatedKoin
+import org.koin.compose.KoinIsolatedContext
 import org.jetbrains.skia.EncodedImageFormat
 import org.jetbrains.skia.Image
 import java.io.File
@@ -42,9 +44,12 @@ class AppThemeSnapshotTest {
             override val viewModelStore = ViewModelStore()
         }
         var applied: Pair<ThemeMode, Boolean>? = null
+        val koin = isolatedKoin(storage)
         ImageComposeScene(width, height, Density(1f)) {
             CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
-                App(storage, onThemeApplied = { m, dark -> applied = m to dark })
+                KoinIsolatedContext(koin) {
+                    App(onThemeApplied = { m, dark -> applied = m to dark })
+                }
             }
         }.use { scene ->
             var t = 0L
@@ -65,6 +70,7 @@ class AppThemeSnapshotTest {
             assertEquals(mode to (mode == ThemeMode.Dark), applied)
         }
         owner.viewModelStore.clear()
+        koin.close()
     }
 
     @Test

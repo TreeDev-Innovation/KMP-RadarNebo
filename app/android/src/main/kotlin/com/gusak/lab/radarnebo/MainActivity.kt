@@ -11,11 +11,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        val storage = SharedPrefsStorage(this)
-
         setContent {
             App(
-                storage,
                 // Keep status/navigation bar icons legible when the in-app theme differs from the system one.
                 onThemeApplied = { _, dark ->
                     val style = if (dark) {

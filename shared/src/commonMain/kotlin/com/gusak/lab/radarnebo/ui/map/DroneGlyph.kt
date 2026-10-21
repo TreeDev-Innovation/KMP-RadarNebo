@@ -1,13 +1,5 @@
 package com.gusak.lab.radarnebo.ui.map
 
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -16,12 +8,6 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.tooling.preview.Preview
-import com.gusak.lab.radarnebo.data.ThemeMode
-import com.gusak.lab.radarnebo.ui.RadarTheme
-import com.gusak.lab.radarnebo.ui.radarColors
 
 /** How a drone glyph is rendered: attack drones solid, decoys hollow. */
 enum class DroneGlyphStyle { Attack, Decoy }
@@ -73,35 +59,5 @@ fun DrawScope.drawDroneGlyph(
         drawLine(color, p(0.98f, 0.30f), p(0.98f, 0.74f), line * 1.4f, cap = StrokeCap.Round)
         drawLine(color, p(-0.98f, 0.30f), p(-0.98f, 0.74f), line * 1.4f, cap = StrokeCap.Round)
         drawLine(color, p(-0.30f, 0.92f), p(0.30f, 0.92f), line * 1.2f, cap = StrokeCap.Round)
-    }
-}
-
-/** The drone glyph as a standalone icon, e.g. in the targets list. */
-@Composable
-fun DroneIcon(
-    headingDeg: Float,
-    color: Color,
-    modifier: Modifier = Modifier,
-    size: Dp = 24.dp,
-    style: DroneGlyphStyle = DroneGlyphStyle.Attack,
-) {
-    val outline = radarColors.glyphOutline
-    Canvas(modifier.size(size)) {
-        drawDroneGlyph(center, this.size.minDimension * 0.46f, headingDeg, color, outline, style)
-    }
-}
-
-@Preview(name = "Drone icons")
-@Composable
-private fun DroneIconPreview() {
-    RadarTheme(ThemeMode.Dark) {
-        Row(
-            Modifier.background(radarColors.mapBackground).padding(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            DroneIcon(0f, radarColors.danger, size = 48.dp)
-            DroneIcon(270f, radarColors.warning, size = 48.dp)
-            DroneIcon(315f, radarColors.danger, size = 48.dp, style = DroneGlyphStyle.Decoy)
-        }
     }
 }

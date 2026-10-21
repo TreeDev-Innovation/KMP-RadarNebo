@@ -1,8 +1,9 @@
 package com.gusak.lab.radarnebo
 
 import com.gusak.lab.radarnebo.data.DroneSimulator
-import com.gusak.lab.radarnebo.tracking.DroneClassifier
-import com.gusak.lab.radarnebo.tracking.DroneProfile
+import com.gusak.lab.radarnebo.data.ThreatType
+import com.gusak.lab.radarnebo.tracking.TargetClassifier
+import com.gusak.lab.radarnebo.tracking.TargetProfile
 import com.gusak.lab.radarnebo.tracking.TrackInterpolator
 import com.gusak.lab.radarnebo.tracking.TrackMetrics
 import com.gusak.lab.radarnebo.data.ThreatLevel
@@ -125,8 +126,13 @@ class SimulationTest {
         moving.forEach { track ->
             assertTrue(track.samples.zipWithNext().all { (a, b) -> b.t > a.t }, "timestamps increase")
             val (_, speed) = TrackInterpolator.motion(track.samples[track.samples.size - 2], track.samples.last())
-            assertTrue(speed in 140.0..190.0, "realistic speed for ${track.samples.map { it.title }}: $speed")
-            assertEquals(DroneProfile.Source.Reported, DroneClassifier.classify(track).source)
+            val profile = TargetClassifier.classify(track)
+            assertEquals(TargetProfile.Source.Reported, profile.source, "the simulated alert text names the model")
+            val typical = profile.cruiseSpeedKmh!!
+            assertTrue(
+                speed in typical.first * 0.9..typical.last * 1.1,
+                "realistic speed for ${profile.model} on ${track.samples.map { it.title }}: $speed",
+            )
         }
     }
 
@@ -143,11 +149,12 @@ class SimulationTest {
 class ProfileTest {
     @Test
     fun modelComesFromAlertTextOrIsMarkedProbable() {
-        assertEquals("Gerbera", DroneClassifier.classify(listOf(DroneSimulator.GERBERA_MESSAGE)).model)
-        assertEquals("Shahed-136 / Geran-2", DroneClassifier.classify(listOf("Ударні БпЛА типу Шахед")).model)
-        assertEquals("Shahed-238 / Geran-3", DroneClassifier.classify(listOf("Реактивний шахед на Київ")).model)
-        val unnamed = DroneClassifier.classify(listOf("Загроза ударних БпЛА"))
-        assertEquals(DroneProfile.Source.Probable, unnamed.source)
+        fun drone(text: String) = TargetClassifier.classify(ThreatType.Drones, listOf(text))
+        assertEquals("Gerbera", drone(DroneSimulator.GERBERA_MESSAGE).model)
+        assertEquals("Shahed-136 / Geran-2", drone("Ударні БпЛА типу Шахед").model)
+        assertEquals("Shahed-238 / Geran-3", drone("Реактивний шахед на Київ").model)
+        val unnamed = drone("Загроза ударних БпЛА")
+        assertEquals(TargetProfile.Source.Probable, unnamed.source)
         assertEquals("Shahed-136 / Geran-2", unnamed.model)
     }
 

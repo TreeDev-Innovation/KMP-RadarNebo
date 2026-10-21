@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gusak.lab.radarnebo.data.ThreatLevel
+import com.gusak.lab.radarnebo.data.ThreatType
 import com.gusak.lab.radarnebo.geo.Regions
 import com.gusak.lab.radarnebo.tracking.ArrivalPrediction
 import com.gusak.lab.radarnebo.tracking.DroneTrack
@@ -53,11 +54,10 @@ import com.gusak.lab.radarnebo.tracking.PositionMode
 import com.gusak.lab.radarnebo.tracking.TrackInterpolator
 import com.gusak.lab.radarnebo.tracking.TrackPredictor
 import com.gusak.lab.radarnebo.tracking.TrackSample
-import com.gusak.lab.radarnebo.tracking.DroneClassifier
-import com.gusak.lab.radarnebo.tracking.DroneProfile
+import com.gusak.lab.radarnebo.tracking.TargetClassifier
+import com.gusak.lab.radarnebo.tracking.TargetProfile
 import com.gusak.lab.radarnebo.tracking.TrackMetrics
-import com.gusak.lab.radarnebo.ui.map.DroneGlyphStyle
-import com.gusak.lab.radarnebo.ui.map.DroneIcon
+import com.gusak.lab.radarnebo.ui.map.TargetIcon
 import kotlinx.coroutines.delay
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -163,13 +163,13 @@ private fun TargetRow(track: DroneTrack, now: Long, prediction: ArrivalPredictio
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 10.dp),
     ) {
-        val profile = DroneClassifier.classify(track, motion?.speedKmh)
+        val profile = TargetClassifier.classify(track, motion?.speedKmh)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            DroneIcon(
+            TargetIcon(
+                kind = profile.kind,
                 headingDeg = (motion?.headingDeg ?: 270.0).toFloat(),
                 color = levelColor(track.level),
                 size = 26.dp,
-                style = glyphStyle(profile),
             )
             Spacer(Modifier.width(8.dp))
             Text(targetName(track.id), fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
@@ -183,7 +183,7 @@ private fun TargetRow(track: DroneTrack, now: Long, prediction: ArrivalPredictio
             Text(formatAgo(Instant.fromEpochMilliseconds(last.t)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(
-            listOfNotNull(profile.model + if (profile.source == DroneProfile.Source.Probable) " (probable)" else "", motionLabel(motion), reportsLabel(track.samples.size)).joinToString(" · "),
+            listOfNotNull(profile.model + if (profile.source == TargetProfile.Source.Probable) " (probable)" else "", motionLabel(motion), reportsLabel(track.samples.size)).joinToString(" · "),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -205,7 +205,7 @@ private fun TargetDetail(track: DroneTrack, now: Long, places: List<Place>, onBa
     val position = TrackInterpolator.positionAt(track, now)
     val prediction = TrackPredictor.predict(track, now, places)
     val route = TrackPredictor.route(track, now, places)
-    val profile = DroneClassifier.classify(track, position?.speedKmh)
+    val profile = TargetClassifier.classify(track, position?.speedKmh)
     val trackedMinutes = ((now.coerceAtLeast(track.samples.last().t) - track.samples.first().t) / 60_000).coerceAtLeast(0)
     val flownKm = TrackMetrics.distanceFlownKm(track, position)
 
@@ -293,7 +293,7 @@ private fun TargetDetail(track: DroneTrack, now: Long, places: List<Place>, onBa
         }
         item {
             Text(
-                "Positions are inferred from area alerts, not radar. Predictions assume the drone keeps its current heading and speed.",
+                "Positions are inferred from area alerts, not radar. Predictions assume the target keeps its current heading and speed.",
                 Modifier.padding(16.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -399,12 +399,9 @@ private fun StatusTag(active: Boolean) {
 @Composable
 private fun levelColor(level: ThreatLevel) = if (level == ThreatLevel.Red) radarColors.danger else radarColors.warning
 
-private fun glyphStyle(profile: DroneProfile) =
-    if (profile.model == DroneClassifier.Gerbera.model) DroneGlyphStyle.Decoy else DroneGlyphStyle.Attack
-
-/** Drone type card: icon, model, maker, role and whether the type was reported or is inferred. */
+/** Target type card: icon, model, maker, role and whether the model was reported or is inferred. */
 @Composable
-private fun ProfileCard(track: DroneTrack, profile: DroneProfile, position: InterpolatedPosition?) {
+private fun ProfileCard(track: DroneTrack, profile: TargetProfile, position: InterpolatedPosition?) {
     val alertIds = track.markerIds.map { it.substringBefore(':') }.distinct()
     Row(
         Modifier
@@ -414,18 +411,18 @@ private fun ProfileCard(track: DroneTrack, profile: DroneProfile, position: Inte
             .padding(12.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        DroneIcon(
+        TargetIcon(
+            kind = profile.kind,
             headingDeg = (position?.headingDeg ?: 270.0).toFloat(),
             color = levelColor(track.level),
             size = 44.dp,
-            style = glyphStyle(profile),
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(profile.model, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f, fill = false))
                 Spacer(Modifier.width(8.dp))
-                val reported = profile.source == DroneProfile.Source.Reported
+                val reported = profile.source == TargetProfile.Source.Reported
                 Text(
                     if (reported) "REPORTED" else "PROBABLE",
                     Modifier
@@ -436,14 +433,15 @@ private fun ProfileCard(track: DroneTrack, profile: DroneProfile, position: Inte
                     fontWeight = FontWeight.Bold,
                 )
             }
+            LabelValue("Class", profile.kind.label)
             LabelValue("Make", profile.make)
-            LabelValue("Type", profile.role)
-            LabelValue("Typical speed", "${profile.cruiseSpeedKmh.first}–${profile.cruiseSpeedKmh.last} km/h")
+            LabelValue("Role", profile.role)
+            profile.cruiseSpeedKmh?.let { LabelValue("Typical speed", "${it.first}–${it.last} km/h") }
             LabelValue("ID", "${targetName(track.id)} · track ${track.id}")
             if (alertIds.isNotEmpty()) LabelValue("Alerts", alertIds.joinToString(", ") { "#$it" })
-            if (profile.source == DroneProfile.Source.Probable) {
+            if (profile.source == TargetProfile.Source.Probable) {
                 Text(
-                    "alerts.in.ua doesn't identify drone types; inferred from the threat class and speed.",
+                    "alerts.in.ua doesn't identify models; inferred from the threat class and speed.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -522,6 +520,25 @@ private fun TargetsListLightPreview() {
     val state = PreviewData.state(ThemeMode.Light)
     RadarTheme(ThemeMode.Light) {
         TargetsPanel(state.tracks, 0, TrackPredictor.cityPlaces, selectedTrackId = null, onSelect = {}, onClose = {})
+    }
+}
+
+@Preview(name = "Targets · list · all types", widthDp = 380, heightDp = 900)
+@Composable
+private fun TargetsListAllTypesPreview() {
+    val state = PreviewData.state(dronesOnly = false)
+    RadarTheme(ThemeMode.Dark) {
+        TargetsPanel(state.tracks, 0, TrackPredictor.cityPlaces, selectedTrackId = null, onSelect = {}, onClose = {})
+    }
+}
+
+@Preview(name = "Targets · detail · cruise missile", widthDp = 380, heightDp = 1100)
+@Composable
+private fun TargetDetailMissilePreview() {
+    val state = PreviewData.state(dronesOnly = false)
+    val missile = state.tracks.filter { it.type == ThreatType.CruiseMissiles }.maxByOrNull { it.samples.size }?.id
+    RadarTheme(ThemeMode.Dark) {
+        TargetsPanel(state.tracks, 0, TrackPredictor.cityPlaces, missile ?: PreviewData.busiestTrackId(state), onSelect = {}, onClose = {})
     }
 }
 

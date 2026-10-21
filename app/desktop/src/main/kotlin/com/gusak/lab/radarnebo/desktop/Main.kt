@@ -8,16 +8,18 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.gusak.lab.radarnebo.App
-import com.gusak.lab.radarnebo.FileStorage
+import com.gusak.lab.radarnebo.di.desktopModule
+import com.gusak.lab.radarnebo.di.initKoin
 import com.gusak.lab.radarnebo.ui.map.LocalPinchZoom
 import kotlinx.coroutines.flow.MutableSharedFlow
+import java.io.File
 
 fun main() {
     // Compose Desktop jumps a whole step per mouse-wheel notch unless smooth scrolling is enabled;
     // this animates wheel scrolls in lists (Drones, Favorites, Settings). Must be set before any UI.
     System.setProperty("compose.scrolling.smooth.enabled", "true")
     // -Dradarnebo.settings=/path/file.properties overrides the default ~/.radarnebo/settings.properties.
-    val storage = System.getProperty("radarnebo.settings")?.let { FileStorage(java.io.File(it)) } ?: FileStorage()
+    initKoin(desktopModule(System.getProperty("radarnebo.settings")?.let(::File)))
     application {
         Window(
             onCloseRequest = ::exitApplication,
@@ -32,7 +34,7 @@ fun main() {
                 onDispose { }
             }
             CompositionLocalProvider(LocalPinchZoom provides pinch) {
-                App(storage)
+                App()
             }
         }
     }

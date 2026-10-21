@@ -52,6 +52,7 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+            api(libs.koin.android)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.compose.uiTooling)
         }
@@ -66,6 +67,9 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
             api(project(":core"))
             implementation(libs.kotlinx.datetime)
+            api(libs.koin.core)
+            api(libs.koin.compose)
+            api(libs.koin.compose.viewmodel)
         }
         jvmMain.dependencies {
             implementation(compose.desktop.currentOs)

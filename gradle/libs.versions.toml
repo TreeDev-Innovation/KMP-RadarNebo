@@ -17,6 +17,7 @@ kotlinx-serialization = "1.11.0"
 kotlinx-datetime = "0.7.1"
 logback = "1.5.18"
 kotlin = "2.4.20"
+koin = "4.2.2"
 material3 = "1.12.0-alpha03"
 
 [libraries]
@@ -56,6 +57,11 @@ ktor-server-rateLimit = { module = "io.ktor:ktor-server-rate-limit", version.ref
 ktor-server-callLogging = { module = "io.ktor:ktor-server-call-logging", version.ref = "ktor" }
 ktor-server-cors = { module = "io.ktor:ktor-server-cors", version.ref = "ktor" }
 ktor-server-testHost = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
+koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
+koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin" }
+koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel", version.ref = "koin" }
+koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
+koin-test = { module = "io.insert-koin:koin-test", version.ref = "koin" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
 

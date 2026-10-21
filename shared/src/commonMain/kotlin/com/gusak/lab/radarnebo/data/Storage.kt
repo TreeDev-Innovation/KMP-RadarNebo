@@ -1,5 +1,8 @@
 package com.gusak.lab.radarnebo.data
 
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.builtins.ListSerializer
 
 /** Minimal platform key-value storage (SharedPreferences on Android, NSUserDefaults on iOS). */
@@ -42,9 +45,22 @@ data class AppSettings(
     }
 }
 
+/** App settings, persisted in [KeyValueStorage] and observable as [settings]. */
 class SettingsRepository(private val storage: KeyValueStorage) {
+    private val _settings = MutableStateFlow(load())
+    val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
-    fun loadSettings() = AppSettings(
+    /** Applies [transform], saves the result and returns it. */
+    fun update(transform: (AppSettings) -> AppSettings): AppSettings {
+        val new = transform(_settings.value)
+        if (new != _settings.value) {
+            save(new)
+            _settings.value = new
+        }
+        return new
+    }
+
+    private fun load() = AppSettings(
         apiToken = storage.getString(K_TOKEN).orEmpty(),
         baseUrl = storage.getString(K_BASE_URL)?.takeIf { it.isNotBlank() } ?: AlertsApi.DEFAULT_BASE_URL,
         mapMode = storage.getString(K_MODE)?.let { runCatching { MapMode.valueOf(it) }.getOrNull() } ?: MapMode.Static,
@@ -56,7 +72,7 @@ class SettingsRepository(private val storage: KeyValueStorage) {
         pollSeconds = storage.getString(K_POLL)?.toIntOrNull()?.coerceIn(AppSettings.POLL_RANGE) ?: 30,
     )
 
-    fun saveSettings(settings: AppSettings) {
+    private fun save(settings: AppSettings) {
         storage.putString(K_TOKEN, settings.apiToken.trim())
         storage.putString(K_BASE_URL, settings.baseUrl.trim())
         storage.putString(K_MODE, settings.mapMode.name)
@@ -67,16 +83,7 @@ class SettingsRepository(private val storage: KeyValueStorage) {
         storage.putString(K_POLL, settings.pollSeconds.toString())
     }
 
-    fun loadFavorites(): List<FavoriteLocation> = storage.getString(K_FAVORITES)?.let {
-        runCatching { AlertsApi.json.decodeFromString(favoritesSerializer, it) }.getOrNull()
-    } ?: emptyList()
-
-    fun saveFavorites(favorites: List<FavoriteLocation>) {
-        storage.putString(K_FAVORITES, AlertsApi.json.encodeToString(favoritesSerializer, favorites))
-    }
-
     private companion object {
-        val favoritesSerializer = ListSerializer(FavoriteLocation.serializer())
         const val K_TOKEN = "api_token"
         const val K_BASE_URL = "api_base_url"
         const val K_MODE = "map_mode"
@@ -85,6 +92,29 @@ class SettingsRepository(private val storage: KeyValueStorage) {
         const val K_RADIUS = "proximity_radius_km"
         const val K_DRONES_ONLY = "drones_only"
         const val K_POLL = "poll_seconds"
+    }
+}
+
+/** Favorite locations, persisted in [KeyValueStorage] and observable as [favorites]. */
+class FavoritesRepository(private val storage: KeyValueStorage) {
+    private val _favorites = MutableStateFlow(load())
+    val favorites: StateFlow<List<FavoriteLocation>> = _favorites.asStateFlow()
+
+    fun add(favorite: FavoriteLocation) = save(_favorites.value + favorite)
+
+    fun remove(id: String) = save(_favorites.value.filterNot { it.id == id })
+
+    private fun load(): List<FavoriteLocation> = storage.getString(K_FAVORITES)?.let {
+        runCatching { AlertsApi.json.decodeFromString(serializer, it) }.getOrNull()
+    } ?: emptyList()
+
+    private fun save(favorites: List<FavoriteLocation>) {
+        storage.putString(K_FAVORITES, AlertsApi.json.encodeToString(serializer, favorites))
+        _favorites.value = favorites
+    }
+
+    private companion object {
+        val serializer = ListSerializer(FavoriteLocation.serializer())
         const val K_FAVORITES = "favorites"
     }
 }

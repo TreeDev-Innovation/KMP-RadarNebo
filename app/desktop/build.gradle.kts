@@ -32,12 +32,21 @@ dependencies {
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.androidx.lifecycle.viewmodelCompose)
+    testImplementation(compose.desktop.uiTestJUnit4)
+    testImplementation(libs.koin.test)
 }
 
 tasks.test {
     jvmArgs(macGestureExports.joinToString("="))
     // Where the headless snapshot test writes its PNGs.
     systemProperty("snapshot.dir", layout.buildDirectory.dir("snapshots").get().asFile.absolutePath)
+    // Previews are found from their source, since @Preview isn't visible to reflection.
+    systemProperty("preview.sources", rootProject.file("shared/src/commonMain/kotlin").absolutePath)
+    // ./gradlew :app:desktop:test -PupdateReadmeScreenshots regenerates the README's screenshots.
+    if (providers.gradleProperty("updateReadmeScreenshots").isPresent) {
+        systemProperty("readme.screenshots.dir", rootProject.file("docs/screenshots").absolutePath)
+        outputs.upToDateWhen { false }
+    }
 }
 
 compose.desktop {

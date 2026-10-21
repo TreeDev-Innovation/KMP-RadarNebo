@@ -1,54 +1,41 @@
 package com.gusak.lab.radarnebo.desktop
 
-import androidx.compose.runtime.Composer
-import androidx.compose.runtime.currentComposer
-import androidx.compose.ui.ImageComposeScene
-import androidx.compose.ui.unit.Density
-import androidx.compose.ui.use
 import org.jetbrains.skia.EncodedImageFormat
 import java.io.File
-import java.lang.reflect.Method
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 /**
  * Renders every `@Preview` composable in the shared UI headlessly, so a preview that crashes or
- * draws nothing fails the build rather than only showing up broken in the IDE.
+ * draws nothing fails the build rather than only showing up broken in the IDE. PNGs land in
+ * `build/snapshots/previews`.
  */
 class PreviewsRenderTest {
-    private val previewFiles = listOf(
-        "com.gusak.lab.radarnebo.AppKt",
-        "com.gusak.lab.radarnebo.ui.MapScreenKt",
-        "com.gusak.lab.radarnebo.ui.FavoritesScreenKt",
-        "com.gusak.lab.radarnebo.ui.SettingsScreenKt",
-        "com.gusak.lab.radarnebo.ui.TargetsPanelKt",
-        "com.gusak.lab.radarnebo.ui.CinematicToggleKt",
-        "com.gusak.lab.radarnebo.ui.LiquidGlassKt",
-        "com.gusak.lab.radarnebo.ui.map.DroneGlyphKt",
-    )
 
-    /** Composable functions compile to static methods taking (Composer, Int changed-flags). */
-    private fun previews(): List<Method> = previewFiles.flatMap { name ->
-        Class.forName(name).declaredMethods.filter {
-            it.name.endsWith("Preview") && it.parameterTypes.contentEquals(arrayOf(Composer::class.java, Int::class.javaPrimitiveType))
-        }
+    @Test
+    fun everyPreviewIsFound() {
+        val previews = PreviewRenderer.discover()
+        assertEquals(PreviewRenderer.annotationCount(), previews.size, "every @Preview is a function the test can call")
+        val duplicates = previews.groupBy { it.id }.filterValues { it.size > 1 }.keys
+        assertTrue(duplicates.isEmpty(), "preview function names are unique per file: $duplicates")
+        assertTrue(previews.size >= 78, "expected the full preview set, found ${previews.size}")
     }
 
     @Test
     fun everyPreviewRenders() {
-        val methods = previews()
-        assertTrue(methods.size >= 20, "expected all previews, found ${methods.map { it.name }}")
-        val out = File(System.getProperty("snapshot.dir") ?: "build/snapshots", "previews").apply { mkdirs() }
-        methods.forEach { method ->
-            method.isAccessible = true
-            ImageComposeScene(width = 700, height = 1100, density = Density(1f)) {
-                method.invoke(null, currentComposer, 0)
-            }.use { scene ->
-                var image = scene.render(0)
-                repeat(5) { image = scene.render((it + 1) * 16_000_000L) }
-                val png = image.encodeToData(EncodedImageFormat.PNG)!!.bytes
-                File(out, "${method.declaringClass.simpleName}-${method.name}.png").writeBytes(png)
-            }
+        val out = File(System.getProperty("snapshot.dir") ?: "build/snapshots", "previews").apply {
+            deleteRecursively()
+            mkdirs()
         }
+        val failures = PreviewRenderer.discover().mapNotNull { preview ->
+            runCatching {
+                val image = PreviewRenderer.render(preview, density = 1f)
+                File(out, "${preview.id}.png").writeBytes(image.encodeToData(EncodedImageFormat.PNG)!!.bytes)
+                if (!PreviewRenderer.hasContent(image)) error("rendered a blank image")
+            }.exceptionOrNull()?.let { "${preview.name} (${preview.id}): ${it.cause ?: it}" }
+        }
+        if (failures.isNotEmpty()) fail("${failures.size} previews failed:\n" + failures.joinToString("\n"))
     }
 }

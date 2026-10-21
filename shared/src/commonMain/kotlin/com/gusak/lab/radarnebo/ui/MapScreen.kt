@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
 import com.gusak.lab.radarnebo.tracking.Place
 import com.gusak.lab.radarnebo.tracking.TrackPredictor
 import kotlin.time.Clock
@@ -36,11 +37,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Slider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -59,29 +63,76 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gusak.lab.radarnebo.data.AppSettings
 import com.gusak.lab.radarnebo.data.MapMode
 import com.gusak.lab.radarnebo.data.ThreatLevel
 import com.gusak.lab.radarnebo.geo.GeoPoint
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import com.gusak.lab.radarnebo.geo.GeoMath
+import com.gusak.lab.radarnebo.geo.Regions
+import kotlin.math.roundToInt
 import com.gusak.lab.radarnebo.ui.map.CinematicShot
 import com.gusak.lab.radarnebo.ui.map.MapCamera
 import com.gusak.lab.radarnebo.ui.map.MapSelection
 import com.gusak.lab.radarnebo.ui.map.ShotPlanner
+import com.gusak.lab.radarnebo.ui.map.TargetIcon
 import com.gusak.lab.radarnebo.ui.map.UkraineMap
+import com.gusak.lab.radarnebo.tracking.TargetClassifier
+import com.gusak.lab.radarnebo.tracking.TargetProfile
 import com.gusak.lab.radarnebo.ui.map.rememberCinematicDirector
+
+/**
+ * How the map screen opens. The app always uses the defaults; previews and README screenshots start
+ * it zoomed in, with a target selected, a card showing or the radius control open.
+ */
+data class MapScreenStart(
+    val camera: MapCamera = MapCamera.Overview,
+    /** Opens the targets panel on this target's details. */
+    val selectedTrackId: String? = null,
+    val selection: MapSelection? = null,
+    /** Shows the "add this place to favorites?" card for this spot. */
+    val pendingFavorite: GeoPoint? = null,
+    val radiusOpen: Boolean = false,
+    val targetsOpen: Boolean = selectedTrackId != null,
+)
 
 @Composable
 fun MapScreen(
     state: UiState,
     onModeChange: (MapMode) -> Unit,
     onAddFavorite: (String, GeoPoint) -> Unit,
+    /** Saves a new warning radius (km) around favorites. */
+    onRadiusChange: (Int) -> Unit = {},
     /** Space taken by floating UI at the bottom (the glass navigation bar); the map still draws beneath it. */
     bottomInset: Dp = 0.dp,
+    start: MapScreenStart = MapScreenStart(),
 ) {
-    var selection by remember { mutableStateOf<MapSelection?>(null) }
-    var pendingFavorite by remember { mutableStateOf<GeoPoint?>(null) }
-    var targetsOpen by rememberSaveable { mutableStateOf(false) }
-    var selectedTrackId by rememberSaveable { mutableStateOf<String?>(null) }
-    var staticCamera by remember { mutableStateOf(MapCamera.Overview) }
+    var selection by remember { mutableStateOf(start.selection) }
+    var pendingFavorite by remember { mutableStateOf(start.pendingFavorite) }
+    val lastPendingFavorite = remember { LastSpot() }
+    var targetsOpen by rememberSaveable { mutableStateOf(start.targetsOpen) }
+    var radiusOpen by rememberSaveable { mutableStateOf(start.radiusOpen) }
+    // Radius while the slider is being dragged: the rings follow it live, the setting is saved on release.
+    var radiusDraft by remember { mutableStateOf<Int?>(null) }
+    val radiusKm = radiusDraft ?: state.settings.proximityRadiusKm
+    val closeRadius = {
+        radiusOpen = false
+        radiusDraft = null
+    }
+    var selectedTrackId by rememberSaveable { mutableStateOf(start.selectedTrackId) }
+    var staticCamera by remember { mutableStateOf(start.camera) }
+    val inspectionMode = LocalInspectionMode.current
     val alertedFavoriteIds = remember(state.proximity) { state.proximity.map { it.favorite.id }.toSet() }
     // Favorites first so that, at equal distance, a favorite wins over the city it sits in.
     val predictionPlaces = remember(state.favorites) {
@@ -96,7 +147,10 @@ fun MapScreen(
             selection = null
         } else {
             selection = picked
-            if (picked != null) targetsOpen = false
+            if (picked != null) {
+                targetsOpen = false
+                closeRadius()
+            }
         }
     }
 
@@ -122,9 +176,14 @@ fun MapScreen(
             val points = track.samples.map { it.point } +
                 listOfNotNull(TrackPredictor.predict(track, now, predictionPlaces)?.place?.point)
             val target = MapCamera.framing(points, viewport, visibleArea)
-            val start = staticCamera
+            // Previews render only the first frames: cut straight to the framing instead of flying there.
+            if (inspectionMode) {
+                staticCamera = target
+                return@LaunchedEffect
+            }
+            val from = staticCamera
             animate(0f, 1f, animationSpec = tween(700, easing = FastOutSlowInEasing)) { f, _ ->
-                staticCamera = MapCamera(lerp(start.center, target.center, f), start.zoom + (target.zoom - start.zoom) * f)
+                staticCamera = MapCamera(lerp(from.center, target.center, f), from.zoom + (target.zoom - from.zoom) * f)
             }
         }
 
@@ -136,7 +195,7 @@ fun MapScreen(
                     alertedOblasts = state.alertedOblasts,
                     favorites = state.favorites,
                     alertedFavoriteIds = alertedFavoriteIds,
-                    proximityRadiusKm = state.settings.proximityRadiusKm,
+                    proximityRadiusKm = radiusKm,
                     modifier = Modifier.fillMaxSize(),
                     selectedTrackId = selectedTrackId.takeIf { panelVisible },
                     predictionPlaces = predictionPlaces,
@@ -144,9 +203,17 @@ fun MapScreen(
                     clockOffsetMs = state.clockOffsetMs,
                     onCameraChange = { staticCamera = it },
                     onSelect = onMapSelect,
-                    onLongPress = { pendingFavorite = it },
+                    pendingFavorite = pendingFavorite,
+                    onLongPress = {
+                        selection = null
+                        closeRadius()
+                        pendingFavorite = it
+                    },
                 )
-                MapMode.Cinematic -> CinematicMap(state, alertedFavoriteIds, predictionPlaces, bottomInset, onMapSelect) { pendingFavorite = it }
+                MapMode.Cinematic -> CinematicMap(state, alertedFavoriteIds, predictionPlaces, bottomInset, pendingFavorite, onMapSelect) {
+                    selection = null
+                    pendingFavorite = it
+                }
             }
         }
 
@@ -170,7 +237,26 @@ fun MapScreen(
                         activeCount = state.tracks.count { it.active },
                         onClick = {
                             targetsOpen = !targetsOpen
-                            if (targetsOpen) selection = null
+                            if (targetsOpen) {
+                                selection = null
+                                closeRadius()
+                            }
+                        },
+                    )
+                }
+                AnimatedVisibility(visible = !cinematic, enter = fadeIn(), exit = fadeOut()) {
+                    RadiusButton(
+                        open = radiusOpen,
+                        radiusKm = radiusKm,
+                        onClick = {
+                            if (radiusOpen) {
+                                closeRadius()
+                            } else {
+                                radiusOpen = true
+                                selection = null
+                                pendingFavorite = null
+                                targetsOpen = false
+                            }
                         },
                     )
                 }
@@ -214,17 +300,45 @@ fun MapScreen(
         ) {
             selection?.let { SelectionCard(it, state, onDismiss = { selection = null }) }
         }
-    }
 
-    pendingFavorite?.let { point ->
-        AddFavoriteDialog(
-            point = point,
-            onConfirm = { name ->
-                onAddFavorite(name, point)
-                pendingFavorite = null
-            },
-            onDismiss = { pendingFavorite = null },
-        )
+        AnimatedVisibility(
+            visible = radiusOpen && !cinematic,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier.align(Alignment.BottomCenter)
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset).widthIn(max = 480.dp),
+        ) {
+            RadiusCard(
+                radiusKm = radiusKm,
+                favoriteCount = state.favorites.size,
+                onPreview = { radiusDraft = it },
+                onCommit = { radiusDraft?.let(onRadiusChange) },
+                onClose = closeRadius,
+            )
+        }
+
+        // Long-press asks to add the spot as a favorite. A card rather than a dialog keeps the map
+        // and the pin on the pressed spot in view. It keeps its last spot while sliding away.
+        pendingFavorite?.let { lastPendingFavorite.point = it }
+        AnimatedVisibility(
+            visible = pendingFavorite != null,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier.align(Alignment.BottomCenter).imePadding()
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset).widthIn(max = 480.dp),
+        ) {
+            lastPendingFavorite.point?.let { point ->
+                AddFavoriteCard(
+                    point = point,
+                    proximityRadiusKm = radiusKm,
+                    onConfirm = { name ->
+                        onAddFavorite(name, point)
+                        pendingFavorite = null
+                    },
+                    onDismiss = { pendingFavorite = null },
+                )
+            }
+        }
     }
 }
 
@@ -236,6 +350,7 @@ private fun CinematicMap(
     alertedFavoriteIds: Set<String>,
     predictionPlaces: List<Place>,
     bottomInset: Dp,
+    pendingFavorite: GeoPoint?,
     onSelect: (MapSelection?) -> Unit,
     onLongPress: (GeoPoint) -> Unit,
 ) {
@@ -260,6 +375,7 @@ private fun CinematicMap(
             predictionPlaces = predictionPlaces,
             tracks = state.tracks,
             clockOffsetMs = state.clockOffsetMs,
+            pendingFavorite = pendingFavorite,
             onSelect = onSelect,
             onLongPress = onLongPress,
         )
@@ -342,15 +458,26 @@ private fun SelectionCard(selection: MapSelection, state: UiState, onDismiss: ()
             when (selection) {
                 is MapSelection.Threat -> {
                     val m = selection.marker
-                    Text(m.title, style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "${m.type.label} · ${m.level.name} level",
-                        color = if (m.level == ThreatLevel.Red) radarColors.danger else radarColors.warning,
-                    )
-                    Text("${m.oblastName} · ${m.locationType}", style = MaterialTheme.typography.bodySmall)
-                    m.startedAt?.let { Text("Since ${formatTime(it)} (${formatAgo(it)})", style = MaterialTheme.typography.bodySmall) }
-                    m.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                    if (m.isRegionWide) Text("Region-wide: position shown at the oblast center", style = MaterialTheme.typography.labelSmall)
+                    val levelColor = if (m.level == ThreatLevel.Red) radarColors.danger else radarColors.warning
+                    val profile = remember(m.id) { TargetClassifier.classify(m) }
+                    Row(verticalAlignment = Alignment.Top) {
+                        TargetIcon(profile.kind, headingDeg = 0f, color = levelColor, size = 40.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text(m.title, style = MaterialTheme.typography.titleMedium)
+                            Text("${m.type.label} · ${m.level.name} level", color = levelColor)
+                            Text(
+                                profile.model + if (profile.source == TargetProfile.Source.Probable) " (probable)" else "",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(profile.role, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${m.oblastName} · ${m.locationType}", style = MaterialTheme.typography.bodySmall)
+                            m.startedAt?.let { Text("Since ${formatTime(it)} (${formatAgo(it)})", style = MaterialTheme.typography.bodySmall) }
+                            m.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            if (m.isRegionWide) Text("Region-wide: position shown at the oblast center", style = MaterialTheme.typography.labelSmall)
+                        }
+                    }
                 }
                 // Tracks open in the targets panel instead of this card.
                 is MapSelection.Track -> Unit
@@ -370,22 +497,132 @@ private fun SelectionCard(selection: MapSelection, state: UiState, onDismiss: ()
     }
 }
 
+/** A long-pressed spot described the way a person would: "12 km NE of Uman · Cherkasy Oblast". */
+data class PlaceSummary(val suggestedName: String, val where: String, val inUkraine: Boolean)
+
+fun describePlace(point: GeoPoint): PlaceSummary {
+    val (city, km) = Regions.nearestCity(point)
+    val oblast = Regions.oblastAt(point)?.let(Regions::oblast)
+    val cityPoint = GeoPoint(city.lat.toDouble(), city.lon.toDouble())
+    val (name, near) = if (km < NEAR_CITY_KM) {
+        city.name to "In ${city.name}"
+    } else {
+        "Near ${city.name}" to "${km.roundToInt()} km ${compass(GeoMath.bearingDeg(cityPoint, point))} of ${city.name}"
+    }
+    return PlaceSummary(name, listOfNotNull(near, oblast?.nameEn).joinToString(" · "), inUkraine = oblast != null)
+}
+
+/** Within this distance of a city's centre a spot counts as "in" the city. */
+private const val NEAR_CITY_KM = 3.0
+
+private val RadiusPresetsKm = listOf(10, 25, 50, 100)
+
+/**
+ * Sets how close a threat must come to a favorite to raise a warning. [onPreview] follows the slider
+ * so the rings on the map resize live; [onCommit] saves once the drag ends or a preset is picked.
+ */
 @Composable
-fun AddFavoriteDialog(point: GeoPoint, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var name by rememberSaveable { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add favorite location") },
-        text = {
-            Column {
-                Text("${formatCoord(point.lat)}, ${formatCoord(point.lon)}", style = MaterialTheme.typography.bodySmall)
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true)
+private fun RadiusCard(radiusKm: Int, favoriteCount: Int, onPreview: (Int) -> Unit, onCommit: () -> Unit, onClose: () -> Unit) {
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+        Column(Modifier.padding(start = 16.dp, top = 6.dp, end = 8.dp, bottom = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Warning radius", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                Text("$radiusKm km", style = MaterialTheme.typography.titleMedium, color = radarColors.favorite)
+                TextButton(onClick = onClose) { Text("Done") }
             }
-        },
-        confirmButton = { TextButton(onClick = { onConfirm(name) }) { Text("Add") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+            Column(Modifier.padding(end = 8.dp)) {
+                Text(
+                    when (favoriteCount) {
+                        0 -> "Threats this close to a favorite place raise a warning. Long-press the map to add one."
+                        1 -> "You're warned when a threat comes this close to your favorite place."
+                        else -> "You're warned when a threat comes this close to any of your $favoriteCount favorite places."
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Slider(
+                    value = radiusKm.toFloat(),
+                    onValueChange = { onPreview(it.roundToInt()) },
+                    onValueChangeFinished = onCommit,
+                    valueRange = AppSettings.RADIUS_RANGE.first.toFloat()..AppSettings.RADIUS_RANGE.last.toFloat(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    RadiusPresetsKm.forEach { km ->
+                        FilterChip(
+                            selected = km == radiusKm,
+                            onClick = {
+                                onPreview(km)
+                                onCommit()
+                            },
+                            label = { Text("$km km") },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Plain holder (not snapshot state) for the spot a closing card keeps showing. */
+private class LastSpot(var point: GeoPoint? = null)
+
+/** Asks whether to add a long-pressed spot to favorites, suggesting a name from the nearest city. */
+@Composable
+fun AddFavoriteCard(point: GeoPoint, proximityRadiusKm: Int, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    val place = remember(point) { describePlace(point) }
+    // The suggestion starts selected, so typing replaces it and Enter accepts it.
+    var name by rememberSaveable(point, stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(place.suggestedName, TextRange(0, place.suggestedName.length)))
+    }
+    val focus = remember { FocusRequester() }
+    LaunchedEffect(point) { focus.requestFocus() }
+    val canAdd = name.text.isNotBlank()
+    val confirm = { if (canAdd) onConfirm(name.text) }
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+        Column(Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Add this place to favorites?", style = MaterialTheme.typography.titleMedium)
+            Text(place.where, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "${formatCoord(point.lat)}, ${formatCoord(point.lon)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!place.inUkraine) {
+                Text(
+                    "Outside Ukraine: no alerts are tracked here.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalRadarColors.current.warning,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Name") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { confirm() }),
+                modifier = Modifier.fillMaxWidth().focusRequester(focus).onPreviewKeyEvent { event ->
+                    // Desktop: Enter adds, like the Done key on a phone keyboard; Escape cancels.
+                    val down = event.type == KeyEventType.KeyDown
+                    when (event.key) {
+                        Key.Enter, Key.NumPadEnter -> { if (down) confirm(); true }
+                        Key.Escape -> { if (down) onDismiss(); true }
+                        else -> false
+                    }
+                },
+            )
+            Text(
+                "You'll be warned when a threat comes within $proximityRadiusKm km.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(Modifier.align(Alignment.End)) {
+                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = confirm, enabled = canAdd) { Text("Add to favorites") }
+            }
+        }
+    }
 }
 
 @Preview(name = "Map · static · dark", widthDp = 420, heightDp = 860)
@@ -408,14 +645,44 @@ private fun MapScreenCinematicPreview() {
     }
 }
 
+@Preview(name = "Map · all threat types", widthDp = 420, heightDp = 860)
+@Composable
+private fun MapScreenAllTypesPreview() {
+    RadarTheme(ThemeMode.Dark) { MapScreen(PreviewData.state(dronesOnly = false), onModeChange = {}, onAddFavorite = { _, _ -> }) }
+}
+
 @Preview(name = "Map · tablet", widthDp = 1100, heightDp = 760)
 @Composable
 private fun MapScreenTabletPreview() {
     RadarTheme(ThemeMode.Dark) { MapScreen(PreviewData.state(), onModeChange = {}, onAddFavorite = { _, _ -> }) }
 }
 
-@Preview(name = "Add favorite dialog")
+@Preview(name = "Radius card · dark", widthDp = 420)
 @Composable
-private fun AddFavoriteDialogPreview() {
-    RadarTheme(ThemeMode.Light) { AddFavoriteDialog(GeoPoint(50.45, 30.52), onConfirm = {}, onDismiss = {}) }
+private fun RadiusCardDarkPreview() {
+    RadarTheme(ThemeMode.Dark) { RadiusCard(radiusKm = 50, favoriteCount = 2, onPreview = {}, onCommit = {}, onClose = {}) }
+}
+
+@Preview(name = "Radius card · light, no favorites", widthDp = 420)
+@Composable
+private fun RadiusCardLightPreview() {
+    RadarTheme(ThemeMode.Light) { RadiusCard(radiusKm = 120, favoriteCount = 0, onPreview = {}, onCommit = {}, onClose = {}) }
+}
+
+@Preview(name = "Add favorite card", widthDp = 420)
+@Composable
+private fun AddFavoriteCardPreview() {
+    RadarTheme(ThemeMode.Light) { AddFavoriteCard(GeoPoint(48.86, 30.32), proximityRadiusKm = 20, onConfirm = {}, onDismiss = {}) }
+}
+
+@Preview(name = "Add favorite card · dark, in a city", widthDp = 420)
+@Composable
+private fun AddFavoriteCardInCityPreview() {
+    RadarTheme(ThemeMode.Dark) { AddFavoriteCard(GeoPoint(50.45, 30.52), proximityRadiusKm = 20, onConfirm = {}, onDismiss = {}) }
+}
+
+@Preview(name = "Add favorite card · outside Ukraine", widthDp = 420)
+@Composable
+private fun AddFavoriteCardOutsidePreview() {
+    RadarTheme(ThemeMode.Dark) { AddFavoriteCard(GeoPoint(45.2, 31.6), proximityRadiusKm = 20, onConfirm = {}, onDismiss = {}) }
 }

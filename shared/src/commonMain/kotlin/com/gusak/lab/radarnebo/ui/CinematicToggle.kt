@@ -16,6 +16,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -157,6 +159,48 @@ fun TargetsButton(open: Boolean, activeCount: Int, onClick: () -> Unit, modifier
     }
 }
 
+/** Opens the warning-radius control; the badge shows the current radius in km. */
+@Composable
+fun RadiusButton(open: Boolean, radiusKm: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val primary = MaterialTheme.colorScheme.primary
+    val onPrimary = MaterialTheme.colorScheme.onPrimary
+    val progress by animateFloatAsState(if (open) 1f else 0f, tween(durationMillis = 300))
+    Box(modifier.size(48.dp)) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(lerp(radarColors.overlay, primary, progress), CircleShape)
+                .border(1.5.dp, primary.copy(alpha = 1f - progress), CircleShape)
+                .toggleable(value = open, role = Role.Switch, onValueChange = { onClick() })
+                .semantics { contentDescription = "Warning radius, $radiusKm km" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.size(24.dp)) { drawRadius(lerp(primary, onPrimary, progress)) }
+        }
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                // Hangs just below the button so the ring icon stays clear.
+                .offset(y = 11.dp)
+                .background(radarColors.favorite, CircleShape)
+                .padding(horizontal = 5.dp, vertical = 1.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text("$radiusKm km", color = radarColors.mapBackground, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+/** A pin with a dashed ring around it, like the warning ring around favorites on the map. */
+private fun DrawScope.drawRadius(color: Color) {
+    val r = size.minDimension / 2
+    val stroke = 1.8.dp.toPx()
+    drawCircle(color, r - stroke / 2, style = Stroke(stroke, pathEffect = PathEffect.dashPathEffect(floatArrayOf(r * 0.38f, r * 0.24f))))
+    drawCircle(color.copy(alpha = 0.25f), r * 0.55f)
+    drawCircle(color, r * 0.2f)
+}
+
 private fun DrawScope.drawCrosshair(color: Color) {
     val r = size.minDimension / 2
     val stroke = 1.8.dp.toPx()
@@ -178,6 +222,8 @@ private fun MapButtonsDarkPreview() {
             CinematicToggle(cinematic = true, onToggle = {})
             TargetsButton(open = false, activeCount = 4, onClick = {})
             TargetsButton(open = true, activeCount = 4, onClick = {})
+            RadiusButton(open = false, radiusKm = 50, onClick = {})
+            RadiusButton(open = true, radiusKm = 150, onClick = {})
         }
     }
 }
@@ -191,6 +237,8 @@ private fun MapButtonsLightPreview() {
             CinematicToggle(cinematic = true, onToggle = {})
             TargetsButton(open = false, activeCount = 0, onClick = {})
             TargetsButton(open = true, activeCount = 2, onClick = {})
+            RadiusButton(open = false, radiusKm = 25, onClick = {})
+            RadiusButton(open = true, radiusKm = 25, onClick = {})
         }
     }
 }

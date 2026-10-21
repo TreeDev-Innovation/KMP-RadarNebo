@@ -3,15 +3,53 @@
 A Kotlin Multiplatform (Android + iOS, Compose Multiplatform) drone threat monitor for Ukraine, using the
 [alerts.in.ua open API](https://devs.alerts.in.ua/).
 
+## Screenshots
+
+Rendered from the app's Compose previews (see [Previews](#previews)); the map and targets use hand-placed demo data.
+
+| Map | Target selected | Cinematic mode | Targets |
+|---|---|---|---|
+| <img src="docs/screenshots/map-overview.png" width="200"> | <img src="docs/screenshots/target-selected.png" width="200"> | <img src="docs/screenshots/cinematic.png" width="200"> | <img src="docs/screenshots/targets-list.png" width="200"> |
+| **Light theme** | **Threat card** | **Add a favorite (long-press)** | **Warning radius** |
+| <img src="docs/screenshots/app-phone-light.png" width="200"> | <img src="docs/screenshots/threat-card.png" width="200"> | <img src="docs/screenshots/add-favorite.png" width="200"> | <img src="docs/screenshots/warning-radius.png" width="200"> |
+| **Cities, zoomed out** | **City names, zoomed in** | **Every threat type** | **Target states** |
+| <img src="docs/screenshots/cities-dots.png" width="200"> | <img src="docs/screenshots/cities-zoomed.png" width="200"> | <img src="docs/screenshots/every-threat-type.png" width="200"> | <img src="docs/screenshots/target-states-map.png" width="200"> |
+| **Favorites** | **Settings** | **Target types legend** | **Live demo (app)** |
+| <img src="docs/screenshots/favorites.png" width="200"> | <img src="docs/screenshots/settings.png" width="200"> | <img src="docs/screenshots/target-types-legend.png" width="200"> | <img src="docs/screenshots/app-phone.png" width="200"> |
+
+**Tablet:** overview, a cruise missile's track and prediction, and cinematic mode.
+
+<img src="docs/screenshots/map-overview-tablet.png" width="820">
+<img src="docs/screenshots/missile-selected-tablet.png" width="820">
+<img src="docs/screenshots/cinematic-tablet.png" width="820">
+
+**Target icons**, red and yellow alert levels:
+
+<img src="docs/screenshots/target-icons.png" width="440">
+
 ## Features
 
 - **Map of Ukraine**: drawn natively in Compose from simplified OpenStreetMap oblast boundaries. Oblasts are shaded by
   alert status (red: whole oblast, amber: partial). Drone threats are pulsing markers.
-- **Simulation** without a token (app demo mode and the proxy's demo mode): `DroneSimulator` flies drone groups along
-  realistic routes (e.g. Hlukhiv → Shostka → Konotop → Bakhmach → Nizhyn → Brovary → Kyiv) in real time, at real speeds
-  (150–180 km/h). It raises an alert in each settlement as a group reaches it, and names the drone type in the alert
-  text. The last 90 minutes are replayed on start, so tracks have a history immediately. The app always labels this
-  as demo data.
+- **Simulation** without a token (app demo mode and the proxy's demo mode): `DroneSimulator` covers every threat class
+  alerts.in.ua reports. Shahed, jet Shahed (Geran-3), Gerbera decoy and Orlan reconnaissance drone groups and Kh-101 /
+  Kalibr cruise missiles fly realistic routes (e.g. Hlukhiv → Shostka → Konotop → Bakhmach → Nizhyn → Brovary → Kyiv) in
+  real time at real speeds (110 km/h for reconnaissance drones up to ~780 km/h for cruise missiles). Each raises an
+  alert in every settlement it reaches, with the type named in the alert text. Ballistic missiles (Iskander-M, KN-23),
+  MiG-31K take-offs followed by a Kinzhal threat to Kyiv, guided bombs (KAB), tactical and strategic aviation and
+  air defense activity come as recurring area alerts. The last 90 minutes are replayed on start, so tracks have a
+  history immediately. The app always labels this as demo data.
+- **Proxy simulation**: without `ALERTS_API_TOKEN` the proxy never contacts alerts.in.ua. Instead of
+  `UpstreamAlertsSource`, it reads from a separate data source, `SimulatedAlertsSource`. That source adds `DemoRaids` to
+  the scripted simulation:
+  - **KABs** glide 25–80 km into front-line and border towns (Kharkiv, Sumy, Kupiansk, Kramatorsk, Zaporizhzhia, Kherson
+    and others). They are released over Russia (Belgorod and Kursk oblasts) or over the occupied territories: a salvo
+    of three every 15 minutes, plus one single bomb every minute, each at a random moment and target. The target town
+    is alerted, and each bomb's flight is published in `tracks.json` as a `GuidedBombs` track.
+  - **Shahed groups** cross the border or the coast at random points, one or two every 20 minutes. They fly from town to
+    town towards a random city, raising alerts on the way that the tracker links into tracks.
+
+  The raids are seeded per time slot, so they stay the same across restarts.
 - **Drones only** (Settings): show only `drones` threats from `/v1/alerts/active.json`, or include missiles, KABs and
   aviation as well.
 - **Favorite locations**: search a city, add by coordinates, or long-press anywhere on the map. A favorite is flagged
@@ -21,10 +59,16 @@ A Kotlin Multiplatform (Android + iOS, Compose Multiplatform) drone threat monit
   - *Cinematic*: an automatic camera that flies between your points of interest that have nearby threats, using
     fly-to arcs, a slow push-in, letterboxing and a HUD. Toggle it with the camera button in the top-right corner. With nothing nearby, it patrols your favorites
     and the main hotspots.
-- **Target tracking**: the Targets button (crosshair under the camera button) lists every tracked drone group, each
-  with a drone silhouette pointing along its heading (hollow for decoys), its model, latest location, time, speed and
-  heading. Selecting a target shows:
-  - **Drone**: model, maker, role and typical speed. alerts.in.ua doesn't identify drone types, so the model comes
+- **Target types**: every threat is drawn with its own top-down icon (`ui/map/TargetGlyphs.kt`): attack, jet, decoy
+  and reconnaissance drones, cruise, ballistic and aeroballistic (Kinzhal) missiles, guided bombs, tactical and
+  strategic aviation, MiG-31K, air defense and unknown threats. Settings → Target types shows them all with their
+  typical models and speeds (`tracking/TargetProfile.kt`).
+- **Target tracking**: the Targets button (crosshair under the camera button) lists every tracked target: drone groups
+  and, with "Drones only" off, cruise missiles. Each has its type's icon pointing along its heading, its model, latest
+  location, time, speed and heading. Drone groups and cruise missiles are linked into tracks with their own speeds and
+  hop distances (`TrackKinematics`); ballistic missiles, bombs and aviation only come as area alerts and stay markers.
+  Selecting a target shows:
+  - **Type**: class, model, maker, role and typical speed. alerts.in.ua doesn't identify models, so the model comes
     from the alert text when it names one (*reported*); otherwise it's inferred from the threat class and speed and
     marked *probable*.
   - **ID** (target and alert IDs), **speed**, **direction**, **distance flown** and **time tracked**.
@@ -49,15 +93,59 @@ A Kotlin Multiplatform (Android + iOS, Compose Multiplatform) drone threat monit
 
 ## Previews
 
-Every screen and component has Compose `@Preview`s in light and dark, fed by the drone simulation (`ui/preview/PreviewData.kt`).
-`PreviewsRenderTest` renders them all headlessly in CI (`./gradlew :app:desktop:test`).
+Every screen and component has Compose `@Preview`s (78 in all), in `shared/src/commonMain`:
+
+- `ui/preview/MapPreviews.kt`: the map screen (phone and tablet, light and dark, quiet, error), cities zoomed out and
+  in, every target state on the map, every threat type, each card and control, and cinematic mode (threat near a
+  favorite, patrol, overview).
+- `ui/preview/TargetPreviews.kt`: the targets panel, with a detail view per target state (Shahed in flight with an
+  arrival prediction, Gerbera decoy, jet Shahed, reconnaissance drone with a single report, cleared, cruise missile).
+- `ui/preview/ScreenPreviews.kt`: the whole app (phone and tablet, with its own Koin container), favorites and settings.
+- Next to their components: icons (`ui/map/TargetGlyphs.kt`), map buttons, glass bar, cards and panels.
+
+Data comes from `ui/preview/PreviewData.kt`: `scenario()` is hand-placed relative to the current time, so a preview
+always shows what its name says; `state()` runs the live simulation.
+
+Previews render on each platform's preview engine:
+
+- **Android Studio** renders the Android target with Layoutlib, which can't blur a recorded graphics layer, so the
+  liquid-glass bar falls back to a frosted tint there (`glassBackdropWorksInPreview`, an `expect`/`actual` per platform).
+- **Desktop** (IntelliJ IDEA) renders with Skia like the app, real glass included.
+- **iOS** has no Compose preview tooling; the previews still compile for it, as they live in `commonMain`.
+
+IDE previews only render the first frames, so in inspection mode (`LocalInspectionMode`) anything that animates in
+starts finished: city names show without fading in, the camera cuts to a selected target, and cinematic mode opens on
+its first shot.
+
+`PreviewsRenderTest` finds every `@Preview` from the sources (the annotation isn't visible to reflection), renders each
+one headlessly at its declared size the way an IDE does, and fails on any that throws or draws a blank image
+(`./gradlew :app:desktop:test`, PNGs in `app/desktop/build/snapshots/previews`). The screenshots above are regenerated with:
+
+```
+./gradlew :app:desktop:test --tests '*ReadmeScreenshotsTest*' -PupdateReadmeScreenshots
+```
+
+## Architecture
+
+The shared app is wired with [Koin](https://insert-koin.io/) (`shared/.../di/AppModules.kt`):
+
+| Layer | What | Scope |
+|---|---|---|
+| Platform | `KeyValueStorage`: SharedPreferences (`androidModule`), a properties file (`desktopModule`), NSUserDefaults (`iosModule`) | single |
+| Data | `AlertsApi`; `SettingsRepository` and `FavoritesRepository` (observable `StateFlow`s); `AlertsRepository` (alerts.in.ua, a proxy, or the demo simulation, plus on-device tracking) | single |
+| Domain | `RefreshAlertsUseCase`, `BuildThreatPictureUseCase`, `UpdateSettingsUseCase`, `AddFavoriteUseCase`, `RemoveFavoriteUseCase` | factory |
+| UI | `AppViewModel`, obtained with `koinViewModel()` in `App()` | viewModel |
+
+Koin starts in `RadarNeboApplication` (Android), `main()` (desktop) and `MainViewController()` (iOS), each passing its
+platform module to `initKoin`. Previews and tests use `isolatedKoin()` with in-memory storage inside
+`KoinIsolatedContext`, so they never touch real settings or each other.
 
 ## Modules
 
 | Module | What it is |
 |---|---|
 | `core` | Pure Kotlin (Android, iOS, JVM): alerts.in.ua client and models, geography, threat mapping, drone tracking and interpolation |
-| `shared` | Compose Multiplatform UI (Android, iOS, desktop JVM) |
+| `shared` | Compose Multiplatform UI (Android, iOS, desktop JVM), repositories, use cases and Koin modules |
 | `app/android` (`:app:android`), `app/desktop` (`:app:desktop`), `app/ios` (Xcode project) | Platform entry points |
 | `server` | Ktor caching proxy for alerts.in.ua with drone position history |
 
@@ -89,7 +177,8 @@ affects the upstream rate.
   (clients get 304s) and `X-Data-Age-Seconds`.
 - **Drone tracks:** every poll feeds a tracker. When a drone threat appears within 120 km of a track seen in the last
   30 min, it continues that track. Otherwise it starts a new one. Each track keeps a timestamped position history.
-  - `GET /v1/drones/tracks.json`: tracks with their samples plus `serverTime`. The app interpolates positions locally
+  - `GET /v1/drones/tracks.json`: tracks with their samples plus `serverTime`. Despite the path, it includes cruise
+    missile tracks; each track's `type` says which (absent means drones, as older proxies sent). The app interpolates positions locally
     every frame, so drones move smoothly between polls.
   - `GET /v1/drones/positions.json?at=<epoch ms | ISO-8601>`: positions computed on the server. Between samples it
     uses linear interpolation. Past the newest sample, an active track continues along its last segment (dead
@@ -105,7 +194,7 @@ ALERTS_API_TOKEN=... PORT=8080 PROXY_CLIENT_KEYS=key1,key2 ./gradlew :server:run
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `ALERTS_API_TOKEN` | – | Upstream token. If unset, the proxy serves the drone simulation. |
+| `ALERTS_API_TOKEN` | – | Upstream token. If unset, the proxy serves the simulation (`SimulatedAlertsSource`) and makes no upstream requests. |
 | `UPSTREAM_MAX_PER_MINUTE` | 6 | Upstream budget, clamped to 1–8 |
 | `POLL_INTERVAL_SECONDS` | 15 | Never faster than the budget allows |
 | `PROXY_CLIENT_KEYS` | – | Comma-separated client keys. Clients send `Authorization: Bearer <key>` or `?token=`. |

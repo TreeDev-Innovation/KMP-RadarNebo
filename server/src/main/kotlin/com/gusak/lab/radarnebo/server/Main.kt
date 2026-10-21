@@ -44,11 +44,14 @@ fun main() {
     embeddedServer(CIO, port = config.port) { radarProxy(config) }.start(wait = true)
 }
 
-/** Wires the proxy. [startPoller] is false in tests that drive [UpstreamPoller.pollOnce] themselves. */
+/**
+ * Wires the proxy. Alerts come from alerts.in.ua, or from the simulation when no upstream token is set
+ * ([alertsSourceFor]). [startPoller] is false in tests that drive [AlertsPoller.pollOnce] themselves.
+ */
 fun Application.radarProxy(
     config: ProxyConfig,
     state: ProxyState = ProxyState(),
-    poller: UpstreamPoller = UpstreamPoller(config, defaultUpstreamClient(), state),
+    poller: AlertsPoller = AlertsPoller(config, alertsSourceFor(config), state),
     startPoller: Boolean = true,
     clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -74,10 +77,10 @@ fun Application.radarProxy(
             call.respond(
                 Health(
                     status = if (snap == null) "warming_up" else if (state.lastError != null) "degraded" else "ok",
-                    demo = config.demo,
+                    demo = poller.source.demo,
                     upstreamBudgetPerMinute = config.effectivePerMinute,
-                    upstreamRequestsLastMinute = poller.requestsInLastMinute,
-                    upstreamRequestsTotal = state.upstreamRequests,
+                    upstreamRequestsLastMinute = poller.source.requestsInLastMinute,
+                    upstreamRequestsTotal = poller.source.requestsTotal,
                     pollIntervalSeconds = config.effectivePollInterval.inWholeSeconds,
                     lastAttemptAt = state.lastAttemptAt,
                     nextPollAt = state.nextPollAt,
@@ -128,7 +131,7 @@ fun Application.radarProxy(
                     if (state.snapshot == null) return@get call.warmingUp()
                     val at = call.request.queryParameters["at"]?.let(::parseTime) ?: clock()
                     val positions = state.tracks
-                        .filter { it.active || at - it.lastSeen <= TrackInterpolator.MAX_EXTRAPOLATION_MS }
+                        .filter { TrackInterpolator.isVisible(it, at) }
                         .mapNotNull { TrackInterpolator.positionAt(it, at) }
                     call.respond(DronePositionsResponse(at, positions))
                 }

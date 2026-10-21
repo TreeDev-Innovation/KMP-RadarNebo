@@ -1,11 +1,6 @@
 package com.gusak.lab.radarnebo
 
-import com.gusak.lab.radarnebo.data.InMemoryStorage
-import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
-import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.ViewModelStore
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -28,10 +23,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.gusak.lab.radarnebo.data.KeyValueStorage
-import com.gusak.lab.radarnebo.data.SettingsRepository
 import com.gusak.lab.radarnebo.data.ThemeMode
+import com.gusak.lab.radarnebo.ui.preview.AppPreviewHost
+import org.koin.compose.viewmodel.koinViewModel
 import com.gusak.lab.radarnebo.ui.AppViewModel
 import com.gusak.lab.radarnebo.ui.FavoritesScreen
 import com.gusak.lab.radarnebo.ui.GlassNavBarDefaults
@@ -50,15 +44,17 @@ private enum class Tab(val label: String, val glyph: String) {
 }
 
 /**
+ * The app's root. Its [AppViewModel] comes from Koin, so the platform entry point must start Koin
+ * first (`initKoin`), or wrap this in `KoinIsolatedContext` as previews and tests do.
+ *
  * @param onThemeApplied called with the chosen mode and whether the resolved theme is dark, so the
  * platform host can match system chrome (status bar icons, window appearance).
  */
 @Composable
 fun App(
-    storage: KeyValueStorage,
     onThemeApplied: (mode: ThemeMode, dark: Boolean) -> Unit = { _, _ -> },
 ) {
-    val vm = viewModel { AppViewModel(SettingsRepository(storage)) }
+    val vm = koinViewModel<AppViewModel>()
     val state by vm.state.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Map) }
 
@@ -80,6 +76,7 @@ fun App(
                         state,
                         onModeChange = vm::setMapMode,
                         onAddFavorite = vm::addFavorite,
+                        onRadiusChange = { km -> vm.updateSettings { it.copy(proximityRadiusKm = km) } },
                         bottomInset = bottomInset,
                     )
                     Tab.Favorites -> Box(topAndSides) {
@@ -109,14 +106,4 @@ fun App(
 
 @Preview(name = "App · phone", widthDp = 420, heightDp = 880)
 @Composable
-private fun AppPreview() {
-    // Previews have no activity/window ViewModel store; provide one so App can create its ViewModel.
-    val owner = remember {
-        object : ViewModelStoreOwner {
-            override val viewModelStore = ViewModelStore()
-        }
-    }
-    CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
-        App(InMemoryStorage())
-    }
-}
+private fun AppPreview() = AppPreviewHost(ThemeMode.Dark)

@@ -51,7 +51,9 @@ import com.gusak.lab.radarnebo.data.ThreatLevel
 import com.gusak.lab.radarnebo.domain.ThreatMarker
 import com.gusak.lab.radarnebo.geo.GeoMath
 import com.gusak.lab.radarnebo.geo.GeoPoint
+import com.gusak.lab.radarnebo.geo.MapCity
 import com.gusak.lab.radarnebo.geo.Regions
+import com.gusak.lab.radarnebo.geo.UkraineCities
 import com.gusak.lab.radarnebo.geo.UkraineGeometry
 import com.gusak.lab.radarnebo.tracking.DroneTrack
 import com.gusak.lab.radarnebo.tracking.InterpolatedPosition
@@ -60,12 +62,15 @@ import com.gusak.lab.radarnebo.tracking.TrackInterpolator
 import com.gusak.lab.radarnebo.tracking.ArrivalPrediction
 import com.gusak.lab.radarnebo.tracking.Place
 import com.gusak.lab.radarnebo.tracking.TrackPredictor
-import com.gusak.lab.radarnebo.tracking.DroneClassifier
+import com.gusak.lab.radarnebo.tracking.TargetClassifier
+import com.gusak.lab.radarnebo.tracking.TargetKind
 import com.gusak.lab.radarnebo.data.ThreatType
 import com.gusak.lab.radarnebo.ui.formatTime
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import kotlin.time.Instant
@@ -200,6 +205,8 @@ fun UkraineMap(
     predictionPlaces: List<Place> = emptyList(),
     tracks: List<DroneTrack> = emptyList(),
     clockOffsetMs: Long = 0,
+    /** Spot being offered as a new favorite (after a long-press): marked with a pulsing pin. */
+    pendingFavorite: GeoPoint? = null,
     onCameraChange: ((MapCamera) -> Unit)? = null,
     onSelect: (MapSelection?) -> Unit = {},
     onLongPress: (GeoPoint) -> Unit = {},
@@ -207,6 +214,8 @@ fun UkraineMap(
     val paths = remember { buildOblastPaths() }
     val colors = LocalRadarColors.current
     val textMeasurer = rememberTextMeasurer()
+    // City names are measured once, on first show, and recoloured per theme when drawn.
+    val cityLabels = remember(textMeasurer) { mutableMapOf<MapCity, TextLayoutResult>() }
     val currentCamera by rememberUpdatedState(camera)
     val currentThreats by rememberUpdatedState(threats)
     val currentFavorites by rememberUpdatedState(favorites)
@@ -214,11 +223,13 @@ fun UkraineMap(
     val currentOffset by rememberUpdatedState(clockOffsetMs)
     // Alerts that belong to a track are drawn as that track's moving drone instead of a static marker.
     val trackedMarkerIds = remember(tracks) { tracks.flatMap { it.markerIds }.toSet() }
-    // Decoys are drawn differently; classification only changes when the tracks do.
-    val decoyTrackIds = remember(tracks) {
-        tracks.filter { DroneClassifier.classify(it).model == DroneClassifier.Gerbera.model }.map { it.id }.toSet()
-    }
+    // Each target is drawn with its type's icon; classification only changes when the data does.
+    val trackKinds = remember(tracks) { tracks.associate { it.id to TargetClassifier.classify(it).kind } }
+    val markerKinds = remember(threats) { threats.associate { it.id to TargetClassifier.classify(it).kind } }
     val trackSmoother = remember { TrackSmoother() }
+    val cityFader = remember { CityLabelFader() }
+    // IDE previews render only the first frames, so anything that animates in must start finished there.
+    val inspectionMode = LocalInspectionMode.current
     val cameraCallback by rememberUpdatedState(onCameraChange)
     val selectCallback by rememberUpdatedState(onSelect)
     val longPressCallback by rememberUpdatedState(onLongPress)
@@ -329,6 +340,18 @@ fun UkraineMap(
             }
         }
 
+        // Favorites draw their own name, so city names keep clear of the star and its label.
+        val favoriteAreas = (favorites.map { it.point } + listOfNotNull(pendingFavorite)).map { point ->
+            val p = camera.toScreen(MapProjection.toWorld(point), size)
+            val glyph = 10.dp.toPx()
+            Rect(p.x - glyph - 40.dp.toPx(), p.y - glyph, p.x + glyph + 40.dp.toPx(), p.y + 26.dp.toPx())
+        }
+        drawCities(camera, colors, favoriteAreas, cityFader, nowMs(clockOffsetMs), instantLabels = inspectionMode) { city ->
+            cityLabels.getOrPut(city) { textMeasurer.measure(city.name, if (city.population >= MAJOR_CITY) MajorCityLabel else CityLabel) }
+        }
+        // Reading the animation clock keeps frames coming until every fade has finished.
+        if (cityFader.isAnimating) pulse
+
         val radiusPx = MapProjection.kmToWorld(proximityRadiusKm.toFloat()) * scale
         favorites.forEach { favorite ->
             val p = camera.toScreen(MapProjection.toWorld(favorite.point), size)
@@ -343,6 +366,14 @@ fun UkraineMap(
             drawFavoriteGlyph(p, 9.dp.toPx(), if (alerted) colors.danger else colors.favorite, colors.glyphOutline)
             val label = textMeasurer.measure(favorite.name, TextStyle(color = colors.mapLabel, fontSize = 11.sp))
             drawText(label, topLeft = Offset(p.x - label.size.width / 2, p.y + 11.dp.toPx()))
+        }
+
+        pendingFavorite?.let { point ->
+            val p = camera.toScreen(MapProjection.toWorld(point), size)
+            val ring = 11.dp.toPx()
+            drawCircle(colors.favorite.copy(alpha = (1f - pulse) * 0.6f), ring + pulse * ring * 1.8f, p, style = Stroke(2.dp.toPx()))
+            drawCircle(colors.favorite.copy(alpha = 0.18f), ring, p)
+            drawFavoriteGlyph(p, 10.dp.toPx(), colors.favorite, colors.glyphOutline)
         }
 
         val now = nowMs(clockOffsetMs)
@@ -366,31 +397,32 @@ fun UkraineMap(
         visibleTracks.sortedBy { it.first.id == selectedTrackId }.forEach { (track, position) ->
             val highlighted = track.id == selectedTrackId || highlightedThreatId?.let { it in track.markerIds } == true
             val dimmed = selectedTrackId != null && track.id != selectedTrackId
-            val style = if (track.id in decoyTrackIds) DroneGlyphStyle.Decoy else DroneGlyphStyle.Attack
-            drawTrack(track, position, camera, highlighted, dimmed, pulse, colors, style)
+            val kind = trackKinds[track.id] ?: TargetKind.AttackDrone
+            drawTrack(track, position, camera, highlighted, dimmed, pulse, colors, kind)
             if (track.id == selectedTrackId) drawTrackTimestamps(track, camera, colors, textMeasurer)
         }
 
-        threats.forEach { marker ->
-            if (marker.id in trackedMarkerIds) return@forEach
-            val p = camera.toScreen(MapProjection.toWorld(marker.point), size)
-            if (p.x < -40 || p.y < -40 || p.x > size.width + 40 || p.y > size.height + 40) return@forEach
-            val color = if (marker.level == ThreatLevel.Red) colors.danger else colors.warning
-            val base = (if (marker.isRegionWide) 13.dp else 8.dp).toPx()
-            val highlighted = marker.id == highlightedThreatId
-            val phase = (pulse + (abs(marker.id.hashCode()) % 100) / 100f) % 1f
-            drawCircle(color.copy(alpha = (1f - phase) * 0.55f), base + phase * base * 2.4f, p, style = Stroke(1.5.dp.toPx()))
-            if (marker.isRegionWide) {
-                drawCircle(color.copy(alpha = 0.6f), base * 1.6f, p, style = Stroke(1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))))
-            }
-            if (highlighted) {
-                drawCircle(colors.mapLabel, base * 2.2f, p, style = Stroke(2.dp.toPx()))
-            }
-            val glyphSize = base * (if (highlighted) 1.4f else 1f)
-            if (marker.type == ThreatType.Drones) {
-                drawDroneGlyph(p, glyphSize * 1.15f, headingFor(marker), color, colors.glyphOutline)
-            } else {
-                drawDrone(p, glyphSize, headingFor(marker), color, colors.glyphOutline)
+        // Threats reported for the same place (an oblast centre, Kyiv city) fan out so their icons don't stack.
+        val spread = 16.dp.toPx()
+        threats.filter { it.id !in trackedMarkerIds }.groupBy { it.point }.values.forEach { group ->
+            group.forEachIndexed { index, marker ->
+                val angle = 2 * PI * index / group.size - PI / 2
+                val offset = if (group.size == 1) Offset.Zero else Offset((spread * cos(angle)).toFloat(), (spread * sin(angle)).toFloat())
+                val p = camera.toScreen(MapProjection.toWorld(marker.point), size) + offset
+                if (p.x < -40 || p.y < -40 || p.x > size.width + 40 || p.y > size.height + 40) return@forEachIndexed
+                val color = if (marker.level == ThreatLevel.Red) colors.danger else colors.warning
+                val base = (if (marker.isRegionWide) 13.dp else 8.dp).toPx()
+                val highlighted = marker.id == highlightedThreatId
+                val phase = (pulse + (abs(marker.id.hashCode()) % 100) / 100f) % 1f
+                drawCircle(color.copy(alpha = (1f - phase) * 0.55f), base + phase * base * 2.4f, p, style = Stroke(1.5.dp.toPx()))
+                if (marker.isRegionWide) {
+                    drawCircle(color.copy(alpha = 0.6f), base * 1.6f, p, style = Stroke(1.5f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f))))
+                }
+                if (highlighted) {
+                    drawCircle(colors.mapLabel, base * 2.2f, p, style = Stroke(2.dp.toPx()))
+                }
+                val glyphSize = base * (if (highlighted) 1.4f else 1f)
+                drawTargetGlyph(markerKinds[marker.id] ?: TargetKind.Unknown, p, glyphSize * 1.15f, headingFor(marker), color, colors.glyphOutline)
             }
         }
     }
@@ -432,7 +464,7 @@ private fun nowMs(clockOffsetMs: Long) = Clock.System.now().toEpochMilliseconds(
 
 /** Interpolated positions of tracks worth drawing: active ones and those that ended moments ago. */
 private fun trackPositions(tracks: List<DroneTrack>, now: Long): List<Pair<DroneTrack, InterpolatedPosition>> = tracks
-    .filter { it.active || now - it.lastSeen <= TrackInterpolator.MAX_EXTRAPOLATION_MS }
+    .filter { TrackInterpolator.isVisible(it, now) }
     .mapNotNull { track -> TrackInterpolator.positionAt(track, now)?.let { track to it } }
 
 /** Fading trail through the recorded samples up to the drone's current interpolated position. */
@@ -444,7 +476,7 @@ private fun DrawScope.drawTrack(
     dimmed: Boolean,
     pulse: Float,
     colors: RadarColors,
-    style: DroneGlyphStyle,
+    kind: TargetKind,
 ) {
     val color = if (track.level == ThreatLevel.Red) colors.danger else colors.warning
     val alpha = (if (track.active) 1f else 0.45f) * (if (dimmed) 0.35f else 1f)
@@ -475,13 +507,13 @@ private fun DrawScope.drawTrack(
         drawCircle(color.copy(alpha = 0.35f), base * 2f, head, style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f))))
     }
     if (highlighted) drawCircle(colors.mapLabel, base * 2.2f, head, style = Stroke(2.dp.toPx()))
-    drawDroneGlyph(
+    drawTargetGlyph(
+        kind,
         head,
         base * (if (highlighted) 1.6f else 1.2f),
         (position.headingDeg ?: 270.0).toFloat(),
         color.copy(alpha = alpha),
         colors.glyphOutline.copy(alpha = colors.glyphOutline.alpha * alpha),
-        style,
     )
 }
 
@@ -589,6 +621,63 @@ private fun DrawScope.drawPrediction(
     drawText(label, topLeft = topLeft)
 }
 
+/** Zoom from which city names are shown; below it cities are dots only. */
+private const val CITY_LABEL_ZOOM = 2.5f
+private const val MAJOR_CITY = 200_000
+private val CityLabel = TextStyle(fontSize = 10.sp)
+private val MajorCityLabel = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium)
+
+/**
+ * Every settlement with city status as a dot, sized by population. Once zoomed in, names are added
+ * largest city first, skipping any that would overlap a name already placed or a [reserved] area.
+ * Names fade (and rise slightly) in when revealed and fade out when hidden, via [fader].
+ */
+private fun DrawScope.drawCities(
+    camera: MapCamera,
+    colors: RadarColors,
+    reserved: List<Rect>,
+    fader: CityLabelFader,
+    nowMs: Long,
+    instantLabels: Boolean,
+    label: (MapCity) -> TextLayoutResult,
+) {
+    val showLabels = camera.zoom >= CITY_LABEL_ZOOM
+    val placed = reserved.toMutableList()
+    val gap = 3.dp.toPx()
+    val wanted = HashSet<MapCity>()
+    UkraineCities.all.forEach { city ->
+        val p = cityOnScreen(city, camera)
+        if (p.x < -120 || p.y < -20 || p.x > size.width + 20 || p.y > size.height + 20) return@forEach
+        val r = cityDotRadius(city)
+        drawCircle(colors.cityDot, r, p)
+        if (!showLabels) return@forEach
+        val text = label(city)
+        val topLeft = Offset(p.x + r + gap, p.y - text.size.height / 2f)
+        val box = Rect(topLeft, Size(text.size.width.toFloat(), text.size.height.toFloat())).inflate(gap)
+        if (placed.any { it.overlaps(box) }) return@forEach
+        placed += box
+        wanted += city
+    }
+    val rise = 4.dp.toPx()
+    fader.update(wanted, nowMs, instantLabels).forEach { (city, opacity) ->
+        val p = cityOnScreen(city, camera)
+        val text = label(city)
+        // Ease out, so names settle gently; they rise into place and sink as they go.
+        val eased = 1f - (1f - opacity) * (1f - opacity)
+        val topLeft = Offset(p.x + cityDotRadius(city) + gap, p.y - text.size.height / 2f + (1f - eased) * rise)
+        drawText(text, color = colors.cityLabel, topLeft = topLeft, alpha = eased)
+    }
+}
+
+private fun DrawScope.cityOnScreen(city: MapCity, camera: MapCamera) =
+    camera.toScreen(MapProjection.toWorld(GeoPoint(city.lat.toDouble(), city.lon.toDouble())), size)
+
+private fun DrawScope.cityDotRadius(city: MapCity) = when {
+    city.population >= MAJOR_CITY -> 3.dp
+    city.population >= 50_000 -> 2.4.dp
+    else -> 1.8.dp
+}.toPx()
+
 /** Shahed-type drones are usually launched from the east and south, so headings point roughly west/north-west. */
 private fun headingFor(marker: ThreatMarker): Float = 235f + (abs(marker.id.hashCode()) % 90)
 
@@ -605,19 +694,6 @@ private fun DrawScope.drawGrid(scale: Float, colors: RadarColors) {
     }
 }
 
-private fun DrawScope.drawDrone(center: Offset, size: Float, headingDeg: Float, color: Color, outline: Color) {
-    val path = Path().apply {
-        moveTo(center.x, center.y - size)
-        lineTo(center.x + size * 0.95f, center.y + size * 0.7f)
-        lineTo(center.x, center.y + size * 0.3f)
-        lineTo(center.x - size * 0.95f, center.y + size * 0.7f)
-        close()
-    }
-    rotate(headingDeg, pivot = center) {
-        drawPath(path, color)
-        drawPath(path, outline, style = Stroke(1.2f))
-    }
-}
 
 private fun DrawScope.drawFavoriteGlyph(center: Offset, outer: Float, color: Color, outline: Color) {
     val inner = outer * 0.45f
