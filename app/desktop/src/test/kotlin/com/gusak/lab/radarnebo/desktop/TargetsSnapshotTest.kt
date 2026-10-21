@@ -7,12 +7,10 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.use
 import com.gusak.lab.radarnebo.data.AppSettings
-import com.gusak.lab.radarnebo.data.DroneSimulator
 import com.gusak.lab.radarnebo.data.FavoriteLocation
 import com.gusak.lab.radarnebo.data.ThemeMode
 import com.gusak.lab.radarnebo.domain.ThreatMapper
 import com.gusak.lab.radarnebo.tracking.DroneTrack
-import com.gusak.lab.radarnebo.tracking.DroneTracker
 import com.gusak.lab.radarnebo.tracking.TrackPredictor
 import com.gusak.lab.radarnebo.tracking.TrackSample
 import com.gusak.lab.radarnebo.data.ThreatLevel
@@ -31,12 +29,8 @@ import kotlin.time.Clock
 class TargetsSnapshotTest {
 
     private fun state(): UiState {
-        val tracker = DroneTracker()
         val end = Clock.System.now().toEpochMilliseconds()
-        DroneSimulator.warmUp(tracker, end)
-        val alerts = DroneSimulator.alertsAt(end)
-        tracker.update(ThreatMapper.toMarkers(alerts, dronesOnly = true), end)
-        val threats = ThreatMapper.toMarkers(alerts, dronesOnly = true)
+        val threats = emptyList<com.gusak.lab.radarnebo.domain.ThreatMarker>()
         val favorites = listOf(FavoriteLocation("1", "Home", 50.45, 30.60))
         return UiState(
             settings = AppSettings(themeMode = ThemeMode.Dark),
@@ -44,10 +38,21 @@ class TargetsSnapshotTest {
             threats = threats,
             mapThreats = threats,
             proximity = ThreatMapper.proximity(favorites, threats, 50),
-            tracks = tracker.snapshot() + westbound(end),
+            tracks = listOf(southbound(end), westbound(end)),
             lastUpdated = Clock.System.now(),
         )
     }
+
+    /** A Shahed group the server tracks from the Chernihiv border towards Kyiv, reported every few minutes. */
+    private fun southbound(now: Long) = DroneTrack(
+        id = "S1-D07", level = ThreatLevel.Red, oblastUid = 25, active = true,
+        firstSeen = now - 40 * 60_000L, lastSeen = now, markerIds = emptyList(),
+        samples = listOf(
+            TrackSample(now - 40 * 60_000L, 51.68, 33.91, "Hlukhiv", 20, "Ударні БпЛА типу «Шахед»"),
+            TrackSample(now - 20 * 60_000L, 51.24, 33.20, "Konotop", 20, "Ударні БпЛА типу «Шахед»"),
+            TrackSample(now - 60_000L, 51.05, 32.10, "Bakhmach", 25, "Ударні БпЛА типу «Шахед»"),
+        ),
+    )
 
     /** A group east of Kyiv flying west at ~150 km/h: always has a predicted next settlement. */
     private fun westbound(now: Long) = DroneTrack(

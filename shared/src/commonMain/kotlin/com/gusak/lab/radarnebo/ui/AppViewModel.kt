@@ -45,10 +45,12 @@ data class UiState(
     val loading: Boolean = false,
     val error: String? = null,
     val lastUpdated: Instant? = null,
-    /** Target position history (shown classes only): from the RadarNebo proxy, or tracked on the device otherwise. */
+    /** Target position history from the server (shown classes only); the app interpolates between reports. */
     val tracks: List<DroneTrack> = emptyList(),
     /** Server clock minus local clock, applied before interpolating track positions. */
     val clockOffsetMs: Long = 0,
+    /** The server's data is simulated, not the real situation; always shown as such. */
+    val simulated: Boolean = false,
 )
 
 /**
@@ -102,7 +104,13 @@ class AppViewModel(
             is AlertsUpdate.Updated -> {
                 snapshot = update.snapshot
                 _state.update {
-                    it.copy(loading = false, error = null, lastUpdated = Clock.System.now(), clockOffsetMs = update.snapshot.clockOffsetMs)
+                    it.copy(
+                        loading = false,
+                        error = null,
+                        lastUpdated = Clock.System.now(),
+                        clockOffsetMs = update.snapshot.clockOffsetMs,
+                        simulated = update.snapshot.simulated,
+                    )
                 }
                 recompute()
                 1
@@ -130,7 +138,7 @@ class AppViewModel(
     fun updateSettings(transform: (AppSettings) -> AppSettings) {
         if (updateSettingsUseCase(transform)) {
             snapshot = null
-            _state.update { it.copy(error = null, tracks = emptyList(), clockOffsetMs = 0) }
+            _state.update { it.copy(error = null, tracks = emptyList(), clockOffsetMs = 0, simulated = false) }
             startPolling()
         }
     }

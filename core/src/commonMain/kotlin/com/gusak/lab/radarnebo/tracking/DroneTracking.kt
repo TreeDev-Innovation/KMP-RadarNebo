@@ -41,10 +41,25 @@ data class DroneTrack(
     val active: Boolean,
     val firstSeen: Long,
     val lastSeen: Long,
-    /** alerts.in.ua threat ids (`alertId:threatType`) currently attached to this track. */
+    /** Alert threat ids (`alertId:threatType`) currently attached to this track. */
     val markerIds: List<String>,
     val samples: List<TrackSample>,
+    /** How the flight ended, when the server knows; null while in flight or when only alerts are known. */
+    val outcome: TrackOutcome? = null,
 )
+
+/** How a tracked flight ended. */
+@Serializable
+enum class TrackOutcome {
+    /** Shot down or jammed by air defence. */
+    Intercepted,
+
+    /** Reached its target. */
+    Impact,
+
+    /** Contact lost: no more reports, fate unknown. */
+    Lost,
+}
 
 @Serializable
 data class DroneTracksResponse(
@@ -53,6 +68,8 @@ data class DroneTracksResponse(
     val pollIntervalMs: Long,
     val lastUpstreamFetch: Long?,
     val tracks: List<DroneTrack>,
+    /** True when the server serves simulated data; clients must label it as such. */
+    val simulated: Boolean = false,
 )
 
 @Serializable
@@ -110,6 +127,13 @@ data class TrackKinematics(
          */
         val GuidedBombs = TrackKinematics(900.0, 0.0, 0L, 60_000L)
 
+        /**
+         * Ballistic and aeroballistic missiles (Iskander-M, KN-23, Kinzhal) cover hundreds of km in minutes.
+         * Alerts are raised for whole oblasts, so they are never linked from alerts; only a source that sees
+         * the launch publishes their tracks.
+         */
+        val BallisticMissiles = TrackKinematics(12_000.0, 0.0, 0L, 30_000L)
+
         fun of(type: ThreatType): TrackKinematics? = when (type) {
             ThreatType.Drones -> Drones
             ThreatType.CruiseMissiles, ThreatType.UnspecifiedMissiles -> CruiseMissiles
@@ -119,6 +143,7 @@ data class TrackKinematics(
         fun of(track: DroneTrack): TrackKinematics = when {
             track.type == ThreatType.Drones && TargetClassifier.classify(track).kind == TargetKind.JetDrone -> JetDrones
             track.type == ThreatType.GuidedBombs -> GuidedBombs
+            track.type == ThreatType.BallisticMissiles -> BallisticMissiles
             else -> of(track.type) ?: Drones
         }
     }
@@ -223,6 +248,8 @@ class DroneTracker(
     private val reacquireWindowMs: Long = TrackKinematics.Drones.reacquireWindowMs,
     private val retentionMs: Long = 3 * 60 * 60_000L,
     private val maxSamples: Int = 64,
+    /** Prefix of track ids; a server that keeps tracks across restarts makes it unique per run. */
+    private val idPrefix: String = "trk-",
 ) {
     private class MutableTrack(
         val id: String,
@@ -299,7 +326,7 @@ class DroneTracker(
                 absorbed += track.id
                 markerToTrack[marker.id] = track.id
             } else {
-                val id = "trk-${++sequence}"
+                val id = "$idPrefix${++sequence}"
                 tracks[id] = MutableTrack(
                     id = id,
                     type = marker.type,

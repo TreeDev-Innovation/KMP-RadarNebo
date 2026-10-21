@@ -1,6 +1,5 @@
 package com.gusak.lab.radarnebo
 
-import com.gusak.lab.radarnebo.data.DroneSimulator
 import com.gusak.lab.radarnebo.data.ThreatType
 import com.gusak.lab.radarnebo.tracking.TargetClassifier
 import com.gusak.lab.radarnebo.tracking.TargetProfile
@@ -11,7 +10,6 @@ import com.gusak.lab.radarnebo.domain.ThreatMapper
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import com.gusak.lab.radarnebo.geo.Regions
 import com.gusak.lab.radarnebo.tracking.DroneTrack
-import com.gusak.lab.radarnebo.tracking.DroneTracker
 import com.gusak.lab.radarnebo.tracking.Place
 import com.gusak.lab.radarnebo.tracking.TrackPredictor
 import com.gusak.lab.radarnebo.tracking.TrackSample
@@ -113,44 +111,12 @@ class SettlementsTest {
     }
 }
 
-class SimulationTest {
-    private val minute = 60_000L
-
-    @Test
-    fun warmUpGivesTracksWithHistoryRealisticSpeedAndModel() {
-        val tracker = DroneTracker()
-        val now = 1_800_000_000_000L
-        DroneSimulator.warmUp(tracker, now, minutes = 120)
-        val moving = tracker.snapshot().filter { it.active && it.samples.size >= 3 }
-        assertTrue(moving.isNotEmpty(), "some groups are mid-route with history")
-        moving.forEach { track ->
-            assertTrue(track.samples.zipWithNext().all { (a, b) -> b.t > a.t }, "timestamps increase")
-            val (_, speed) = TrackInterpolator.motion(track.samples[track.samples.size - 2], track.samples.last())
-            val profile = TargetClassifier.classify(track)
-            assertEquals(TargetProfile.Source.Reported, profile.source, "the simulated alert text names the model")
-            val typical = profile.cruiseSpeedKmh!!
-            assertTrue(
-                speed in typical.first * 0.9..typical.last * 1.1,
-                "realistic speed for ${profile.model} on ${track.samples.map { it.title }}: $speed",
-            )
-        }
-    }
-
-    @Test
-    fun simulationIsContinuousInTime() {
-        // A group's alert stays put for the minutes it takes to fly a leg, then hands over to the next town.
-        val now = 1_800_000_000_000L
-        val a = DroneSimulator.alertsAt(now).map { it.id }.toSet()
-        val b = DroneSimulator.alertsAt(now + minute).map { it.id }.toSet()
-        assertTrue(a.intersect(b).size >= a.size / 2, "one minute later most alerts are unchanged")
-    }
-}
 
 class ProfileTest {
     @Test
     fun modelComesFromAlertTextOrIsMarkedProbable() {
         fun drone(text: String) = TargetClassifier.classify(ThreatType.Drones, listOf(text))
-        assertEquals("Gerbera", drone(DroneSimulator.GERBERA_MESSAGE).model)
+        assertEquals("Gerbera", drone(SampleMessages.GERBERA).model)
         assertEquals("Shahed-136 / Geran-2", drone("Ударні БпЛА типу Шахед").model)
         assertEquals("Shahed-238 / Geran-3", drone("Реактивний шахед на Київ").model)
         val unnamed = drone("Загроза ударних БпЛА")

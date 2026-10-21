@@ -34,6 +34,7 @@ dependencies {
     testImplementation(libs.androidx.lifecycle.viewmodelCompose)
     testImplementation(compose.desktop.uiTestJUnit4)
     testImplementation(libs.koin.test)
+    testImplementation(libs.ktor.client.mock)
 }
 
 tasks.test {

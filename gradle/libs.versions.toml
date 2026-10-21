@@ -18,6 +18,8 @@ kotlinx-datetime = "0.7.1"
 logback = "1.5.18"
 kotlin = "2.4.20"
 koin = "4.2.2"
+exposed = "1.6.0"
+sqlite-jdbc = "3.53.4.0"
 material3 = "1.12.0-alpha03"
 
 [libraries]
@@ -56,6 +58,12 @@ ktor-server-contentNegotiation = { module = "io.ktor:ktor-server-content-negotia
 ktor-server-rateLimit = { module = "io.ktor:ktor-server-rate-limit", version.ref = "ktor" }
 ktor-server-callLogging = { module = "io.ktor:ktor-server-call-logging", version.ref = "ktor" }
 ktor-server-cors = { module = "io.ktor:ktor-server-cors", version.ref = "ktor" }
+ktor-server-auth = { module = "io.ktor:ktor-server-auth", version.ref = "ktor" }
+ktor-server-compression = { module = "io.ktor:ktor-server-compression", version.ref = "ktor" }
+ktor-server-statusPages = { module = "io.ktor:ktor-server-status-pages", version.ref = "ktor" }
+exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }
+exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version.ref = "exposed" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 ktor-server-testHost = { module = "io.ktor:ktor-server-test-host", version.ref = "ktor" }
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
 koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin" }

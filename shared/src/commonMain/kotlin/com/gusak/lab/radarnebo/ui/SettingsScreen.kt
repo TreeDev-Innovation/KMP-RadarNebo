@@ -49,8 +49,8 @@ fun SettingsScreen(
     onChange: ((AppSettings) -> AppSettings) -> Unit,
     bottomInset: Dp = 0.dp,
 ) {
-    var token by remember(settings.apiToken) { mutableStateOf(settings.apiToken) }
-    var baseUrl by remember(settings.baseUrl) { mutableStateOf(settings.baseUrl) }
+    var serverUrl by remember(settings.serverUrl) { mutableStateOf(settings.serverUrl) }
+    var accessKey by remember(settings.accessKey) { mutableStateOf(settings.accessKey) }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -78,29 +78,28 @@ fun SettingsScreen(
         }
         Text("System follows your device's light or dark setting.", style = MaterialTheme.typography.bodySmall)
 
-        Text("Data source", style = MaterialTheme.typography.titleMedium)
+        Text("Server", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Request a personal token at devs.alerts.in.ua. Without a token the app shows synthetic demo data. " +
-                "For a public release, run the RadarNebo proxy (:server) and set its URL below: it caches alerts, " +
-                "keeps alerts.in.ua within its rate limits and adds drone tracks, which animate smoothly between updates.",
+            "RadarNebo gets alerts and tracked targets from a RadarNebo server (:server), which keeps the history " +
+                "and does the tracking. Run your own and enter its address; ask its operator for an access key if it needs one.",
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
-            value = token,
-            onValueChange = { token = it },
-            label = { Text("API token or proxy client key") },
+            value = serverUrl,
+            onValueChange = { serverUrl = it },
+            label = { Text("Server URL") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = accessKey,
+            onValueChange = { accessKey = it },
+            label = { Text("Access key (optional)") },
             singleLine = true,
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
         )
-        OutlinedTextField(
-            value = baseUrl,
-            onValueChange = { baseUrl = it },
-            label = { Text("API base URL") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Button(onClick = { onChange { it.copy(apiToken = token.trim(), baseUrl = baseUrl.trim()) } }) { Text("Save & reconnect") }
+        Button(onClick = { onChange { it.copy(serverUrl = serverUrl.trim(), accessKey = accessKey.trim()) } }) { Text("Save & reconnect") }
 
         Text("Map", style = MaterialTheme.typography.titleMedium)
         IntSlider(
@@ -124,7 +123,7 @@ fun SettingsScreen(
             suffix = " s",
             onChange = { v -> onChange { it.copy(pollSeconds = v) } },
         )
-        Text("The API allows about 8–10 requests per minute; keep the interval at 15 s or more.", style = MaterialTheme.typography.bodySmall)
+        Text("The server refreshes its data every 10–15 s; polling faster only uses more battery.", style = MaterialTheme.typography.bodySmall)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Drones only")

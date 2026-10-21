@@ -1,7 +1,6 @@
 package com.gusak.lab.radarnebo.ui.preview
 
 import com.gusak.lab.radarnebo.data.AppSettings
-import com.gusak.lab.radarnebo.data.DroneSimulator
 import com.gusak.lab.radarnebo.data.FavoriteLocation
 import com.gusak.lab.radarnebo.data.MapMode
 import com.gusak.lab.radarnebo.data.ThemeMode
@@ -12,7 +11,6 @@ import com.gusak.lab.radarnebo.domain.ThreatMarker
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import com.gusak.lab.radarnebo.geo.Regions
 import com.gusak.lab.radarnebo.tracking.DroneTrack
-import com.gusak.lab.radarnebo.tracking.DroneTracker
 import com.gusak.lab.radarnebo.tracking.TrackSample
 import com.gusak.lab.radarnebo.ui.UiState
 import com.gusak.lab.radarnebo.ui.map.MapCamera
@@ -21,11 +19,11 @@ import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
- * Sample data for Compose previews and README screenshots.
+ * Sample data for Compose previews and README screenshots, hand-placed relative to the current time so a
+ * preview always shows what its name says. The app itself has no simulation: that runs on the server.
  *
- * [state] runs the attack simulation at the current time, so it looks like the live app but what is
- * on screen changes from minute to minute. [scenario] is hand-placed relative to the current time
- * and always shows the same targets, one per state, for previews that must show a specific thing.
+ * [scenario] shows every target state and threat class at once; [state] is the same picture as the app
+ * shows it by default (drones only, the default favorites).
  */
 internal object PreviewData {
     val favorites = listOf(
@@ -34,32 +32,24 @@ internal object PreviewData {
         FavoriteLocation("3", "Parents", 49.5883, 34.5514),
     )
 
-    /** With [dronesOnly] off, the state holds every threat class: missiles, bombs, aviation and air defense. */
-    fun state(theme: ThemeMode = ThemeMode.Dark, mapMode: MapMode = MapMode.Static, dronesOnly: Boolean = true): UiState {
-        val now = Clock.System.now().toEpochMilliseconds()
-        val tracker = DroneTracker()
-        DroneSimulator.warmUp(tracker, now)
-        val alerts = DroneSimulator.alertsAt(now)
-        tracker.update(ThreatMapper.toMarkers(alerts, dronesOnly = false), now)
-        val threats = ThreatMapper.toMarkers(alerts, dronesOnly)
-        return UiState(
-            settings = AppSettings(themeMode = theme, mapMode = mapMode, dronesOnly = dronesOnly),
-            favorites = favorites,
-            threats = threats,
-            mapThreats = threats,
-            proximity = ThreatMapper.proximity(favorites, threats, 50),
-            alertedOblasts = alerts.mapNotNull { a -> a.locationOblastUid?.toIntOrNull()?.let { it to (a.locationType == "oblast") } }
-                .groupBy({ it.first }, { it.second }).mapValues { (_, wide) -> wide.any { it } },
-            tracks = tracker.snapshot().filter { !dronesOnly || it.type == ThreatType.Drones },
-            lastUpdated = Clock.System.now(),
-        )
-    }
+    /** The scenario as the app shows it by default; with [dronesOnly] off it holds every threat class. */
+    fun state(theme: ThemeMode = ThemeMode.Dark, mapMode: MapMode = MapMode.Static, dronesOnly: Boolean = true): UiState =
+        scenario(theme, mapMode, dronesOnly, favorites = favorites).copy(lastUpdated = Clock.System.now())
 
     /** The most interesting track to preview: active, with the longest history. */
     fun busiestTrackId(state: UiState): String? =
         state.tracks.filter { it.active }.maxByOrNull { it.samples.size }?.id
 
     // --- Hand-placed scenario ------------------------------------------------------------------------
+
+    /** Alert texts as Ukrainian warning channels word them, naming the model. */
+    private object Messages {
+        const val SHAHED = "Ударні БпЛА типу «Шахед» (Shahed-136 / Герань-2)"
+        const val GERBERA = "БпЛА-імітатори типу «Гербера»"
+        const val JET_SHAHED = "Реактивні ударні БпЛА «Герань-3» (Shahed-238)"
+        const val RECON = "Розвідувальний БпЛА «Орлан-10» на лінії фронту"
+        const val KH101 = "Крилаті ракети Х-101, пуски з Ту-95МС"
+    }
 
     /** Ids of the scenario's targets, one per state worth previewing. */
     object Targets {
@@ -92,12 +82,12 @@ internal object PreviewData {
     ): UiState {
         val now = Clock.System.now().toEpochMilliseconds()
         val tracks = listOf(
-            track(Targets.SHAHED, now, ThreatType.Drones, DroneSimulator.SHAHED_MESSAGE, 41 to "Konotop", 31 to "Bakhmach", 7 to "Nizhyn"),
-            track(Targets.DECOY, now, ThreatType.Drones, DroneSimulator.GERBERA_MESSAGE, 62 to "Lubny", 18 to "Pereiaslav", 5 to "Yahotyn"),
-            track(Targets.JET, now, ThreatType.Drones, DroneSimulator.JET_SHAHED_MESSAGE, 20 to "Myrhorod", 6 to "Zolotonosha"),
-            track(Targets.RECON, now, ThreatType.Drones, DroneSimulator.RECON_MESSAGE, 5 to "Koriukivka", level = ThreatLevel.Yellow),
-            track(Targets.CLEARED, now, ThreatType.Drones, DroneSimulator.SHAHED_MESSAGE, 35 to "Fastiv", 24 to "Vasylkiv", active = false, clearedMinutesAgo = 3),
-            track(Targets.MISSILE, now, ThreatType.CruiseMissiles, DroneSimulator.KH101_MESSAGE, 7 to "Berdychiv", 4 to "Zhytomyr"),
+            track(Targets.SHAHED, now, ThreatType.Drones, Messages.SHAHED, 41 to "Konotop", 31 to "Bakhmach", 7 to "Nizhyn"),
+            track(Targets.DECOY, now, ThreatType.Drones, Messages.GERBERA, 62 to "Lubny", 18 to "Pereiaslav", 5 to "Yahotyn"),
+            track(Targets.JET, now, ThreatType.Drones, Messages.JET_SHAHED, 20 to "Myrhorod", 6 to "Zolotonosha"),
+            track(Targets.RECON, now, ThreatType.Drones, Messages.RECON, 5 to "Koriukivka", level = ThreatLevel.Yellow),
+            track(Targets.CLEARED, now, ThreatType.Drones, Messages.SHAHED, 35 to "Fastiv", 24 to "Vasylkiv", active = false, clearedMinutesAgo = 3),
+            track(Targets.MISSILE, now, ThreatType.CruiseMissiles, Messages.KH101, 7 to "Berdychiv", 4 to "Zhytomyr"),
         )
         val trackMarkers = tracks.filter { it.active }.map { trackMarker(it, now) }
         val areaMarkers = listOf(

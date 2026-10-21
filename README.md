@@ -1,7 +1,9 @@
 # RadarNebo
 
-A Kotlin Multiplatform (Android + iOS, Compose Multiplatform) drone threat monitor for Ukraine, using the
-[alerts.in.ua open API](https://devs.alerts.in.ua/).
+A Kotlin Multiplatform (Android + iOS, Compose Multiplatform) drone threat monitor for Ukraine. The app talks only to
+the RadarNebo server (`:server`). The server reads the [alerts.in.ua open API](https://devs.alerts.in.ua/), or simulates
+combined drone and missile strikes when it has no token. It tracks targets, keeps the archive, and serves its own API
+in the alerts.in.ua format.
 
 ## Screenshots
 
@@ -31,25 +33,9 @@ Rendered from the app's Compose previews (see [Previews](#previews)); the map an
 
 - **Map of Ukraine**: drawn natively in Compose from simplified OpenStreetMap oblast boundaries. Oblasts are shaded by
   alert status (red: whole oblast, amber: partial). Drone threats are pulsing markers.
-- **Simulation** without a token (app demo mode and the proxy's demo mode): `DroneSimulator` covers every threat class
-  alerts.in.ua reports. Shahed, jet Shahed (Geran-3), Gerbera decoy and Orlan reconnaissance drone groups and Kh-101 /
-  Kalibr cruise missiles fly realistic routes (e.g. Hlukhiv → Shostka → Konotop → Bakhmach → Nizhyn → Brovary → Kyiv) in
-  real time at real speeds (110 km/h for reconnaissance drones up to ~780 km/h for cruise missiles). Each raises an
-  alert in every settlement it reaches, with the type named in the alert text. Ballistic missiles (Iskander-M, KN-23),
-  MiG-31K take-offs followed by a Kinzhal threat to Kyiv, guided bombs (KAB), tactical and strategic aviation and
-  air defense activity come as recurring area alerts. The last 90 minutes are replayed on start, so tracks have a
-  history immediately. The app always labels this as demo data.
-- **Proxy simulation**: without `ALERTS_API_TOKEN` the proxy never contacts alerts.in.ua. Instead of
-  `UpstreamAlertsSource`, it reads from a separate data source, `SimulatedAlertsSource`. That source adds `DemoRaids` to
-  the scripted simulation:
-  - **KABs** glide 25–80 km into front-line and border towns (Kharkiv, Sumy, Kupiansk, Kramatorsk, Zaporizhzhia, Kherson
-    and others). They are released over Russia (Belgorod and Kursk oblasts) or over the occupied territories: a salvo
-    of three every 15 minutes, plus one single bomb every minute, each at a random moment and target. The target town
-    is alerted, and each bomb's flight is published in `tracks.json` as a `GuidedBombs` track.
-  - **Shahed groups** cross the border or the coast at random points, one or two every 20 minutes. They fly from town to
-    town towards a random city, raising alerts on the way that the tracker links into tracks.
-
-  The raids are seeded per time slot, so they stay the same across restarts.
+- **Simulated attacks** (server without `ALERTS_API_TOKEN`): `SimulatedAlertsSource` runs a combined-strike
+  simulation instead of calling alerts.in.ua. Clients see the same API, and the app shows a *SIMULATED DATA* label from
+  the `simulated` flag the server sends. See [Simulation](#simulation).
 - **Drones only** (Settings): show only `drones` threats from `/v1/alerts/active.json`, or include missiles, KABs and
   aviation as well.
 - **Favorite locations**: search a city, add by coordinates, or long-press anywhere on the map. A favorite is flagged
@@ -81,8 +67,7 @@ Rendered from the app's Compose previews (see [Previews](#previews)); the map an
 - **Arrival prediction**: for each active target the app projects its current heading and speed to find the next
   settlement (or favorite) on its way within 50 km. It shows that place and an estimated arrival time in minutes on
   the map, in the target list and in the target details (`core/.../tracking/Prediction.kt`). The settlement list holds
-  about 100 cities and towns. Predictions assume constant heading and speed and come from area alerts, so they are
-  rough indications only.
+  about 100 cities and towns. Predictions assume constant heading and speed, so they are rough indications only.
 - **Light and dark themes**: Settings → Appearance offers System (the default, follows the OS), Light and Dark. The
   map, overlays and system bars all follow the chosen theme.
 - **Floating liquid-glass navigation bar**: a pill-shaped bar that floats over the content. It shows a blurred,
@@ -103,8 +88,8 @@ Every screen and component has Compose `@Preview`s (78 in all), in `shared/src/c
 - `ui/preview/ScreenPreviews.kt`: the whole app (phone and tablet, with its own Koin container), favorites and settings.
 - Next to their components: icons (`ui/map/TargetGlyphs.kt`), map buttons, glass bar, cards and panels.
 
-Data comes from `ui/preview/PreviewData.kt`: `scenario()` is hand-placed relative to the current time, so a preview
-always shows what its name says; `state()` runs the live simulation.
+Data comes from `ui/preview/PreviewData.kt`, hand-placed relative to the current time, so a preview always shows
+what its name says. The app has no simulation of its own; that runs on the server.
 
 Previews render on each platform's preview engine:
 
@@ -132,7 +117,8 @@ The shared app is wired with [Koin](https://insert-koin.io/) (`shared/.../di/App
 | Layer | What | Scope |
 |---|---|---|
 | Platform | `KeyValueStorage`: SharedPreferences (`androidModule`), a properties file (`desktopModule`), NSUserDefaults (`iosModule`) | single |
-| Data | `AlertsApi`; `SettingsRepository` and `FavoritesRepository` (observable `StateFlow`s); `AlertsRepository` (alerts.in.ua, a proxy, or the demo simulation, plus on-device tracking) | single |
+| Platform | `ServerDefaults`: where the server is until the user sets one (`http://10.0.2.2:8080` on the Android emulator, `http://localhost:8080` elsewhere) | single |
+| Data | `RadarNeboApi` (the server's client); `SettingsRepository` and `FavoritesRepository` (observable `StateFlow`s); `AlertsRepository` (alerts and tracks from the server) | single |
 | Domain | `RefreshAlertsUseCase`, `BuildThreatPictureUseCase`, `UpdateSettingsUseCase`, `AddFavoriteUseCase`, `RemoveFavoriteUseCase` | factory |
 | UI | `AppViewModel`, obtained with `koinViewModel()` in `App()` | viewModel |
 
@@ -144,10 +130,10 @@ platform module to `initKoin`. Previews and tests use `isolatedKoin()` with in-m
 
 | Module | What it is |
 |---|---|
-| `core` | Pure Kotlin (Android, iOS, JVM): alerts.in.ua client and models, geography, threat mapping, drone tracking and interpolation |
+| `core` | Pure Kotlin (Android, iOS, JVM): the server's client, the alerts.in.ua JSON models, geography, threat mapping, tracking and interpolation |
 | `shared` | Compose Multiplatform UI (Android, iOS, desktop JVM), repositories, use cases and Koin modules |
 | `app/android` (`:app:android`), `app/desktop` (`:app:desktop`), `app/ios` (Xcode project) | Platform entry points |
-| `server` | Ktor caching proxy for alerts.in.ua with drone position history |
+| `server` | Ktor server: alerts.in.ua or the strike simulation, server-side tracking, SQLite archive, alerts.in.ua-compatible API |
 
 ## Desktop app
 
@@ -163,55 +149,130 @@ Map controls on desktop:
   which the Gradle run and packaging config already pass.
 - **Ctrl/⌘ + wheel**: zoom (mouse). **Drag**: pan. **Double-click**: reset. **Long-press**: add a favorite.
 
-## Proxy server (`:server`)
+## Server (`:server`)
 
-The proxy is the only thing that talks to alerts.in.ua. Apps read from its cache, so the number of clients never
-affects the upstream rate.
+The app's only data source. The server decides where the data comes from, tracks targets and archives everything;
+apps only read. It is a Ktor (CIO) application in DDD layers, under `server/src/main/kotlin/.../server/`:
 
-- **Rate limits:** alerts.in.ua allows 8–10 requests/min per IP (soft) and 12 (hard). The proxy polls
-  every 15 s (4/min) by default. A sliding-window limiter caps it at `UPSTREAM_MAX_PER_MINUTE` (default 6, never above
-  8) and spaces requests evenly. It sends `If-Modified-Since`, honours `Retry-After` on 429 and backs off
-  exponentially (up to 10 min) on errors. The limit is per IP, so don't run other alerts.in.ua clients from the
-  same IP.
-- **Cache:** `/v1/alerts/active.json` returns the upstream payload byte-for-byte, with an `ETag`/`Last-Modified`
-  (clients get 304s) and `X-Data-Age-Seconds`.
-- **Drone tracks:** every poll feeds a tracker. When a drone threat appears within 120 km of a track seen in the last
-  30 min, it continues that track. Otherwise it starts a new one. Each track keeps a timestamped position history.
-  - `GET /v1/drones/tracks.json`: tracks with their samples plus `serverTime`. Despite the path, it includes cruise
-    missile tracks; each track's `type` says which (absent means drones, as older proxies sent). The app interpolates positions locally
-    every frame, so drones move smoothly between polls.
-  - `GET /v1/drones/positions.json?at=<epoch ms | ISO-8601>`: positions computed on the server. Between samples it
-    uses linear interpolation. Past the newest sample, an active track continues along its last segment (dead
-    reckoning) at no more than 220 km/h, for at most 10 min and never further than that segment.
-  - Positions are inferred from area alerts, not from radar. Raions have no coordinates in the API, so their points
-    are approximate.
-- `GET /health`: upstream budget, requests in the last minute, data age, last error.
+| Layer | Package | What |
+|---|---|---|
+| Domain | `domain.alert`, `domain.tracking` | `AirAlert`, `AlertLocation`, `AlertBoard` (active alerts, versioned), `AirRaidStatusMap` (IoT status codes), `LocationDirectory`; `TargetObservation`, `ObservationTracking`; the `AlertArchive` and `TrackArchive` ports |
+| Application | `application` | `AlertsDataSource` port, `SituationService` (state, archiving, queries), `SituationPoller` (polling, backoff, history replay, pruning) |
+| Published language | `contract` | The alerts.in.ua JSON format and its mapping to the domain, used both upstream and for the server's own API |
+| Infrastructure | `infrastructure.*` | `AlertsInUaSource` and `UpstreamRateLimiter`; `SimulatedAlertsSource` and the simulation; Exposed/SQLite and in-memory archives; `AlertDerivedTracking` |
+| API | `api` | Routes, StatusPages errors, bearer auth, rate limits, gzip, CORS |
+
+`ServerComponents` in `Main.kt` is the composition root.
+
+### Data sources
+
+- **alerts.in.ua** (`ALERTS_API_TOKEN` set): the only component that talks to alerts.in.ua, so the number of clients
+  never affects the upstream rate. alerts.in.ua allows 8–10 requests/min per IP (soft) and 12 (hard). The server polls
+  every 15 s; a sliding-window limiter caps it at `UPSTREAM_MAX_PER_MINUTE` (default 6, never above 8) and spaces
+  requests evenly. It sends `If-Modified-Since`, honours `Retry-After` on 429 and backs off exponentially (up to 10 min).
+  Alerts carry no positions, so tracks are reconstructed from them: a drone or cruise-missile threat appearing close
+  to a recent track of the same kind continues it (`DroneTracker`, `TrackKinematics`).
+- **Simulation** (no token, or `DATA_SOURCE=simulation`): see below. It reports what air surveillance would see, so
+  tracks follow the real flight paths (`ObservationTracking`).
+
+### Simulation
+
+`SimulatedAlertsSource` runs `AirSituationSimulator`. It plans attacks, flies them, and at every tick reports what
+Ukraine's warning system and air surveillance would: the alerts in force, in the alerts.in.ua shape, and a sighting
+of every target in the air.
+
+- **Combined strike**, every `SIM_STRIKE_PERIOD_MINUTES` (default 6 h), compressed from a real night
+  (`CombinedStrikePlanner`):
+  - **Drones:** 22–36 Shahed groups with Gerbera decoys, launched from Kursk, Oryol, Bryansk, Smolensk, Millerovo,
+    Primorsko-Akhtarsk and occupied Crimea and Donetsk. They cross the border at real entry points and dogleg to
+    3–5 objectives (energy, airfields, industry, Kyiv). Jet Shaheds join late.
+  - **Kh-101:** 10–30 from Tu-95MS launch lines (Volgodonsk, the Caspian, Engels), under a nationwide
+    strategic-aviation alert. They take winding routes through northern, eastern or south-eastern gates.
+  - **Kalibr:** from the Black Sea, after a southern missile-carrier warning.
+  - **Kinzhal:** a MiG-31K take-off raises a nationwide alert, usually followed by Kinzhals.
+  - **Ballistic:** Iskander-M and KN-23 at the objectives within range, alerting the target and over-flown regions
+    from launch.
+- **Front line, all day** (`FrontlinePlanner`): KAB glide bombs from Su-34s on front-line and border towns, with
+  tactical-aviation alerts in their oblasts; Orlan reconnaissance drones; small Shahed groups; the occasional
+  Iskander. Luhansk oblast and Crimea are under a standing alert, as they really are.
+- **Fate:** each flight's fate is decided at planning with realistic air-defence figures (about 80% of Shaheds and
+  85% of cruise missiles intercepted, ballistic missiles far fewer). Interceptions raise *air defence* alerts nearby.
+  Tracks end with `outcome` `Intercepted`, `Impact` or `Lost`.
+- **Warning system** (`WarningSystem`, `AlertRegistry`): settlements near a target, or on its way within minutes, get
+  red alerts. Settlements further along its way get yellow (preliminary) ones. Alerts keep their id while active, and
+  threats open and clear within them. The all-clear lags the danger by a few minutes.
+- **Determinism:** plans are seeded from `SIM_SEED` and the time slot, so restarts see the same attacks. The last
+  `SIM_WARM_UP_MINUTES` (default 120) are replayed on start, so tracks have a history from the first request.
+
+### API
+
+Clients authenticate like alerts.in.ua (`Authorization: Bearer <key>` or `?token=<key>`) when `CLIENT_KEYS` is set.
+Errors are `{"message": "..."}`. All alert endpoints support `ETag`/`If-None-Match` and
+`Last-Modified`/`If-Modified-Since`. Responses over 1 KB are gzipped.
+
+**alerts.in.ua API** ([documentation](https://devs.alerts.in.ua/)): same paths and JSON, so any alerts.in.ua client works
+against the server:
+
+| Endpoint | Returns |
+|---|---|
+| `GET /v1/alerts/active.json` | `{"alerts": [...]}`, active alerts with their threats |
+| `GET /v1/iot/active_air_raid_alerts_by_oblast.json` | `"ANPN…"`: 27 oblasts in the documented order, `A` whole / `P` partial / `N` none |
+| `GET /v2/iot/active_air_raid_alerts_by_oblast.json` | The same with levels: `R` red, `Y` yellow, `P`, `N` |
+| `GET /v{1,2}/iot/active_air_raid_alerts/{uid}.json` | One location's status, e.g. `"A"` |
+| `GET /v{1,2}/iot/active_air_raid_alerts.json` | One character per location UID, a space for unassigned UIDs |
+| `GET /v1/regions/{uid}/alerts/{period}.json` | History from the archive, finished alerts included. `period` is `month_ago` (also `week_ago`, `day_ago`). An oblast's history includes its raions, hromadas and cities. Limited to `HISTORY_REQUESTS_PER_MINUTE` (2, as upstream). |
+
+**RadarNebo extensions:**
+
+| Endpoint | Returns |
+|---|---|
+| `GET /v1/drones/tracks.json[?active=true]` | Every tracked target (drones, cruise and ballistic missiles, guided bombs) with its position history, plus `serverTime` and `simulated`. Long tracks are thinned so polls stay small. |
+| `GET /v1/drones/positions.json?at=<ms or ISO-8601>` | Positions interpolated between samples, or dead-reckoned past the last one |
+| `GET /v1/drones/archive.json?from=&to=&type=&limit=` | Finished and current tracks in a time window (default: the last day) |
+| `GET /health` | Data source, freshness, upstream budget, last error (no key needed) |
+
+### Archive
+
+Every alert is saved as it opens, changes and finishes, and every track as it ends, in SQLite via Exposed
+(`ARCHIVE_JDBC_URL`, default `data/radarnebo-archive.db`; `memory` keeps it in memory). Records are partitioned by
+data source, so simulated and real ids never mix. After a restart, alerts the archive still has open but that are gone
+are finished. Records older than `ARCHIVE_RETENTION_DAYS` are pruned hourly.
+
+### Running
 
 ```
-ALERTS_API_TOKEN=... PORT=8080 PROXY_CLIENT_KEYS=key1,key2 ./gradlew :server:run
-./gradlew :server:buildFatJar        # build/libs/server-all.jar
+./gradlew :server:run                                   # simulation on :8080
+ALERTS_API_TOKEN=... CLIENT_KEYS=key1,key2 ./gradlew :server:run
+./gradlew :server:buildFatJar                           # build/libs/server-all.jar
 ```
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `ALERTS_API_TOKEN` | – | Upstream token. If unset, the proxy serves the simulation (`SimulatedAlertsSource`) and makes no upstream requests. |
+| `ALERTS_API_TOKEN` | – | alerts.in.ua token. If unset, the server runs the simulation and makes no upstream requests. |
+| `DATA_SOURCE` | – | `simulation` or `alerts_in_ua`, to choose explicitly |
 | `UPSTREAM_MAX_PER_MINUTE` | 6 | Upstream budget, clamped to 1–8 |
 | `POLL_INTERVAL_SECONDS` | 15 | Never faster than the budget allows |
-| `PROXY_CLIENT_KEYS` | – | Comma-separated client keys. Clients send `Authorization: Bearer <key>` or `?token=`. |
+| `SIM_STRIKE_PERIOD_MINUTES` | 360 | Time between combined strikes (at least 180) |
+| `SIM_TICK_SECONDS` | 10 | How often the simulation reports |
+| `SIM_WARM_UP_MINUTES` | 120 | History replayed on start |
+| `SIM_SEED` | 20220224 | Change it for different attacks |
+| `ARCHIVE_JDBC_URL` | `jdbc:sqlite:data/radarnebo-archive.db` | `memory` for no persistence |
+| `ARCHIVE_RETENTION_DAYS` | 45 | |
+| `CLIENT_KEYS` | – | Comma-separated client keys (`PROXY_CLIENT_KEYS` still works) |
 | `CLIENT_REQUESTS_PER_MINUTE` | 120 | Per-IP limit for clients |
+| `HISTORY_REQUESTS_PER_MINUTE` | 2 | Per-IP limit for the history endpoint |
 | `PORT` | 8080 | |
 
-In the app, set **API base URL** to the proxy and put the client key in the token field.
+## Connecting the app
 
-## API token
+The app needs only the server's address (Settings → Server) and, if the server requires one, an access key. It never
+sees an alerts.in.ua token: that lives on the server. Earlier versions kept the token on the device; it is removed on
+the first settings save. By default the app looks for a server on the same machine (the Android emulator reaches it as
+`10.0.2.2`; cleartext HTTP is allowed only to that and `localhost`). Polling defaults to 30 s. The server answers
+unchanged data with a 304, and the app interpolates target positions every frame between polls.
 
-Request a token at https://devs.alerts.in.ua and enter it in **Settings**. Without a token, the app runs on clearly
-labelled **synthetic demo data**. The API recommends that public apps call it through your own proxy. Set the proxy URL
-in Settings ("API base URL"). Polling defaults to 30 s, and the API limit is about 8–10 requests/min per IP. The app
-sends `If-Modified-Since` and backs off after errors.
-
-The API gives no coordinates for raions or hromadas. Known cities are placed exactly, oblast-wide alerts sit at the
-oblast centroid, and other locations get a stable pseudo-random spot inside their oblast.
+The alerts.in.ua API gives no coordinates for raions or hromadas. Known cities are placed exactly, oblast-wide alerts
+sit at the oblast centroid, and other locations get a stable pseudo-random spot inside their oblast.
 
 
 * [/app/ios](./app/ios/iosApp) contains an iOS application. Even if you’re sharing your UI with Compose Multiplatform,

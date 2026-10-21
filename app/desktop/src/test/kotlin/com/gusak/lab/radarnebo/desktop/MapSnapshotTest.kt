@@ -41,7 +41,7 @@ class MapSnapshotTest {
         val threats = ThreatMapper.toMarkers(alerts, dronesOnly = true)
         val favorites = listOf(FavoriteLocation("1", "Kyiv", 50.4501, 30.5234), FavoriteLocation("2", "Kharkiv", 49.9935, 36.2304))
         val state = UiState(
-            settings = AppSettings(apiToken = "k", baseUrl = "http://localhost:8787"),
+            settings = AppSettings(serverUrl = "http://localhost:8787"),
             favorites = favorites + FavoriteLocation("3", "Bakhmach", 51.18, 32.83),
             threats = threats,
             mapThreats = threats,

@@ -1,11 +1,11 @@
 package com.gusak.lab.radarnebo.desktop
 
-import com.gusak.lab.radarnebo.data.AlertsApi
 import com.gusak.lab.radarnebo.data.AlertsRepository
 import com.gusak.lab.radarnebo.data.AlertsUpdate
 import com.gusak.lab.radarnebo.data.FavoritesRepository
 import com.gusak.lab.radarnebo.data.InMemoryStorage
 import com.gusak.lab.radarnebo.data.KeyValueStorage
+import com.gusak.lab.radarnebo.data.RadarNeboApi
 import com.gusak.lab.radarnebo.data.SettingsRepository
 import com.gusak.lab.radarnebo.data.ThreatType
 import com.gusak.lab.radarnebo.di.appModules
@@ -18,6 +18,10 @@ import com.gusak.lab.radarnebo.domain.usecase.RemoveFavoriteUseCase
 import com.gusak.lab.radarnebo.domain.usecase.UpdateSettingsUseCase
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import com.gusak.lab.radarnebo.ui.AppViewModel
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpHeaders
+import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
 import org.koin.core.KoinApplication
 import org.koin.dsl.koinApplication
@@ -33,7 +37,27 @@ import kotlin.test.assertTrue
 
 class DependencyInjectionTest {
     private val storage = InMemoryStorage()
-    private val koin: KoinApplication = isolatedKoin(storage)
+    private val requested = mutableListOf<String>()
+
+    /** Stands in for the RadarNebo server: a drone alert near Kyiv, a tracked drone group and a cruise missile. */
+    private val server = MockEngine { request ->
+        requested += request.url.encodedPath
+        val body = when (request.url.encodedPath) {
+            RadarNeboApi.ACTIVE_ALERTS_PATH -> ALERTS
+            RadarNeboApi.TRACKS_PATH -> TRACKS
+            else -> error("unexpected ${request.url}")
+        }
+        respond(body, headers = headersOf(HttpHeaders.ContentType, "application/json"))
+    }
+
+    private val koin: KoinApplication = koinApplication {
+        allowOverride(true)
+        modules(
+            appModules(inMemoryStorageModule(storage)) + module {
+                single { RadarNeboApi(RadarNeboApi.client(server)) }
+            }
+        )
+    }
 
     @AfterTest
     fun close() = koin.close()
@@ -51,7 +75,7 @@ class DependencyInjectionTest {
         assertSame(k.get<SettingsRepository>(), k.get<SettingsRepository>())
         assertSame(k.get<FavoritesRepository>(), k.get<FavoritesRepository>())
         assertSame(k.get<AlertsRepository>(), k.get<AlertsRepository>())
-        assertSame(k.get<AlertsApi>(), k.get<AlertsApi>())
+        assertSame(k.get<RadarNeboApi>(), k.get<RadarNeboApi>())
         assertSame(storage, k.get<KeyValueStorage>())
         assertNotSame(k.get<AddFavoriteUseCase>(), k.get<AddFavoriteUseCase>())
         listOf(
@@ -63,9 +87,11 @@ class DependencyInjectionTest {
     @Test
     fun useCasesWorkThroughTheInjectedRepositories() {
         val k = koin.koin
-        // Demo mode (no token): the refresh uses the simulation, never the network.
+        // The app only talks to its server: alerts, then the server's tracks.
         val update = runBlocking { k.get<RefreshAlertsUseCase>()() }
-        assertTrue(update is AlertsUpdate.Updated && update.snapshot.alerts.isNotEmpty())
+        assertTrue(update is AlertsUpdate.Updated && update.snapshot.alerts.isNotEmpty() && update.snapshot.simulated)
+        assertEquals(listOf(RadarNeboApi.ACTIVE_ALERTS_PATH, RadarNeboApi.TRACKS_PATH), requested)
+        assertEquals(RadarNeboApi.DEFAULT_SERVER_URL, k.get<SettingsRepository>().settings.value.serverUrl)
 
         val favorite = k.get<AddFavoriteUseCase>()("  ", GeoPoint(50.4501, 30.5234))
         assertEquals("Point 50.45, 30.52", favorite.name)
@@ -76,7 +102,9 @@ class DependencyInjectionTest {
         val update2 = k.get<UpdateSettingsUseCase>()
         assertEquals(false, update2 { it.copy(proximityRadiusKm = 80) })
         assertEquals("80", storage.getString("proximity_radius_km"))
-        assertEquals(true, update2 { it.copy(apiToken = "token") }, "a new token changes the data source")
+        assertEquals(true, update2 { it.copy(accessKey = "key") }, "a new access key changes the data source")
+        assertEquals(true, update2 { it.copy(serverUrl = "https://radar.example") })
+        assertEquals("https://radar.example", storage.getString("server_url"))
     }
 
     @Test
@@ -88,7 +116,7 @@ class DependencyInjectionTest {
         val dronesOnly = build(snapshot.alerts, snapshot.tracks, settings.copy(dronesOnly = true), emptyList())
         val all = build(snapshot.alerts, snapshot.tracks, settings.copy(dronesOnly = false), emptyList())
         assertTrue(dronesOnly.tracks.all { it.type == ThreatType.Drones })
-        assertTrue(all.tracks.size >= dronesOnly.tracks.size)
+        assertTrue(all.tracks.size > dronesOnly.tracks.size, "the cruise missile shows only with every threat class")
         assertTrue(all.threats.size >= dronesOnly.threats.size)
     }
 
@@ -101,5 +129,37 @@ class DependencyInjectionTest {
         } finally {
             other.close()
         }
+    }
+
+    @Test
+    fun anOldDirectConnectionIsMigratedWithoutKeepingTheToken() {
+        val old = InMemoryStorage().apply {
+            putString("api_token", "alerts-in-ua-secret")
+            putString("api_base_url", "https://api.alerts.in.ua")
+        }
+        val settings = SettingsRepository(old, com.gusak.lab.radarnebo.data.ServerDefaults("http://10.0.2.2:8080"))
+        assertEquals("http://10.0.2.2:8080", settings.settings.value.serverUrl)
+        assertEquals("", settings.settings.value.accessKey, "an alerts.in.ua token is not a server key")
+        settings.update { it.copy(pollSeconds = 60) }
+        assertEquals(null, old.getString("api_token"), "the token is removed from the device")
+
+        val proxy = InMemoryStorage().apply {
+            putString("api_token", "client-key")
+            putString("api_base_url", "http://radar.local:8080")
+        }
+        val migrated = SettingsRepository(proxy).settings.value
+        assertEquals("http://radar.local:8080" to "client-key", migrated.serverUrl to migrated.accessKey)
+    }
+
+    private companion object {
+        const val ALERTS = """{"alerts":[{"id":1,"location_title":"Броварська територіальна громада","location_type":"hromada",
+            "location_uid":"1100","location_oblast":"Київська область","location_oblast_uid":"14","alert_level":"red",
+            "started_at":"2026-10-19T10:00:00.000Z","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:00:00.000Z"}]}]}"""
+
+        const val TRACKS = """{"serverTime":1800000000000,"pollIntervalMs":10000,"lastUpstreamFetch":1800000000000,"simulated":true,"tracks":[
+            {"id":"S1-D01","type":"Drones","level":"Red","oblastUid":14,"active":true,"firstSeen":1799999000000,"lastSeen":1800000000000,
+             "markerIds":["1:drones"],"samples":[{"t":1799999000000,"lat":50.6,"lon":31.2,"title":"Nizhyn"},{"t":1800000000000,"lat":50.51,"lon":30.79,"title":"Brovary"}]},
+            {"id":"S1-KH01","type":"CruiseMissiles","level":"Red","oblastUid":10,"active":true,"firstSeen":1799999500000,"lastSeen":1800000000000,
+             "markerIds":[],"samples":[{"t":1799999500000,"lat":49.9,"lon":28.6,"title":"Berdychiv"},{"t":1800000000000,"lat":50.25,"lon":28.67,"title":"Zhytomyr"}]}]}"""
     }
 }

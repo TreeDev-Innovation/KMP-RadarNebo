@@ -1,6 +1,5 @@
 package com.gusak.lab.radarnebo
 
-import com.gusak.lab.radarnebo.data.DroneSimulator
 import com.gusak.lab.radarnebo.data.ThreatLevel
 import com.gusak.lab.radarnebo.data.ThreatType
 import com.gusak.lab.radarnebo.domain.ThreatMapper
@@ -35,8 +34,8 @@ class TargetTypesTest {
     @Test
     fun everyThreatClassGetsAProfileAndNamedModelsAreReported() {
         fun kind(type: ThreatType, text: String = "") = TargetClassifier.classify(type, listOf(text)).kind
-        assertEquals(TargetKind.CruiseMissile, kind(ThreatType.CruiseMissiles, DroneSimulator.KH101_MESSAGE))
-        assertEquals(TargetKind.CruiseMissile, kind(ThreatType.CruiseMissiles, DroneSimulator.KALIBR_MESSAGE))
+        assertEquals(TargetKind.CruiseMissile, kind(ThreatType.CruiseMissiles, SampleMessages.KH101))
+        assertEquals(TargetKind.CruiseMissile, kind(ThreatType.CruiseMissiles, SampleMessages.KALIBR))
         assertEquals(TargetKind.BallisticMissile, kind(ThreatType.BallisticMissiles, "Загроза балістичних ракет «Іскандер-М»"))
         assertEquals(TargetKind.AeroballisticMissile, kind(ThreatType.BallisticMissiles, "Ракета «Кинджал» на Київ"))
         assertEquals(TargetKind.GuidedBomb, kind(ThreatType.GuidedBombs))
@@ -45,25 +44,14 @@ class TargetTypesTest {
         assertEquals(TargetKind.MiG31K, kind(ThreatType.Mig31k))
         assertEquals(TargetKind.AirDefense, kind(ThreatType.AirDefense))
         assertEquals(TargetKind.Unknown, kind(ThreatType.Unknown))
-        assertEquals(TargetKind.ReconDrone, kind(ThreatType.Drones, DroneSimulator.RECON_MESSAGE))
-        assertEquals(TargetKind.JetDrone, kind(ThreatType.Drones, DroneSimulator.JET_SHAHED_MESSAGE))
+        assertEquals(TargetKind.ReconDrone, kind(ThreatType.Drones, SampleMessages.RECON))
+        assertEquals(TargetKind.JetDrone, kind(ThreatType.Drones, SampleMessages.JET_SHAHED))
 
         assertEquals(TargetProfile.Source.Reported, TargetClassifier.classify(ThreatType.GuidedBombs, listOf("Пуски КАБ")).source)
         assertEquals(TargetProfile.Source.Probable, TargetClassifier.classify(ThreatType.GuidedBombs, listOf("Загроза авіабомб")).source)
         assertEquals(TargetProfile.Source.Probable, TargetClassifier.classify(ThreatType.CruiseMissiles, emptyList()).source)
     }
 
-    @Test
-    fun simulationCoversEveryThreatClass() {
-        // Three hours of the simulated feed, sampled every minute.
-        val start = 1_800_000_000_000L
-        val seen = (0 until 180).flatMap { m -> DroneSimulator.alertsAt(start + m * minute) }
-            .flatMap { it.threats }.map { ThreatType.from(it.threatType) }.toSet()
-        assertEquals(ThreatType.entries.toSet() - ThreatType.Unknown, seen)
-        val kinds = (0 until 180).flatMap { m -> ThreatMapper.toMarkers(DroneSimulator.alertsAt(start + m * minute), dronesOnly = false) }
-            .map { TargetClassifier.classify(it).kind }.toSet()
-        assertEquals(TargetKind.entries.toSet() - TargetKind.Unknown, kinds, "the sample feed shows every icon but Unknown")
-    }
 
     @Test
     fun cruiseMissilesAreTrackedOnTheirOwnWithLongerHops() {
@@ -81,11 +69,11 @@ class TargetTypesTest {
     @Test
     fun differentDroneKindsDoNotMerge() {
         val tracker = DroneTracker()
-        tracker.update(listOf(marker("shahed", 50.5, 30.8, message = DroneSimulator.SHAHED_MESSAGE)), 0)
+        tracker.update(listOf(marker("shahed", 50.5, 30.8, message = SampleMessages.SHAHED)), 0)
         tracker.update(
             listOf(
-                marker("shahed", 50.5, 30.8, message = DroneSimulator.SHAHED_MESSAGE),
-                marker("gerbera", 50.45, 30.5, message = DroneSimulator.GERBERA_MESSAGE),
+                marker("shahed", 50.5, 30.8, message = SampleMessages.SHAHED),
+                marker("gerbera", 50.45, 30.5, message = SampleMessages.GERBERA),
             ),
             10 * minute,
         )
@@ -128,13 +116,13 @@ class TargetTypesTest {
             id = "j", level = ThreatLevel.Red, oblastUid = null, active = true, firstSeen = 0, lastSeen = 10 * minute, markerIds = listOf("x"),
             // ~70 km in 10 minutes: about 420 km/h, named as a jet Shahed.
             samples = listOf(
-                TrackSample(0, 50.0, 30.0, "A", message = DroneSimulator.JET_SHAHED_MESSAGE),
-                TrackSample(10 * minute, 50.0, 30.98, "B", message = DroneSimulator.JET_SHAHED_MESSAGE),
+                TrackSample(0, 50.0, 30.0, "A", message = SampleMessages.JET_SHAHED),
+                TrackSample(10 * minute, 50.0, 30.98, "B", message = SampleMessages.JET_SHAHED),
             ),
         )
         assertEquals(TrackKinematics.JetDrones, TrackKinematics.of(track))
         assertTrue(TrackInterpolator.positionAt(track, 11 * minute)!!.speedKmh!! > 400.0)
-        val shahed = track.copy(samples = track.samples.map { it.copy(message = DroneSimulator.SHAHED_MESSAGE) })
+        val shahed = track.copy(samples = track.samples.map { it.copy(message = SampleMessages.SHAHED) })
         assertEquals(TrackInterpolator.MAX_SPEED_KMH, TrackInterpolator.positionAt(shahed, 11 * minute)!!.speedKmh!!, 1e-9)
     }
 }

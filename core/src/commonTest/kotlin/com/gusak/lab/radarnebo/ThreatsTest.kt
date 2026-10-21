@@ -1,6 +1,7 @@
 package com.gusak.lab.radarnebo
 
-import com.gusak.lab.radarnebo.data.AlertsApi
+import com.gusak.lab.radarnebo.data.RadarNeboApi
+import com.gusak.lab.radarnebo.data.ServerEndpoint
 import com.gusak.lab.radarnebo.data.ActiveAlertsResponse
 import com.gusak.lab.radarnebo.data.FavoriteLocation
 import com.gusak.lab.radarnebo.data.FetchResult
@@ -41,7 +42,7 @@ class ThreatsTest {
         ]}
     """.trimIndent()
 
-    private fun alerts() = AlertsApi.json.decodeFromString(ActiveAlertsResponse.serializer(), sample).alerts
+    private fun alerts() = RadarNeboApi.json.decodeFromString(ActiveAlertsResponse.serializer(), sample).alerts
 
     @Test
     fun parsesAlertsAndFiltersDrones() {
@@ -100,16 +101,16 @@ class ThreatsTest {
                 else -> respond("""{"message":"x"}""", HttpStatusCode.Unauthorized, headersOf(HttpHeaders.ContentType, "application/json"))
             }
         }
-        val api = AlertsApi(HttpClient(engine) {
+        val api = RadarNeboApi(HttpClient(engine) {
             expectSuccess = false
-            install(ContentNegotiation) { json(AlertsApi.json) }
+            install(ContentNegotiation) { json(RadarNeboApi.json) }
         })
-        val first = api.activeAlerts(AlertsApi.DEFAULT_BASE_URL, "secret")
+        val first = api.activeAlerts(ServerEndpoint(RadarNeboApi.DEFAULT_SERVER_URL, "secret"))
         assertIs<FetchResult.Fresh>(first)
         assertEquals(3, first.alerts.size)
         assertEquals("Bearer secret", authHeader)
-        assertIs<FetchResult.NotModified>(api.activeAlerts(AlertsApi.DEFAULT_BASE_URL, "secret"))
-        assertIs<FetchResult.Failure>(api.activeAlerts(AlertsApi.DEFAULT_BASE_URL, "secret"))
+        assertIs<FetchResult.NotModified>(api.activeAlerts(ServerEndpoint(RadarNeboApi.DEFAULT_SERVER_URL, "secret")))
+        assertIs<FetchResult.Failure>(api.activeAlerts(ServerEndpoint(RadarNeboApi.DEFAULT_SERVER_URL, "secret")))
     }
 }
 

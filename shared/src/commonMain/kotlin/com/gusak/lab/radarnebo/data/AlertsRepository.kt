@@ -1,17 +1,17 @@
 package com.gusak.lab.radarnebo.data
 
-import com.gusak.lab.radarnebo.domain.ThreatMapper
 import com.gusak.lab.radarnebo.tracking.DroneTrack
-import com.gusak.lab.radarnebo.tracking.DroneTracker
 import kotlin.time.Clock
 
-/** Active alerts and the tracks built from them, as of the latest successful poll. */
+/** Active alerts and the server's tracks, as of the latest successful poll. */
 data class AlertsSnapshot(
     val alerts: List<Alert>,
     /** Tracks of every threat class; the UI filters them by settings. */
     val tracks: List<DroneTrack>,
     /** Server clock minus local clock, applied before interpolating track positions. */
     val clockOffsetMs: Long,
+    /** The server says its data is simulated; the UI must label it. */
+    val simulated: Boolean,
 )
 
 sealed interface AlertsUpdate {
@@ -20,63 +20,39 @@ sealed interface AlertsUpdate {
 }
 
 /**
- * Where alerts and tracks come from: alerts.in.ua directly, a RadarNebo proxy (which also serves
- * tracks), or the simulation in demo mode. Without a proxy, tracks are built on the device.
+ * Alerts and tracks from the RadarNebo server, the app's only data source. The server tracks targets and
+ * decides where its data comes from; the app only reads and, between polls, interpolates positions.
  */
 class AlertsRepository(
-    private val api: AlertsApi,
+    private val api: RadarNeboApi,
     private val clock: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) {
     private var alerts: List<Alert> = emptyList()
-    /** Builds tracks on the device when there is no RadarNebo proxy to provide them. */
-    private var tracker = DroneTracker()
-    private var simulationWarmedUp = false
-    private var proxyTracks: List<DroneTrack> = emptyList()
-    private var proxyClockOffsetMs = 0L
+    private var tracks: List<DroneTrack> = emptyList()
+    private var clockOffsetMs = 0L
+    private var simulated = false
 
-    suspend fun refresh(settings: AppSettings): AlertsUpdate {
-        val now = clock()
-        if (settings.isDemo) {
-            if (!simulationWarmedUp) {
-                // Replay the recent past so tracks have a history from the first poll.
-                DroneSimulator.warmUp(tracker, now)
-                simulationWarmedUp = true
-            }
-            alerts = DroneSimulator.alertsAt(now)
-        } else {
-            when (val result = api.activeAlerts(settings.baseUrl, settings.apiToken)) {
-                is FetchResult.Fresh -> alerts = result.alerts
-                FetchResult.NotModified -> Unit
-                is FetchResult.Failure -> return AlertsUpdate.Failed(result.message)
-            }
+    suspend fun refresh(endpoint: ServerEndpoint): AlertsUpdate {
+        when (val result = api.activeAlerts(endpoint)) {
+            is FetchResult.Fresh -> alerts = result.alerts
+            FetchResult.NotModified -> Unit
+            is FetchResult.Failure -> return AlertsUpdate.Failed(result.message)
         }
-        return AlertsUpdate.Updated(snapshot(settings, now))
+        // Tracks move even when alerts don't, so they are fetched on every poll. A failed request keeps the
+        // previous tracks rather than wiping the map.
+        api.tracks(endpoint)?.let { response ->
+            tracks = response.tracks
+            clockOffsetMs = response.serverTime - clock()
+            simulated = response.simulated
+        }
+        return AlertsUpdate.Updated(AlertsSnapshot(alerts, tracks, clockOffsetMs, simulated))
     }
 
-    /** Forgets everything fetched, e.g. after switching to another server or token. */
+    /** Forgets everything fetched, e.g. after switching to another server. */
     fun reset() {
         alerts = emptyList()
-        tracker = DroneTracker()
-        simulationWarmedUp = false
-        proxyTracks = emptyList()
-        proxyClockOffsetMs = 0L
-    }
-
-    /**
-     * Tracks change even when alerts don't (last-seen times, extrapolation), so they are refreshed on
-     * every poll: from the proxy when there is one, otherwise by tracking the alerts on the device.
-     */
-    private suspend fun snapshot(settings: AppSettings, now: Long): AlertsSnapshot {
-        if (settings.usesProxy) {
-            // A failed track request keeps the previous tracks rather than wiping the map.
-            api.droneTracks(settings.baseUrl, settings.apiToken)?.let { response ->
-                proxyTracks = response.tracks
-                proxyClockOffsetMs = response.serverTime - now
-            }
-            return AlertsSnapshot(alerts, proxyTracks, proxyClockOffsetMs)
-        }
-        // The tracker sees every threat class, so turning "drones only" off shows missile tracks with history.
-        tracker.update(ThreatMapper.toMarkers(alerts, dronesOnly = false), now)
-        return AlertsSnapshot(alerts, tracker.snapshot(), 0L)
+        tracks = emptyList()
+        clockOffsetMs = 0L
+        simulated = false
     }
 }

@@ -416,7 +416,7 @@ private fun CinematicMap(
 @Composable
 private fun StatusStrip(state: UiState) {
     val text = buildString {
-        if (state.settings.isDemo) append("DEMO DATA · add API token in Settings · ")
+        if (state.simulated) append("SIMULATED DATA · not the real situation · ")
         append("${state.threats.size} ${if (state.settings.dronesOnly) "drone threats" else "threats"}")
         if (state.threats.size > state.mapThreats.size) append(" (showing ${state.mapThreats.size})")
         state.lastUpdated?.let { append(" · updated ${formatTime(it)}") }

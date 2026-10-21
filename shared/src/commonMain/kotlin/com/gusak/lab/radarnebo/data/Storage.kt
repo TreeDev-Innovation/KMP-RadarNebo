@@ -24,8 +24,10 @@ enum class MapMode { Static, Cinematic }
 enum class ThemeMode { System, Light, Dark }
 
 data class AppSettings(
-    val apiToken: String = "",
-    val baseUrl: String = AlertsApi.DEFAULT_BASE_URL,
+    /** The RadarNebo server the app gets everything from. */
+    val serverUrl: String = RadarNeboApi.DEFAULT_SERVER_URL,
+    /** Only needed when the server requires client keys. */
+    val accessKey: String = "",
     val mapMode: MapMode = MapMode.Static,
     val themeMode: ThemeMode = ThemeMode.System,
     val maxMapMarkers: Int = DEFAULT_MAX_MARKERS,
@@ -33,20 +35,21 @@ data class AppSettings(
     val dronesOnly: Boolean = true,
     val pollSeconds: Int = 30,
 ) {
-    /** Talking to a RadarNebo proxy rather than alerts.in.ua directly; the proxy may not need a token. */
-    val usesProxy get() = baseUrl.trimEnd('/') != AlertsApi.DEFAULT_BASE_URL
-    val isDemo get() = apiToken.isBlank() && !usesProxy
+    val endpoint get() = ServerEndpoint(serverUrl.trim(), accessKey.trim())
 
     companion object {
         const val DEFAULT_MAX_MARKERS = 60
         val MAX_MARKERS_RANGE = 5..300
         val RADIUS_RANGE = 5..200
-        val POLL_RANGE = 15..300
+        val POLL_RANGE = 10..300
     }
 }
 
+/** Where the app looks for its server until the user sets one; the Android emulator reaches the host as 10.0.2.2. */
+data class ServerDefaults(val url: String = RadarNeboApi.DEFAULT_SERVER_URL)
+
 /** App settings, persisted in [KeyValueStorage] and observable as [settings]. */
-class SettingsRepository(private val storage: KeyValueStorage) {
+class SettingsRepository(private val storage: KeyValueStorage, private val defaults: ServerDefaults = ServerDefaults()) {
     private val _settings = MutableStateFlow(load())
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
@@ -60,32 +63,43 @@ class SettingsRepository(private val storage: KeyValueStorage) {
         return new
     }
 
-    private fun load() = AppSettings(
-        apiToken = storage.getString(K_TOKEN).orEmpty(),
-        baseUrl = storage.getString(K_BASE_URL)?.takeIf { it.isNotBlank() } ?: AlertsApi.DEFAULT_BASE_URL,
-        mapMode = storage.getString(K_MODE)?.let { runCatching { MapMode.valueOf(it) }.getOrNull() } ?: MapMode.Static,
-        themeMode = storage.getString(K_THEME)?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.System,
-        maxMapMarkers = storage.getString(K_MAX_MARKERS)?.toIntOrNull()
-            ?.coerceIn(AppSettings.MAX_MARKERS_RANGE) ?: AppSettings.DEFAULT_MAX_MARKERS,
-        proximityRadiusKm = storage.getString(K_RADIUS)?.toIntOrNull()?.coerceIn(AppSettings.RADIUS_RANGE) ?: 50,
-        dronesOnly = storage.getString(K_DRONES_ONLY)?.toBooleanStrictOrNull() ?: true,
-        pollSeconds = storage.getString(K_POLL)?.toIntOrNull()?.coerceIn(AppSettings.POLL_RANGE) ?: 30,
-    )
+    private fun load(): AppSettings {
+        // Earlier versions talked to alerts.in.ua directly, or to a proxy given as the base URL with its key as the token.
+        val legacyProxyUrl = storage.getString(K_LEGACY_BASE_URL)?.takeIf { it.isNotBlank() && LEGACY_UPSTREAM_HOST !in it }
+        val legacyKey = if (legacyProxyUrl != null) storage.getString(K_LEGACY_TOKEN) else null
+        return AppSettings(
+            serverUrl = storage.getString(K_SERVER_URL)?.takeIf { it.isNotBlank() } ?: legacyProxyUrl ?: defaults.url,
+            accessKey = storage.getString(K_ACCESS_KEY) ?: legacyKey.orEmpty(),
+            mapMode = storage.getString(K_MODE)?.let { runCatching { MapMode.valueOf(it) }.getOrNull() } ?: MapMode.Static,
+            themeMode = storage.getString(K_THEME)?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.System,
+            maxMapMarkers = storage.getString(K_MAX_MARKERS)?.toIntOrNull()
+                ?.coerceIn(AppSettings.MAX_MARKERS_RANGE) ?: AppSettings.DEFAULT_MAX_MARKERS,
+            proximityRadiusKm = storage.getString(K_RADIUS)?.toIntOrNull()?.coerceIn(AppSettings.RADIUS_RANGE) ?: 50,
+            dronesOnly = storage.getString(K_DRONES_ONLY)?.toBooleanStrictOrNull() ?: true,
+            pollSeconds = storage.getString(K_POLL)?.toIntOrNull()?.coerceIn(AppSettings.POLL_RANGE) ?: 30,
+        )
+    }
 
     private fun save(settings: AppSettings) {
-        storage.putString(K_TOKEN, settings.apiToken.trim())
-        storage.putString(K_BASE_URL, settings.baseUrl.trim())
+        storage.putString(K_SERVER_URL, settings.serverUrl.trim())
+        storage.putString(K_ACCESS_KEY, settings.accessKey.trim())
         storage.putString(K_MODE, settings.mapMode.name)
         storage.putString(K_THEME, settings.themeMode.name)
         storage.putString(K_MAX_MARKERS, settings.maxMapMarkers.toString())
         storage.putString(K_RADIUS, settings.proximityRadiusKm.toString())
         storage.putString(K_DRONES_ONLY, settings.dronesOnly.toString())
         storage.putString(K_POLL, settings.pollSeconds.toString())
+        // An alerts.in.ua token belongs on the server, never on the device.
+        storage.putString(K_LEGACY_TOKEN, null)
+        storage.putString(K_LEGACY_BASE_URL, null)
     }
 
     private companion object {
-        const val K_TOKEN = "api_token"
-        const val K_BASE_URL = "api_base_url"
+        const val K_SERVER_URL = "server_url"
+        const val K_ACCESS_KEY = "server_access_key"
+        const val K_LEGACY_TOKEN = "api_token"
+        const val K_LEGACY_BASE_URL = "api_base_url"
+        const val LEGACY_UPSTREAM_HOST = "alerts.in.ua"
         const val K_MODE = "map_mode"
         const val K_THEME = "theme_mode"
         const val K_MAX_MARKERS = "map_max_markers"
@@ -105,11 +119,11 @@ class FavoritesRepository(private val storage: KeyValueStorage) {
     fun remove(id: String) = save(_favorites.value.filterNot { it.id == id })
 
     private fun load(): List<FavoriteLocation> = storage.getString(K_FAVORITES)?.let {
-        runCatching { AlertsApi.json.decodeFromString(serializer, it) }.getOrNull()
+        runCatching { RadarNeboApi.json.decodeFromString(serializer, it) }.getOrNull()
     } ?: emptyList()
 
     private fun save(favorites: List<FavoriteLocation>) {
-        storage.putString(K_FAVORITES, AlertsApi.json.encodeToString(serializer, favorites))
+        storage.putString(K_FAVORITES, RadarNeboApi.json.encodeToString(serializer, favorites))
         _favorites.value = favorites
     }
 

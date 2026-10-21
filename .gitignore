@@ -135,3 +135,7 @@ yarn-error.log
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# The server's archive database (ARCHIVE_JDBC_URL)
+server/data/
+data/

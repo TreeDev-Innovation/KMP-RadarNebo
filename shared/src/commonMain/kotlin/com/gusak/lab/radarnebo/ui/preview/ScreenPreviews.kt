@@ -10,7 +10,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import com.gusak.lab.radarnebo.App
-import com.gusak.lab.radarnebo.data.AlertsApi
+import com.gusak.lab.radarnebo.data.RadarNeboApi
 import com.gusak.lab.radarnebo.data.FavoriteLocation
 import com.gusak.lab.radarnebo.data.InMemoryStorage
 import com.gusak.lab.radarnebo.data.ThemeMode
@@ -30,7 +30,7 @@ internal fun AppPreviewHost(theme: ThemeMode, favorites: List<FavoriteLocation> 
     val koin = remember(theme) {
         val storage = InMemoryStorage().apply {
             putString("theme_mode", theme.name)
-            putString("favorites", AlertsApi.json.encodeToString(ListSerializer(FavoriteLocation.serializer()), favorites))
+            putString("favorites", RadarNeboApi.json.encodeToString(ListSerializer(FavoriteLocation.serializer()), favorites))
         }
         isolatedKoin(storage)
     }
