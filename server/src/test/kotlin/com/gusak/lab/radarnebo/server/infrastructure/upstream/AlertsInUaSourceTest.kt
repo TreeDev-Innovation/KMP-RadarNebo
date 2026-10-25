@@ -22,7 +22,7 @@ class AlertsInUaSourceTest {
 
     private fun alertsJson(uid: String, title: String, oblastUid: Int, startedAt: String) = """
         {"alerts":[{"id":${uid},"location_title":"$title","location_type":"hromada","alert_type":"air_raid",
-          "location_uid":"$uid","location_oblast":"x","location_oblast_uid":"$oblastUid","alert_level":"red",
+          "location_uid":"$uid","location_oblast":"x","location_oblast_uid":$oblastUid,"alert_level":"red",
           "started_at":"$startedAt","some_new_field":1,
           "threats":[{"threat_type":"drones","level":"red","started_at":"$startedAt"}]}]}
     """.trimIndent()

@@ -1,7 +1,15 @@
 package com.gusak.lab.radarnebo.data
 
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 
 /** Response of `GET /v1/alerts/active.json` from https://devs.alerts.in.ua. */
 @Serializable
@@ -21,7 +29,8 @@ data class Alert(
     @SerialName("alert_type") val alertType: String = "air_raid",
     @SerialName("location_uid") val locationUid: String = "",
     @SerialName("location_oblast") val locationOblast: String = "",
-    @SerialName("location_oblast_uid") val locationOblastUid: String? = null,
+    /** A number in alerts.in.ua; older RadarNebo servers sent it as a string, which still decodes. */
+    @SerialName("location_oblast_uid") @Serializable(with = LenientIntSerializer::class) val locationOblastUid: Int? = null,
     @SerialName("location_raion") val locationRaion: String? = null,
     val notes: String? = null,
     @SerialName("alert_level") val alertLevel: String? = null,
@@ -57,5 +66,20 @@ enum class ThreatType(val apiValue: String, val label: String) {
 enum class ThreatLevel { Red, Yellow;
     companion object {
         fun from(value: String?): ThreatLevel = if (value.equals("yellow", ignoreCase = true)) Yellow else Red
+    }
+}
+
+/** Writes an Int and reads one from a JSON number or a numeric string. */
+internal object LenientIntSerializer : KSerializer<Int?> {
+    override val descriptor = PrimitiveSerialDescriptor("LenientInt", PrimitiveKind.INT)
+
+    override fun serialize(encoder: Encoder, value: Int?) {
+        if (value == null) encoder.encodeNull() else encoder.encodeInt(value)
+    }
+
+    override fun deserialize(decoder: Decoder): Int? {
+        if (decoder !is JsonDecoder) return decoder.decodeInt()
+        val element = decoder.decodeJsonElement() as? JsonPrimitive ?: return null
+        return element.intOrNull ?: element.content.trim().toIntOrNull()
     }
 }

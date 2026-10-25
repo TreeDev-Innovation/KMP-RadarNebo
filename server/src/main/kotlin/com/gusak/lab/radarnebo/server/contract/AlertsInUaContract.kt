@@ -5,6 +5,7 @@ import com.gusak.lab.radarnebo.data.Alert
 import com.gusak.lab.radarnebo.data.Threat
 import com.gusak.lab.radarnebo.data.ThreatLevel
 import com.gusak.lab.radarnebo.data.ThreatType
+import com.gusak.lab.radarnebo.domain.ThreatMapper
 import com.gusak.lab.radarnebo.server.domain.alert.AirAlert
 import com.gusak.lab.radarnebo.server.domain.alert.AlertLocation
 import com.gusak.lab.radarnebo.server.domain.alert.AlertType
@@ -52,7 +53,7 @@ object AlertsInUaContract {
         alertType = type.apiValue,
         locationUid = location.uid,
         locationOblast = location.oblastTitle,
-        locationOblastUid = location.oblastUid?.toString(),
+        locationOblastUid = location.oblastUid,
         locationRaion = location.raionTitle,
         notes = notes,
         alertLevel = level?.apiValue,
@@ -77,7 +78,7 @@ object AlertsInUaContract {
                 title = locationTitle,
                 titleEn = locationTitleEn,
                 type = LocationType.from(locationType),
-                oblastUid = locationOblastUid?.toIntOrNull(),
+                oblastUid = ThreatMapper.oblastUid(this@toDomain),
                 oblastTitle = locationOblast,
                 raionTitle = locationRaion,
             ),

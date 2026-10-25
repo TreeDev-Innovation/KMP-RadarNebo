@@ -43,7 +43,7 @@ class BuildThreatPictureUseCase {
     private fun alertedOblasts(alerts: List<Alert>): Map<Int, Boolean> {
         val result = mutableMapOf<Int, Boolean>()
         alerts.filter { it.alertType == "air_raid" || it.threats.isNotEmpty() }.forEach { alert ->
-            val uid = alert.locationOblastUid?.toIntOrNull() ?: return@forEach
+            val uid = ThreatMapper.oblastUid(alert) ?: return@forEach
             result[uid] = (result[uid] ?: false) || alert.locationType == "oblast"
         }
         return result

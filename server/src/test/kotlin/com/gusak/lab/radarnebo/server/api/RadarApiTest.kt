@@ -28,6 +28,7 @@ import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -92,7 +93,7 @@ class RadarApiTest {
         val alert = json.parseToJsonElement(body).jsonObject["alerts"]!!.jsonArray.single().jsonObject
         assertEquals("1100", alert["location_uid"]!!.jsonPrimitive.content)
         assertEquals("hromada", alert["location_type"]!!.jsonPrimitive.content)
-        assertEquals("14", alert["location_oblast_uid"]!!.jsonPrimitive.content)
+        assertEquals(14, alert["location_oblast_uid"]!!.jsonPrimitive.int, "a number, as alerts.in.ua sends it")
         assertEquals("2026-10-19T10:00:00.000Z", alert["started_at"]!!.jsonPrimitive.content)
         assertTrue("\"finished_at\":null" in body, "nulls are written out, as alerts.in.ua does")
         assertEquals("drones", alert["threats"]!!.jsonArray.single().jsonObject["threat_type"]!!.jsonPrimitive.content)

@@ -246,6 +246,9 @@ ALERTS_API_TOKEN=... CLIENT_KEYS=key1,key2 ./gradlew :server:run
 ./gradlew :server:buildFatJar                           # build/libs/server-all.jar
 ```
 
+For local runs, put the variables in `server/.env` (git-ignored; start from `server/.env.example`). `:server:run`
+loads it, and variables already set in the environment win.
+
 | Env var | Default | Meaning |
 |---|---|---|
 | `ALERTS_API_TOKEN` | – | alerts.in.ua token. If unset, the server runs the simulation and makes no upstream requests. |

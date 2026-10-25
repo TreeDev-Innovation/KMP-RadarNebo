@@ -119,12 +119,27 @@ class LocateTest {
     fun hromadaSnapsToCityButRaionDoesNot() {
         val hromada = com.gusak.lab.radarnebo.data.Alert(
             id = 1, locationTitle = "м. Харків та Харківська територіальна громада", locationType = "hromada",
-            locationUid = "1293", locationOblastUid = "22",
+            locationUid = "1293", locationOblastUid = 22,
         )
         val raion = hromada.copy(id = 2, locationTitle = "Харківський район", locationType = "raion", locationUid = "1290")
         assertEquals(GeoPoint(49.9935, 36.2304), ThreatMapper.locate(hromada))
         val raionPoint = ThreatMapper.locate(raion)!!
         assertTrue(raionPoint != GeoPoint(49.9935, 36.2304))
         assertEquals(22, Regions.oblastAt(raionPoint))
+    }
+
+    @Test
+    fun theOblastComesFromItsNameBecauseAlertsInUaRepeatsTheLocationUid() {
+        // As alerts.in.ua sends it: location_oblast_uid is the raion's own UID, a number.
+        val response = RadarNeboApi.json.decodeFromString(ActiveAlertsResponse.serializer(), """
+            {"alerts":[{"id":1,"location_title":"Нікопольський район","location_type":"raion","alert_type":"air_raid",
+              "location_uid":"48","location_oblast":"Дніпропетровська область","location_oblast_uid":48,
+              "threats":[{"threat_type":"drones","level":"yellow"}]}]}
+        """.trimIndent())
+        val alert = response.alerts.single()
+        assertEquals(48, alert.locationOblastUid)
+        assertEquals(9, ThreatMapper.oblastUid(alert))
+        assertEquals(9, Regions.oblastAt(ThreatMapper.locate(alert)!!))
+        assertEquals(9, ThreatMapper.toMarkers(response.alerts, dronesOnly = false).single().oblastUid)
     }
 }

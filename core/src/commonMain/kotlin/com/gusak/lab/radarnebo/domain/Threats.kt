@@ -39,7 +39,7 @@ object ThreatMapper {
     fun toMarkers(alerts: List<Alert>, dronesOnly: Boolean): List<ThreatMarker> = alerts
         .flatMap { alert ->
             val point = locate(alert) ?: return@flatMap emptyList()
-            val oblastUid = alert.locationOblastUid?.toIntOrNull()
+            val oblastUid = oblastUid(alert)
             alert.threats
                 .filter { !dronesOnly || it.threatType == ThreatType.Drones.apiValue }
                 .map { threat ->
@@ -62,8 +62,16 @@ object ThreatMapper {
     /** Limits how many markers the map renders. Input is priority sorted, so red and newest threats win. */
     fun capForMap(markers: List<ThreatMarker>, max: Int): List<ThreatMarker> = markers.take(max)
 
+    /**
+     * The alert's oblast. alerts.in.ua's `location_oblast_uid` repeats the raion's or hromada's own UID rather than
+     * the oblast's, so the oblast name decides; the UIDs count only when they are an oblast's.
+     */
+    fun oblastUid(alert: Alert): Int? = Regions.oblastByTitle(alert.locationOblast)?.uid
+        ?: listOfNotNull(alert.locationOblastUid, alert.locationUid.toIntOrNull().takeIf { alert.locationType == "oblast" })
+            .firstOrNull { Regions.oblast(it) != null }
+
     fun locate(alert: Alert): GeoPoint? {
-        val oblastUid = alert.locationOblastUid?.toIntOrNull() ?: alert.locationUid.toIntOrNull()
+        val oblastUid = oblastUid(alert)
         if (alert.locationType == "oblast" || oblastUid == Regions.KYIV_CITY_UID || oblastUid == Regions.SEVASTOPOL_UID) {
             return oblastUid?.let(Regions::center)
         }

@@ -46,3 +46,17 @@ dependencies {
     testImplementation(libs.ktor.server.testHost)
     testImplementation(libs.ktor.client.mock)
 }
+
+// Local secrets for `./gradlew :server:run`: KEY=value lines from server/.env (git-ignored).
+// Variables already set in the environment win.
+tasks.named<JavaExec>("run") {
+    val envFile = file(".env")
+    if (envFile.exists()) {
+        envFile.readLines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") && "=" in it }
+            .map { it.substringBefore("=").trim() to it.substringAfter("=").trim().removeSurrounding("\"") }
+            .filter { (key, value) -> value.isNotEmpty() && System.getenv(key) == null }
+            .forEach { (key, value) -> environment(key, value) }
+    }
+}

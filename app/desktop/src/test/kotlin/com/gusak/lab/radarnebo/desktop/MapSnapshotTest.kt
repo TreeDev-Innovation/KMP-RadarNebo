@@ -24,7 +24,7 @@ class MapSnapshotTest {
 
     private fun alert(id: Long, title: String, oblastUid: Int, type: String = "hromada") = Alert(
         id = id, locationTitle = title, locationType = type, locationUid = id.toString(),
-        locationOblastUid = oblastUid.toString(), alertLevel = "red",
+        locationOblastUid = oblastUid, alertLevel = "red",
         threats = listOf(Threat("drones", "red")),
     )
 

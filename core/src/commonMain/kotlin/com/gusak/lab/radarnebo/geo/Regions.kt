@@ -44,6 +44,11 @@ object Regions {
 
     fun oblast(uid: Int): Oblast? = oblastsByUid[uid]
 
+    private val oblastsByName = oblasts.flatMap { listOf(it.nameUk.lowercase() to it, it.nameEn.lowercase() to it) }.toMap()
+
+    /** The oblast named [title], in Ukrainian or English, as alerts.in.ua writes it in `location_oblast`. */
+    fun oblastByTitle(title: String): Oblast? = oblastsByName[title.trim().lowercase()]
+
     /** Major cities, used both as favorite presets and to geolocate city/hromada level alerts. */
     val cities: List<City> = listOf(
         City("Kyiv", KYIV_CITY_UID, GeoPoint(50.4501, 30.5234), listOf("Київ")),
