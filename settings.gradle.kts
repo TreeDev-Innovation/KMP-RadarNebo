@@ -42,16 +42,17 @@ include(":app:desktop")
 // Android Studio's hot-reload run configurations ask for the bare task "hotRun" (or "hotDev") plus --mainClass.
 // Gradle runs a bare task in every project that has it, so each run would also start the other desktop app's
 // hotRun. Narrow it to the project that owns the main class (the mainClass in each project's compose.desktop block).
-// Android Studio still runs one Gradle build at a time, and hotRun lasts as long as its app: to run the server
-// console next to app.desktop, start it with the "server-console (shell)" configuration (.run/), outside that queue.
-val hotReloadMainClasses = mapOf(
-    "com.gusak.lab.radarnebo.desktop.MainKt" to ":app:desktop",
-    "com.gusak.lab.radarnebo.console.MainKt" to ":server-console",
+// Android Studio also runs one Gradle build at a time, and hotRun lasts as long as its app, so an app started second
+// would wait until the first one closes. The server console therefore starts with hotRunAsync, which launches it in
+// the background and ends the build at once; app.desktop keeps hotRun, with its Run window and Stop button.
+val hotReloadTargets = mapOf(
+    "com.gusak.lab.radarnebo.desktop.MainKt" to (":app:desktop" to ""),
+    "com.gusak.lab.radarnebo.console.MainKt" to (":server-console" to "Async"),
 )
 gradle.startParameter.taskNames.let { names ->
     val mainClass = names.getOrNull(names.indexOf("--mainClass") + 1)?.takeIf { "--mainClass" in names }
-    val project = hotReloadMainClasses[mainClass]
-    if (project != null && names.any { it == "hotRun" || it == "hotDev" }) {
-        gradle.startParameter.setTaskNames(names.map { if (it == "hotRun" || it == "hotDev") "$project:$it" else it })
+    val (project, suffix) = hotReloadTargets[mainClass] ?: return@let
+    if (names.any { it == "hotRun" || it == "hotDev" }) {
+        gradle.startParameter.setTaskNames(names.map { if (it == "hotRun" || it == "hotDev") "$project:$it$suffix" else it })
     }
 }

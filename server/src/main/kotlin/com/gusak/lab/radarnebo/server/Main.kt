@@ -24,10 +24,16 @@ import io.ktor.server.application.Application
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import kotlinx.coroutines.launch
+import kotlin.system.exitProcess
 
 fun main() {
     val config = ServerConfig.fromEnv()
-    embeddedServer(CIO, port = config.port) { radarServer(ServerComponents.create(config)) }.start(wait = true)
+    val server = embeddedServer(CIO, port = config.port) { radarServer(ServerComponents.create(config)) }
+    SingleInstance.acquire {
+        server.stop(gracePeriodMillis = 500, timeoutMillis = 3_000)
+        exitProcess(0)
+    }
+    server.start(wait = true)
 }
 
 /** The archive, in [ArchiveDatabase] or, with `ARCHIVE_JDBC_URL=memory`, in memory. */

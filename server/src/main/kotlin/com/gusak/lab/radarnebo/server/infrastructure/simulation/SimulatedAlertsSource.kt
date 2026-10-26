@@ -24,7 +24,7 @@ class SimulatedAlertsSource(
     private val simulator = AirSituationSimulator(config, firstAlertId = (clock() - config.warmUp.inWholeMilliseconds) / 100)
 
     override val kind = DataSourceKind.Simulation
-    override val description = "SIMULATION (no ALERTS_API_TOKEN set): combined drone and missile strikes every " +
+    override val description = "SIMULATION: combined drone and missile strikes every " +
         "${config.strikePeriod}, front-line guided bombs, aviation and reconnaissance drones"
     override val pollInterval: Duration get() = config.tick
     override val providesObservations = true

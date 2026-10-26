@@ -6,6 +6,7 @@ import com.gusak.lab.radarnebo.debug.TrafficRecorder
 import com.gusak.lab.radarnebo.server.ServerComponents
 import com.gusak.lab.radarnebo.server.api.Health
 import com.gusak.lab.radarnebo.server.api.health
+import com.gusak.lab.radarnebo.server.config.DataSourceKind
 import com.gusak.lab.radarnebo.server.config.ServerConfig
 import com.gusak.lab.radarnebo.server.infrastructure.upstream.UpstreamRateLimiter
 import com.gusak.lab.radarnebo.server.radarServer
@@ -69,8 +70,15 @@ class ConsoleServer(private val baseConfig: ServerConfig = ServerConfig.fromEnv(
     private val _state = MutableStateFlow<ServerState>(ServerState.Stopped)
     val state: StateFlow<ServerState> = _state.asStateFlow()
 
+    private val _dataSource = MutableStateFlow(baseConfig.dataSource)
+
+    /** Where the server gets its alerts; [switchDataSource] changes it, restarting a running server. */
+    val dataSource: StateFlow<DataSourceKind> = _dataSource.asStateFlow()
+
+    /** alerts.in.ua needs ALERTS_API_TOKEN (environment or server/.env). */
+    val alertsInUaAvailable get() = !baseConfig.upstream.token.isNullOrBlank()
+
     val defaultPort get() = baseConfig.port
-    val dataSource get() = baseConfig.dataSource
     val upstreamBudgetPerMinute get() = baseConfig.upstream.effectivePerMinute
     val upstreamUrl get() = baseConfig.upstream.baseUrl
     val archive get() = baseConfig.archive.jdbcUrl
@@ -87,7 +95,7 @@ class ConsoleServer(private val baseConfig: ServerConfig = ServerConfig.fromEnv(
     suspend fun start(port: Int) = lock.withLock {
         if (engine != null) return@withLock
         _state.value = ServerState.Starting
-        val config = baseConfig.copy(port = port)
+        val config = baseConfig.copy(port = port, dataSourceOverride = _dataSource.value)
         try {
             val built = withContext(Dispatchers.IO) {
                 ServerComponents.create(config, traffic = recorder, upstreamLimiter = upstreamLimiter)
@@ -118,6 +126,16 @@ class ConsoleServer(private val baseConfig: ServerConfig = ServerConfig.fromEnv(
         components = null
         log.info("Server stopped")
         _state.value = ServerState.Stopped
+    }
+
+    /** Serves alerts from [kind] from now on; a running server restarts on the same port to switch. */
+    suspend fun switchDataSource(kind: DataSourceKind) {
+        if (kind == _dataSource.value || (kind == DataSourceKind.AlertsInUa && !alertsInUaAvailable)) return
+        _dataSource.value = kind
+        log.info("Data source set to {}", kind)
+        val running = _state.value as? ServerState.Running ?: return
+        stop()
+        start(running.port)
     }
 
     fun clearClients() = _clients.update { emptyMap() }

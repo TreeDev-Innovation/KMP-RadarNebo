@@ -61,20 +61,14 @@ compose.desktop {
     }
 }
 
-// Run like :server:run: from the server's directory (so both use the same archive under server/data)
-// with server/.env loaded; variables already set in the environment win.
-tasks.withType<JavaExec>().matching { it.name == "run" }.configureEach {
+// Run like :server:run, also under Compose Hot Reload: with server/.env loaded and the archive under server/data.
+// The console reads both from this property (see consoleConfig) rather than from environment variables and the
+// working directory, because hotRunAsync, which Android Studio's runs use, starts the app from hotRun's argfile
+// and only carries over its JVM arguments.
+tasks.withType<JavaExec>().matching { it.name in setOf("run", "hotRun", "hotDev") }.configureEach {
     val serverDir = rootProject.file("server")
     workingDir = serverDir
-    val envFile = serverDir.resolve(".env")
-    if (envFile.exists()) {
-        envFile.readLines()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("#") && "=" in it }
-            .map { it.substringBefore("=").trim() to it.substringAfter("=").trim().removeSurrounding("\"") }
-            .filter { (key, value) -> value.isNotEmpty() && System.getenv(key) == null }
-            .forEach { (key, value) -> environment(key, value) }
-    }
+    jvmArgs("-Dradarnebo.server.dir=${serverDir.absolutePath}")
 }
 
 // The process is called "RadarNebo Server" rather than "java" (buildSrc/src/main/kotlin/LaunchAs.kt).

@@ -30,6 +30,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
@@ -125,6 +128,7 @@ private fun TopBar(server: ConsoleServer, state: ServerState) {
                 Text(label, color = color, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+        DataSourceToggle(server, enabled = state is ServerState.Running || stopped)
         OutlinedTextField(
             port,
             onValueChange = { value -> port = value.filter(Char::isDigit).take(5) },
@@ -149,10 +153,34 @@ private fun TopBar(server: ConsoleServer, state: ServerState) {
     HorizontalDivider()
 }
 
+/** Switches the server between alerts.in.ua and the simulation; a running server restarts to switch. */
+@Composable
+private fun DataSourceToggle(server: ConsoleServer, enabled: Boolean) {
+    val scope = rememberCoroutineScope()
+    val current by server.dataSource.collectAsState()
+    val options = listOf(DataSourceKind.AlertsInUa to "alerts.in.ua", DataSourceKind.Simulation to "Simulation")
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        SingleChoiceSegmentedButtonRow {
+            options.forEachIndexed { index, (kind, label) ->
+                SegmentedButton(
+                    selected = current == kind,
+                    onClick = { scope.launch { server.switchDataSource(kind) } },
+                    shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                    enabled = enabled && (kind != DataSourceKind.AlertsInUa || server.alertsInUaAvailable),
+                ) { Text(label) }
+            }
+        }
+        if (!server.alertsInUaAvailable) {
+            Text("alerts.in.ua needs ALERTS_API_TOKEN", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Overview(server: ConsoleServer, state: ServerState, health: Health?) {
     val running = state as? ServerState.Running
+    val dataSource by server.dataSource.collectAsState()
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
             value = System.currentTimeMillis()
@@ -175,8 +203,8 @@ private fun Overview(server: ConsoleServer, state: ServerState, health: Health?)
             }
         }
         InfoCard("Data source") {
-            Fact("Source", if (server.dataSource == DataSourceKind.AlertsInUa) "alerts.in.ua" else "Simulation")
-            if (server.dataSource == DataSourceKind.AlertsInUa) Fact("Upstream", server.upstreamUrl)
+            Fact("Source", if (dataSource == DataSourceKind.AlertsInUa) "alerts.in.ua" else "Simulation")
+            if (dataSource == DataSourceKind.AlertsInUa) Fact("Upstream", server.upstreamUrl)
             Fact("Client keys", if (server.clientKeys == 0) "none (open to everyone)" else "${server.clientKeys} configured")
             Fact("Archive", server.archive)
         }
