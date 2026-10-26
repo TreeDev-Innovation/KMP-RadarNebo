@@ -11,11 +11,16 @@ import java.io.File
 
 /**
  * Desktop storage: a properties file, `~/.radarnebo/settings.properties` unless [settingsFile] is given; the server on
- * this machine. With [httpLogger], requests to the server and its responses are logged there.
+ * this machine, unless [serverDefaults] says otherwise. With [httpLogger], requests to the server and its responses are
+ * logged there.
  */
-fun desktopModule(settingsFile: File? = null, httpLogger: Logger? = null) = module {
+fun desktopModule(
+    settingsFile: File? = null,
+    httpLogger: Logger? = null,
+    serverDefaults: ServerDefaults = ServerDefaults(),
+) = module {
     single<KeyValueStorage> { settingsFile?.let(::FileStorage) ?: FileStorage() }
-    single { ServerDefaults() }
+    single { serverDefaults }
     single { MapTiles(HttpClient()) }
     if (httpLogger != null) single<Logger> { httpLogger }
 }

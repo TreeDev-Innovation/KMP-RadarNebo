@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="mission-control:ui + app:desktop" type="CompoundRunConfigurationType">
+    <toRun name="mission-control:ui" type="ShConfigurationType" />
+    <toRun name="app:desktop" type="ShConfigurationType" />
+    <method v="2" />
+  </configuration>
+</component>

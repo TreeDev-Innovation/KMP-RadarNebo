@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -79,24 +81,41 @@ fun ConsoleScreen(server: ConsoleServer, logs: LogCapture) {
         }
     }
     var tab by rememberSaveable { mutableStateOf(ConsoleTab.Requests) }
+    var clientView by rememberSaveable { mutableStateOf(ClientView.Hidden) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(Modifier.fillMaxSize()) {
-            TopBar(server, state)
-            Overview(server, state, health)
-            PrimaryTabRow(selectedTabIndex = tab.ordinal) {
-                ConsoleTab.entries.forEach { entry ->
-                    Tab(selected = tab == entry, onClick = { tab = entry }, text = { Text(entry.label) })
-                }
-            }
+            TopBar(server, state, clientView, onClientViewChange = { clientView = it })
             Box(Modifier.weight(1f).fillMaxWidth()) {
-                when (tab) {
-                    ConsoleTab.Requests -> {
-                        val exchanges by server.traffic.exchanges.collectAsState()
-                        TrafficInspector(exchanges, onClear = server.traffic::clear, modifier = Modifier.fillMaxSize(), showDirections = true)
+                // The console stays composed under a fullscreen client, so its tabs and filters are kept.
+                Row(Modifier.fillMaxSize()) {
+                    Column(Modifier.weight(1f).fillMaxHeight()) {
+                        Overview(server, state, health)
+                        PrimaryTabRow(selectedTabIndex = tab.ordinal) {
+                            ConsoleTab.entries.forEach { entry ->
+                                Tab(selected = tab == entry, onClick = { tab = entry }, text = { Text(entry.label) })
+                            }
+                        }
+                        Box(Modifier.weight(1f).fillMaxWidth()) {
+                            when (tab) {
+                                ConsoleTab.Requests -> {
+                                    val exchanges by server.traffic.exchanges.collectAsState()
+                                    TrafficInspector(exchanges, onClear = server.traffic::clear, modifier = Modifier.fillMaxSize(), showDirections = true)
+                                }
+                                ConsoleTab.Clients -> ClientsTab(server)
+                                ConsoleTab.Logs -> LogsTab(logs)
+                            }
+                        }
                     }
-                    ConsoleTab.Clients -> ClientsTab(server)
-                    ConsoleTab.Logs -> LogsTab(logs)
+                    if (clientView == ClientView.Embedded) {
+                        VerticalDivider()
+                        Spacer(Modifier.width(EmbeddedClientWidth))
+                    }
+                }
+                // One call site for both visible views, so switching between them keeps the client as it is.
+                if (clientView != ClientView.Hidden) {
+                    val size = if (clientView == ClientView.Fullscreen) Modifier.fillMaxSize() else Modifier.fillMaxHeight().width(EmbeddedClientWidth)
+                    ClientPane(Modifier.align(Alignment.TopEnd).then(size))
                 }
             }
         }
@@ -104,7 +123,7 @@ fun ConsoleScreen(server: ConsoleServer, logs: LogCapture) {
 }
 
 @Composable
-private fun TopBar(server: ConsoleServer, state: ServerState) {
+private fun TopBar(server: ConsoleServer, state: ServerState, clientView: ClientView, onClientViewChange: (ClientView) -> Unit) {
     val scope = rememberCoroutineScope()
     var port by rememberSaveable { mutableStateOf(server.defaultPort.toString()) }
     val stopped = state is ServerState.Stopped || state is ServerState.Failed
@@ -129,6 +148,7 @@ private fun TopBar(server: ConsoleServer, state: ServerState) {
             }
         }
         DataSourceToggle(server, enabled = state is ServerState.Running || stopped)
+        ClientViewToggle(clientView, onClientViewChange)
         OutlinedTextField(
             port,
             onValueChange = { value -> port = value.filter(Char::isDigit).take(5) },

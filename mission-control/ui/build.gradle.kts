@@ -29,6 +29,7 @@ dependencies {
     implementation(libs.logback.classic)
     implementation(compose.desktop.currentOs)
     implementation(libs.compose.material3)
+    implementation(libs.androidx.lifecycle.viewmodelCompose)
     implementation(libs.kotlinx.coroutines.swing)
 
     testImplementation(libs.kotlin.test)
@@ -67,8 +68,15 @@ compose.desktop {
 // and only carries over its JVM arguments.
 tasks.withType<JavaExec>().matching { it.name in setOf("run", "hotRun", "hotDev") }.configureEach {
     val serverDir = rootProject.file("mission-control/server")
+    val serverDirArg = "-Dradarnebo.server.dir=${serverDir.absolutePath}"
     workingDir = serverDir
-    jvmArgs("-Dradarnebo.server.dir=${serverDir.absolutePath}")
+    jvmArgs(serverDirArg)
+    // The Compose plugin sets up its `run` task after this and replaces its JVM arguments, so add the property back
+    // just before the task starts.
+    doFirst {
+        val exec = this as JavaExec
+        if (serverDirArg !in exec.jvmArgs.orEmpty()) exec.jvmArgs(serverDirArg)
+    }
 }
 
 // The process is called "RadarNebo Server" rather than "java" (buildSrc/src/main/kotlin/LaunchAs.kt).

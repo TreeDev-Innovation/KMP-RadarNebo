@@ -1,5 +1,7 @@
 # RadarNebo
 
+<img src="docs/screenshots/desktop-slide.png" width="100%" alt="The mission-control console with the client app embedded, next to the desktop app">
+
 A Kotlin Multiplatform (Android + iOS, Compose Multiplatform) drone threat monitor for Ukraine. The app talks only to
 the RadarNebo server (`:server`). The server reads the [alerts.in.ua open API](https://devs.alerts.in.ua/), or simulates
 combined drone and missile strikes when it has no token. It tracks targets, keeps the archive, and serves its own API
@@ -272,9 +274,12 @@ after changing the map's bounds or zoom limits, put a Carto basemaps key in `loc
   tokens are masked.
 - **Clients**: who has called, how often, their last request and status.
 - **Logs**: the server's log, filterable by level and text.
+- **Client** (top bar): one button that cycles the client app, the same `App()` the desktop app shows, through
+  *Hidden*, *Embedded* (a phone-wide pane on the right) and *Fullscreen* (everything below the top bar). It talks to this
+  server, with its own settings in `~/.radarnebo/mission-control-client.properties`; hiding it stops its polling.
 
-Restarting from the console keeps one alerts.in.ua rate limiter, so restarts can't exceed the budget. Don't run it
-alongside `:mission-control:server:run`: they share port 8080 and would each poll alerts.in.ua.
+Restarting from the console keeps one alerts.in.ua rate limiter, so restarts can't exceed the budget. It can't run
+alongside `:mission-control:server:run`: there is one server per machine, and starting either stops the other.
 
 The apps have a request inspector too: the ⇄ button on the map, *Show requests* on the server card, or Settings →
 Developer. On desktop it opens a separate window, on Android a separate screen.
@@ -327,7 +332,23 @@ sit at the oblast centroid, and other locations get a stable pseudo-random spot 
 
 ### Running the apps
 
-Use the run configurations provided by the run widget in your IDE's toolbar. You can also use these commands and options:
+Android Studio picks up the shared run configurations in [`.run/`](./.run) and lists them in the toolbar's run widget:
+
+| Configuration | Runs |
+|---|---|
+| `app:android` | The Android app on the selected device or emulator |
+| `app:ios` | The iOS app on the selected simulator (needs the Kotlin Multiplatform plugin and Xcode) |
+| `app:desktop` / `app:desktop [hot]` | `./gradlew :app:desktop:run` / `hotRun` (Compose Hot Reload) |
+| `mission-control:ui` / `mission-control:ui [hot]` | `./gradlew :mission-control:ui:run` / `hotRun` |
+| `mission-control:server` | `./gradlew :mission-control:server:run`, the server without a window |
+| `mission-control:ui + app:desktop` | Both of the above at once |
+
+The desktop and mission-control configurations run `./gradlew` as shell scripts, so each is a Gradle build of its own
+and they run side by side, alongside the Android or iOS app. Android Studio's own Gradle runs would queue behind a
+running app instead. Stop ends the build and the app. The one pair that doesn't run together is `mission-control:ui`
+and `mission-control:server`: there is one server per machine, and the one started later takes over.
+
+From a terminal:
 
 - Android app: `./gradlew :app:android:assembleDebug`
 - Desktop app: `./gradlew :app:desktop:run`
