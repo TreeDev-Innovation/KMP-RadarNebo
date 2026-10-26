@@ -61,11 +61,17 @@ Rendered from the app's Compose previews (see [Previews](#previews)); the map an
     marked *probable*.
   - **ID** (target and alert IDs), **speed**, **direction**, **distance flown** and **time tracked**.
   - **Predicted route**: the settlements ahead on the current heading (up to 150 km), each with minutes to arrival
-    and clock time, drawn on the map as a dashed course with numbered stops.
+    and clock time, drawn on the map as a solid arrow with numbered stops.
   - **Timeline**: every reported position with its time, place, oblast and coordinates, plus the current estimate.
+    On the map the path through them is a dashed white line that fades out towards the oldest report.
 
   Drones move continuously on the map: every frame their position is dead-reckoned from the last report (up to 30 min
   ahead), and when a new report corrects it the marker glides there instead of jumping.
+
+  Targets fly above the map at their class's typical altitude (neither alerts.in.ua nor the simulation reports it):
+  each is lifted above a shadow on its ground position, joined to it by a thin stalk, and the selected one shows its
+  altitude. A perspective camera above the centre of the view pushes higher targets further out and draws them a
+  little larger, so when the map is panned they glide over it with parallax that shows how high they fly.
 - **Arrival prediction**: for each active target the app projects its current heading and speed to find the next
   settlement (or favorite) on its way within 50 km. It shows that place and an estimated arrival time in minutes on
   the map, in the target list and in the target details (`core/.../tracking/Prediction.kt`). The settlement list holds
@@ -172,8 +178,15 @@ apps only read. It is a Ktor (CIO) application in DDD layers, under `mission-con
   never affects the upstream rate. alerts.in.ua allows 8–10 requests/min per IP (soft) and 12 (hard). The server polls
   every 15 s; a sliding-window limiter caps it at `UPSTREAM_MAX_PER_MINUTE` (default 6, never above 8) and spaces
   requests evenly. It sends `If-Modified-Since`, honours `Retry-After` on 429 and backs off exponentially (up to 10 min).
-  Alerts carry no positions, so tracks are reconstructed from them: a drone or cruise-missile threat appearing close
-  to a recent track of the same kind continues it (`DroneTracker`, `TrackKinematics`).
+  Alerts carry no positions, so tracks are reconstructed from them (`DroneTracker`, `TrackKinematics`). alerts.in.ua
+  alerts per raion, and a passing drone group shows up as a chain of raion alerts 10–30 min apart, each often raised
+  for two or three neighbouring raions within a minute or two. Alerts of one kind that start within 3 min and 80 km
+  of each other are therefore one report of one group, placed at their centroid. A report continues the track whose
+  predicted position (its fitted velocity over the last few reports) is nearest, if that track reported within the
+  re-acquire window (45 min for drones), the hop is reachable at the type's top speed, and a drone group would not
+  turn back more than 100°. The window and gates were tuned by replaying the server's archive of real alerts.
+  The app can switch this off (Settings → Smart mapping): raion alerts then scatter in their oblast and the server
+  serves tracks from a second tracker that links alerts by distance alone.
 - **Simulation** (no token, or `DATA_SOURCE=simulation`): see below. It reports what air surveillance would see, so
   tracks follow the real flight paths (`ObservationTracking`).
 
@@ -228,7 +241,7 @@ against the server:
 
 | Endpoint | Returns |
 |---|---|
-| `GET /v1/drones/tracks.json[?active=true]` | Every tracked target (drones, cruise and ballistic missiles, guided bombs) with its position history, plus `serverTime` and `simulated`. Long tracks are thinned so polls stay small. |
+| `GET /v1/drones/tracks.json[?active=true][&mapping=basic]` | Every tracked target (drones, cruise and ballistic missiles, guided bombs) with its position history, plus `serverTime` and `simulated`. Long tracks are thinned so polls stay small. `mapping=basic` serves tracks linked without smart mapping (the app's Settings → Smart mapping switch). |
 | `GET /v1/drones/positions.json?at=<ms or ISO-8601>` | Positions interpolated between samples, or dead-reckoned past the last one |
 | `GET /v1/drones/archive.json?from=&to=&type=&limit=` | Finished and current tracks in a time window (default: the last day) |
 | `GET /health` | Data source, freshness, upstream budget, last error (no key needed) |
@@ -256,13 +269,16 @@ loads it, and variables already set in the environment win.
 The map can show a real map under the oblasts: a dark or light map that follows the theme, or satellite imagery
 (Settings → Map). The dark and light maps are Carto's label-free basemaps, bundled with the app as resources
 (`shared/src/commonMain/composeResources/files/map`) so they work offline; satellite imagery comes from Esri's public
-tile service (no key needed). Tiles are cached in memory and drawn reprojected onto the app's map, so coastlines and
+tile service (no key needed) in the light theme, and in the dark theme is NASA's Black Marble night imagery (city
+lights), bundled too. Over satellite imagery everything outside Ukraine is darkened. Tiles are cached in memory and drawn reprojected onto the app's map, so coastlines and
 rivers line up with the oblast borders. The required credit is shown in the map's corner. Tests and previews draw
 no tiles.
 
 The bundled tiles cover everything the camera can show (zoom 3–9; closer views upscale zoom 9). To refresh them, or
 after changing the map's bounds or zoom limits, put a Carto basemaps key in `local.properties` as `carto.apiKey=…`
 (or `CARTO_API_KEY`) and run `python3 -I tools/download-map-tiles.py`; `--dry-run` prints the area and tile counts.
+The night imagery is refreshed with `--night` (no key; NASA GIBS serves it up to zoom 8, and macOS `sips` re-encodes
+it to JPEG).
 
 ### Server console
 
@@ -314,8 +330,10 @@ the first settings save. By default the app looks for a server on the same machi
 `10.0.2.2`; cleartext HTTP is allowed only to that and `localhost`). Polling defaults to 30 s. The server answers
 unchanged data with a 304, and the app interpolates target positions every frame between polls.
 
-The alerts.in.ua API gives no coordinates for raions or hromadas. Known cities are placed exactly, oblast-wide alerts
-sit at the oblast centroid, and other locations get a stable pseudo-random spot inside their oblast.
+The alerts.in.ua API gives no coordinates for raions or hromadas. Raions (most alerts) are placed at their centre from
+`geo/UkraineRaions.kt`, generated from OpenStreetMap by `python3 -I tools/download-raions.py`. Known cities are placed
+exactly, oblast-wide alerts sit at the oblast centroid, and other locations get a stable pseudo-random spot inside their
+oblast.
 
 
 * [/app/ios](./app/ios/iosApp) contains an iOS application. Even if you’re sharing your UI with Compose Multiplatform,

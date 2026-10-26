@@ -17,4 +17,9 @@ data class TrackingUpdate(
     val tracks: List<DroneTrack>,
     /** Tracks that ended in this update, to be archived. */
     val ended: List<DroneTrack>,
+    /**
+     * The same alerts linked the basic way (no same-group filter or course gates), for clients that turned smart
+     * mapping off; served, never archived. Null when the strategy has only one way, e.g. surveillance sightings.
+     */
+    val basicTracks: List<DroneTrack>? = null,
 )

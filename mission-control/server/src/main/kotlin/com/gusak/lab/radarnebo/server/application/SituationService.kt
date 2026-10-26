@@ -35,6 +35,11 @@ class SituationService(
     var tracks: List<DroneTrack> = emptyList()
         private set
 
+    /** [tracks] linked the basic way, for clients with smart mapping off; the same as [tracks] when tracking has one way. */
+    @Volatile
+    var basicTracks: List<DroneTrack> = emptyList()
+        private set
+
     private val mutex = Mutex()
     private var lastReport: SituationReport? = null
     private var reconciled = false
@@ -51,6 +56,7 @@ class SituationService(
         board = board?.confirmed(Instant.fromEpochMilliseconds(atMs))
         val update = tracking.update(report.alerts, emptyList(), atMs)
         tracks = update.tracks
+        basicTracks = update.basicTracks ?: update.tracks
         if (update.ended.isNotEmpty()) trackArchive.save(update.ended)
     }
 
@@ -87,6 +93,7 @@ class SituationService(
         board = change.board
         val update = tracking.update(change.board.alerts, report.observations, report.observedAt)
         tracks = update.tracks
+        basicTracks = update.basicTracks ?: update.tracks
         lastReport = report
         if (!archive) return
 

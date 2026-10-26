@@ -88,9 +88,15 @@ class RadarNeboApi(
         FetchResult.Failure(e.message ?: "Network error")
     }
 
-    /** Tracked targets with their position history; null on any failure. */
-    suspend fun tracks(endpoint: ServerEndpoint): DroneTracksResponse? = try {
-        val response = client.get(endpoint.resolve(TRACKS_PATH)) { authorize(endpoint) }
+    /**
+     * Tracked targets with their position history; null on any failure. Without [smartMapping] the server's basic
+     * tracking is asked for (`?mapping=basic`), linking alerts without the same-group filter and course gates.
+     */
+    suspend fun tracks(endpoint: ServerEndpoint, smartMapping: Boolean = true): DroneTracksResponse? = try {
+        val response = client.get(endpoint.resolve(TRACKS_PATH)) {
+            authorize(endpoint)
+            if (!smartMapping) url.parameters.append(MAPPING_PARAM, BASIC_MAPPING)
+        }
         if (response.status == HttpStatusCode.OK) response.body<DroneTracksResponse>() else null
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
@@ -120,6 +126,8 @@ class RadarNeboApi(
 
         const val ACTIVE_ALERTS_PATH = "/v1/alerts/active.json"
         const val TRACKS_PATH = "/v1/drones/tracks.json"
+        const val MAPPING_PARAM = "mapping"
+        const val BASIC_MAPPING = "basic"
         const val POSITIONS_PATH = "/v1/drones/positions.json"
         const val TRACK_ARCHIVE_PATH = "/v1/drones/archive.json"
         const val HEALTH_PATH = "/health"

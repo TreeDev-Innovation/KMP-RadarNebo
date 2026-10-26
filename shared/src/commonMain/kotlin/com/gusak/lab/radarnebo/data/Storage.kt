@@ -24,6 +24,9 @@ enum class MapMode { Static, Cinematic }
 
 enum class ThemeMode { System, Light, Dark }
 
+/** The app's colours; each has a light and a dark variant, picked by [ThemeMode]. */
+enum class ColorPalette { Radar, Nord, Dracula, Solarized, Catppuccin, ObsidianPlum, SmokedCopper, BlueHonor }
+
 /** What the map shows under the oblasts: nothing, a map (dark or light with the theme) or satellite imagery. */
 enum class MapBackground { None, Streets, Satellite }
 
@@ -34,12 +37,18 @@ data class AppSettings(
     val accessKey: String = "",
     val mapMode: MapMode = MapMode.Static,
     val themeMode: ThemeMode = ThemeMode.System,
+    val colorPalette: ColorPalette = ColorPalette.Radar,
     val maxMapMarkers: Int = DEFAULT_MAX_MARKERS,
     val proximityRadiusKm: Int = 50,
     val dronesOnly: Boolean = true,
     val pollSeconds: Int = 30,
     val targetFilter: TargetFilter = TargetFilter(),
     val mapBackground: MapBackground = MapBackground.Streets,
+    /**
+     * Raion alerts placed at their raion and tracks linked with the same-group filter and course gates. Off, raion
+     * alerts scatter in their oblast and the server links tracks the basic way.
+     */
+    val smartMapping: Boolean = true,
 ) {
     val endpoint get() = ServerEndpoint(serverUrl.trim(), accessKey.trim())
 
@@ -78,6 +87,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
             accessKey = storage.getString(K_ACCESS_KEY) ?: legacyKey.orEmpty(),
             mapMode = storage.getString(K_MODE)?.let { runCatching { MapMode.valueOf(it) }.getOrNull() } ?: MapMode.Static,
             themeMode = storage.getString(K_THEME)?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.System,
+            colorPalette = storage.getString(K_PALETTE)?.let { runCatching { ColorPalette.valueOf(it) }.getOrNull() } ?: ColorPalette.Radar,
             maxMapMarkers = storage.getString(K_MAX_MARKERS)?.toIntOrNull()
                 ?.coerceIn(AppSettings.MAX_MARKERS_RANGE) ?: AppSettings.DEFAULT_MAX_MARKERS,
             proximityRadiusKm = storage.getString(K_RADIUS)?.toIntOrNull()?.coerceIn(AppSettings.RADIUS_RANGE) ?: 50,
@@ -90,6 +100,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
             ),
             mapBackground = storage.getString(K_MAP_BACKGROUND)?.let { runCatching { MapBackground.valueOf(it) }.getOrNull() }
                 ?: MapBackground.Streets,
+            smartMapping = storage.getString(K_SMART_MAPPING)?.toBooleanStrictOrNull() ?: true,
         )
     }
 
@@ -98,6 +109,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
         storage.putString(K_ACCESS_KEY, settings.accessKey.trim())
         storage.putString(K_MODE, settings.mapMode.name)
         storage.putString(K_THEME, settings.themeMode.name)
+        storage.putString(K_PALETTE, settings.colorPalette.name)
         storage.putString(K_MAX_MARKERS, settings.maxMapMarkers.toString())
         storage.putString(K_RADIUS, settings.proximityRadiusKm.toString())
         storage.putString(K_DRONES_ONLY, settings.dronesOnly.toString())
@@ -105,6 +117,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
         storage.putString(K_HIDDEN_KINDS, settings.targetFilter.hiddenKinds.joinToString(",") { it.name })
         storage.putString(K_HIDE_PROBABLE, settings.targetFilter.hideProbable.toString())
         storage.putString(K_MAP_BACKGROUND, settings.mapBackground.name)
+        storage.putString(K_SMART_MAPPING, settings.smartMapping.toString())
         // An alerts.in.ua token belongs on the server, never on the device.
         storage.putString(K_LEGACY_TOKEN, null)
         storage.putString(K_LEGACY_BASE_URL, null)
@@ -118,6 +131,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
         const val LEGACY_UPSTREAM_HOST = "alerts.in.ua"
         const val K_MODE = "map_mode"
         const val K_THEME = "theme_mode"
+        const val K_PALETTE = "color_palette"
         const val K_MAX_MARKERS = "map_max_markers"
         const val K_RADIUS = "proximity_radius_km"
         const val K_DRONES_ONLY = "drones_only"
@@ -125,6 +139,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
         const val K_HIDDEN_KINDS = "targets_hidden_kinds"
         const val K_HIDE_PROBABLE = "targets_hide_probable"
         const val K_MAP_BACKGROUND = "map_background"
+        const val K_SMART_MAPPING = "smart_mapping"
     }
 }
 

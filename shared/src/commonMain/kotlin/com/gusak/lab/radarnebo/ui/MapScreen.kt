@@ -23,6 +23,9 @@ import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import com.gusak.lab.radarnebo.tracking.Place
+import com.gusak.lab.radarnebo.tracking.DroneTrack
+import com.gusak.lab.radarnebo.tracking.TargetClassifier
+import com.gusak.lab.radarnebo.tracking.TrackInterpolator
 import com.gusak.lab.radarnebo.tracking.TrackPredictor
 import kotlin.time.Clock
 import androidx.compose.animation.fadeIn
@@ -60,6 +63,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -90,6 +95,8 @@ import com.gusak.lab.radarnebo.geo.Regions
 import kotlin.math.roundToInt
 import com.gusak.lab.radarnebo.ui.map.CinematicShot
 import com.gusak.lab.radarnebo.ui.map.MapCamera
+import com.gusak.lab.radarnebo.ui.map.MapProjection
+import com.gusak.lab.radarnebo.ui.map.groundUnder
 import com.gusak.lab.radarnebo.ui.map.MapSelection
 import com.gusak.lab.radarnebo.ui.map.ShotPlanner
 import com.gusak.lab.radarnebo.ui.map.UkraineMap
@@ -150,6 +157,10 @@ fun MapScreen(
     // Hovering a row in the targets list previews that target; the map returns when the pointer leaves.
     var hoveredTrackId by remember { mutableStateOf<String?>(null) }
     var cameraBeforeHover by remember { mutableStateOf<MapCamera?>(null) }
+    // The camera keeps the selected target in view as it moves, until the user pans the map.
+    var followingSelection by remember { mutableStateOf(false) }
+    val currentTracks by rememberUpdatedState(state.tracks)
+    val currentClockOffset by rememberUpdatedState(state.clockOffsetMs)
     val inspectionMode = LocalInspectionMode.current
     val alertedFavoriteIds = remember(state.proximity) { state.proximity.map { it.favorite.id }.toSet() }
     // Favorites first so that, at equal distance, a favorite wins over the city it sits in.
@@ -193,6 +204,13 @@ fun MapScreen(
             }
         }
 
+        // Targets fly above the map and the camera's perspective pushes them out from the centre of the view:
+        // [visible] moved to where the target's ground spot must be for the target itself to show in its middle.
+        fun airFrame(track: DroneTrack, viewport: Size, visible: Rect): Rect {
+            val altitude = TargetClassifier.classify(track).kind.typicalAltitudeM
+            return visible.translate(with(density) { groundUnder(visible.center, altitude, viewport) } - visible.center)
+        }
+
         // Frames a target's whole path and predicted destination (or a lone threat) in the part of the map left visible.
         fun framing(trackId: String?, threatId: String? = null): MapCamera? {
             if (viewport.width <= 0f) return null
@@ -202,9 +220,22 @@ fun MapScreen(
                 return MapCamera.framing(listOf(threat.point), viewport, visibleArea)
             }
             val now = Clock.System.now().toEpochMilliseconds() + state.clockOffsetMs
-            val points = track.samples.map { it.point } +
+            val position = TrackInterpolator.positionAt(track, now)?.point
+            val points = track.samples.map { it.point } + listOfNotNull(position) +
                 listOfNotNull(TrackPredictor.predict(track, now, predictionPlaces)?.place?.point)
-            return MapCamera.framing(points, viewport, visibleArea)
+            return MapCamera.framing(points, viewport, airFrame(track, viewport, visibleArea), focus = position)
+        }
+
+        val currentViewport by rememberUpdatedState(viewport)
+        val currentVisibleArea by rememberUpdatedState(visibleArea)
+
+        // Camera at [zoom] with the selected target, where it is now, in the middle of the visible part of the map.
+        fun following(zoom: Float): MapCamera? {
+            val track = currentTracks.firstOrNull { it.id == selectedTrackId } ?: return null
+            val now = Clock.System.now().toEpochMilliseconds() + currentClockOffset
+            val position = TrackInterpolator.positionAt(track, now) ?: return null
+            val frame = airFrame(track, currentViewport, currentVisibleArea)
+            return MapCamera.centeredOn(MapProjection.toWorld(position.point), zoom, currentViewport, frame)
         }
 
         suspend fun flyTo(target: MapCamera) {
@@ -219,10 +250,19 @@ fun MapScreen(
             }
         }
 
-        // Fly the static map to the selected target.
+        // Fly the static map to the selected target, then keep it in the middle of the visible part of
+        // the map as it moves, until the user pans away. Hover previews take the camera meanwhile.
         LaunchedEffect(selectedTrackId, selectedThreatId, panelVisible) {
+            followingSelection = false
             if (!panelVisible) return@LaunchedEffect
             framing(selectedTrackId, selectedThreatId)?.let { flyTo(it) }
+            if (selectedTrackId == null || inspectionMode) return@LaunchedEffect
+            followingSelection = true
+            while (followingSelection) {
+                withFrameMillis { }
+                if (hoveredTrackId != null || cameraBeforeHover != null) continue
+                following(staticCamera.zoom)?.let { staticCamera = it }
+            }
         }
 
         // Preview the hovered target, and fly back once the pointer leaves the list. The short wait keeps
@@ -235,9 +275,10 @@ fun MapScreen(
                 if (cameraBeforeHover == null) cameraBeforeHover = staticCamera
                 flyTo(target)
             } else {
-                cameraBeforeHover?.let {
+                cameraBeforeHover?.let { before ->
+                    // A followed target has moved on meanwhile: return to where it is now.
+                    flyTo((if (followingSelection) following(before.zoom) else null) ?: before)
                     cameraBeforeHover = null
-                    flyTo(it)
                 }
             }
         }
@@ -258,7 +299,11 @@ fun MapScreen(
                     predictionPlaces = predictionPlaces,
                     tracks = state.tracks,
                     clockOffsetMs = state.clockOffsetMs,
-                    onCameraChange = { staticCamera = it },
+                    onCameraChange = {
+                        // Panning lets go of the followed target; zooming keeps it in the middle.
+                        if (it.zoom == staticCamera.zoom) followingSelection = false
+                        staticCamera = it
+                    },
                     onSelect = onMapSelect,
                     pendingFavorite = pendingFavorite,
                     onLongPress = {

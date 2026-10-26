@@ -24,7 +24,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 
-/** Renders tracked demo drones, the targets panel and a selected target's timeline. */
+/** Renders tracked demo drones, the targets panel and a selected target's timeline, also scrolled. */
 @OptIn(ExperimentalComposeUiApi::class)
 class TargetsSnapshotTest {
 
@@ -93,6 +93,9 @@ class TargetsSnapshotTest {
             save(frames(30), "targets-$name-list.png")
             click(firstRow)
             save(frames(60), "targets-$name-detail.png")
+            // Scrolled, the details pass under the pinned header, which now casts a shadow.
+            scene.sendPointerEvent(PointerEventType.Scroll, firstRow, scrollDelta = Offset(0f, 3f))
+            save(frames(30), "targets-$name-detail-scrolled.png")
         }
     }
 

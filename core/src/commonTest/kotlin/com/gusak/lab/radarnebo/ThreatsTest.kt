@@ -129,6 +129,28 @@ class LocateTest {
     }
 
     @Test
+    fun raionsSitAtTheirCentreUnderAnyOfTheirNames() {
+        val bashtanka = com.gusak.lab.radarnebo.data.Alert(
+            id = 1, locationTitle = "Баштанський район", locationType = "raion", locationUid = "96",
+            locationOblast = "Миколаївська область",
+        )
+        val point = ThreatMapper.locate(bashtanka)!!
+        assertTrue(GeoMath.distanceKm(point, GeoPoint(47.41, 32.44)) < 30, "near Bashtanka, got $point")
+        assertEquals(17, Regions.oblastAt(point))
+        // Without smart mapping the raion falls back to a spot somewhere in its oblast.
+        val scattered = ThreatMapper.locate(bashtanka, smartMapping = false)!!
+        assertTrue(scattered != point)
+        assertEquals(17, Regions.oblastAt(scattered))
+        // Renamed in 2024 (Новомосковський → Самарівський); alerts may use either name. Apostrophe variants match too.
+        assertEquals(Regions.raionForTitle("Самарівський район"), Regions.raionForTitle("Новомосковський район"))
+        assertEquals(Regions.raionForTitle("Кам’янець-Подільський район"), Regions.raionForTitle("Кам'янець-Подільський район"))
+        // Every raion centre lies in its own oblast.
+        com.gusak.lab.radarnebo.geo.UkraineRaions.all.filter { it.oblastUid != 29 }.forEach { raion ->
+            assertEquals(raion.oblastUid, Regions.oblastByPolygon(raion.point) ?: raion.oblastUid, raion.names.first())
+        }
+    }
+
+    @Test
     fun theOblastComesFromItsNameBecauseAlertsInUaRepeatsTheLocationUid() {
         // As alerts.in.ua sends it: location_oblast_uid is the raion's own UID, a number.
         val response = RadarNeboApi.json.decodeFromString(ActiveAlertsResponse.serializer(), """

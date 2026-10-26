@@ -148,15 +148,7 @@ fun TargetsButton(open: Boolean, activeCount: Int, onClick: () -> Unit, modifier
             Canvas(Modifier.size(24.dp)) { drawCrosshair(lerp(primary, onPrimary, progress)) }
         }
         if (activeCount > 0) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(18.dp)
-                    .background(radarColors.danger, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(activeCount.coerceAtMost(99).toString(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
+            CountBadge(activeCount.coerceAtMost(99), radarColors.danger, Modifier.align(Alignment.TopEnd), size = 18.dp)
         }
     }
 }

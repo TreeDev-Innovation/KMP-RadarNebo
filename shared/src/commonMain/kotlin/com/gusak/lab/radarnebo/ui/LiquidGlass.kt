@@ -120,6 +120,8 @@ fun Modifier.liquidGlass(
     shape: Shape,
     blurRadius: Dp = 18.dp,
     magnification: Float = 1.08f,
+    /** Extra tint over the glass, for panels whose text must stay readable over a busy backdrop. */
+    tint: Color = Color.Transparent,
 ): Modifier {
     val colors = radarColors
     var position by remember { mutableStateOf(Offset.Zero) }
@@ -132,7 +134,10 @@ fun Modifier.liquidGlass(
             val clip = Path().apply { addOutline(outline) }
             if (!backdrop.enabled) {
                 // Frosted stand-in: no backdrop to blur, so an opaque-enough overlay keeps labels readable.
-                clipPath(clip) { drawRect(colors.overlay) }
+                clipPath(clip) {
+                    drawRect(colors.overlay)
+                    drawRect(tint)
+                }
                 drawOutline(outline, colors.glassRimLight, style = Stroke(1.dp.toPx()))
                 return@drawBehind
             }
@@ -150,6 +155,7 @@ fun Modifier.liquidGlass(
                     drawLayer(backdrop.blurred)
                 }
                 drawRect(colors.glassTint)
+                drawRect(tint)
                 drawRect(Brush.verticalGradient(0f to Color.White.copy(alpha = if (colors.isDark) 0.10f else 0.35f), 0.55f to Color.Transparent))
             }
             drawOutline(
@@ -235,16 +241,11 @@ fun GlassNavigationBar(
                     Box {
                         Text(item.glyph, color = tint, fontSize = 20.sp)
                         if (item.badge > 0) {
-                            Box(
-                                Modifier
-                                    .align(Alignment.TopEnd)
-                                    .offset(x = 10.dp, y = (-4).dp)
-                                    .size(16.dp)
-                                    .background(colors.danger, CircleShape),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(item.badge.coerceAtMost(9).toString(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
+                            CountBadge(
+                                item.badge.coerceAtMost(9),
+                                colors.danger,
+                                Modifier.align(Alignment.TopEnd).offset(x = 10.dp, y = (-4).dp),
+                            )
                         }
                     }
                     Text(item.label, color = tint, fontSize = 11.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)

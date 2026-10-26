@@ -24,7 +24,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -133,6 +137,28 @@ private fun PanelHeader(title: String, subtitle: String, onClose: () -> Unit, le
     }
 }
 
+/**
+ * A [header] pinned above a scrolling list. The header sits flush with the panel until the list is scrolled,
+ * then casts a shadow over the content passing beneath it.
+ */
+@Composable
+private fun StickyHeaderList(
+    header: @Composable () -> Unit,
+    contentPadding: PaddingValues,
+    content: LazyListScope.() -> Unit,
+) {
+    val listState = rememberLazyListState()
+    val scrolled = listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+    val elevation by animateDpAsState(if (scrolled) 6.dp else 0.dp)
+    Column {
+        // Above the list, so the shadow falls on the rows rather than under them.
+        Surface(Modifier.zIndex(1f), color = MaterialTheme.colorScheme.surfaceContainerHigh, shadowElevation = elevation) {
+            Column(Modifier.fillMaxWidth()) { header() }
+        }
+        LazyColumn(Modifier.weight(1f), state = listState, contentPadding = contentPadding, content = content)
+    }
+}
+
 @Composable
 private fun TargetList(
     tracks: List<DroneTrack>,
@@ -154,35 +180,40 @@ private fun TargetList(
         .filter { !activeOnly || it.active }
         .sortedWith(compareByDescending<DroneTrack> { it.active }.thenByDescending { it.samples.last().t })
 
-    Column {
-        PanelHeader("Targets", "$active active · ${allowed.size} tracked" + if (hidden > 0) " · $hidden hidden" else "", onClose)
-        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(activeOnly, onClick = { activeOnly = true }, label = { Text("Active ($active)") })
-            FilterChip(!activeOnly, onClick = { activeOnly = false }, label = { Text("All (${allowed.size})") })
-            FilterChip(
-                filterOpen || filter.isActive,
-                onClick = { filterOpen = !filterOpen },
-                label = { Text(if (filter.isActive) "Filter · $hidden" else "Filter") },
-            )
-        }
-        if (filterOpen) {
-            TargetFilterOptions(filter, profiles.values.toList(), onFilterChange)
-        }
-        if (shown.isEmpty()) {
-            Text(
-                if (hidden > 0 && tracks.any { !activeOnly || it.active }) {
-                    "Every target here is hidden by the filter."
-                } else {
-                    "No drone targets tracked yet. Targets appear when a drone alert is followed by another one nearby."
-                },
-                Modifier.padding(16.dp),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
-        LazyColumn(contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp)) {
-            items(shown, key = { it.id }) { track ->
-                TargetRow(track, now, TrackPredictor.predict(track, now, places), onHover = { onHover(track.id, it) }) { onSelect(track.id) }
+    StickyHeaderList(
+        header = {
+            PanelHeader("Targets", "$active active · ${allowed.size} tracked" + if (hidden > 0) " · $hidden hidden" else "", onClose)
+            Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(activeOnly, onClick = { activeOnly = true }, label = { Text("Active ($active)") })
+                FilterChip(!activeOnly, onClick = { activeOnly = false }, label = { Text("All (${allowed.size})") })
+                FilterChip(
+                    filterOpen || filter.isActive,
+                    onClick = { filterOpen = !filterOpen },
+                    label = { Text(if (filter.isActive) "Filter · $hidden" else "Filter") },
+                )
             }
+            if (filterOpen) {
+                TargetFilterOptions(filter, profiles.values.toList(), onFilterChange)
+            }
+            Spacer(Modifier.height(8.dp))
+        },
+        contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 12.dp),
+    ) {
+        if (shown.isEmpty()) {
+            item {
+                Text(
+                    if (hidden > 0 && tracks.any { !activeOnly || it.active }) {
+                        "Every target here is hidden by the filter."
+                    } else {
+                        "No drone targets tracked yet. Targets appear when a drone alert is followed by another one nearby."
+                    },
+                    Modifier.padding(4.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+        items(shown, key = { it.id }) { track ->
+            TargetRow(track, now, TrackPredictor.predict(track, now, places), onHover = { onHover(track.id, it) }) { onSelect(track.id) }
         }
     }
 }
@@ -288,8 +319,8 @@ private fun TargetDetail(track: DroneTrack, now: Long, places: List<Place>, onBa
     val trackedMinutes = ((now.coerceAtLeast(track.samples.last().t) - track.samples.first().t) / 60_000).coerceAtLeast(0)
     val flownKm = TrackMetrics.distanceFlownKm(track, position)
 
-    LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
-        item {
+    StickyHeaderList(
+        header = {
             PanelHeader(
                 title = "Target ${targetName(track.id)}",
                 subtitle = listOfNotNull(
@@ -300,7 +331,9 @@ private fun TargetDetail(track: DroneTrack, now: Long, places: List<Place>, onBa
                 onClose = onClose,
                 leading = { TextButton(onClick = onBack) { Text("‹ All targets") } },
             )
-        }
+        },
+        contentPadding = PaddingValues(bottom = 16.dp),
+    ) {
         item {
             ProfileCard(
                 profile = profile,
@@ -319,6 +352,9 @@ private fun TargetDetail(track: DroneTrack, now: Long, places: List<Place>, onBa
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Stat("Distance flown", "${flownKm.toInt()} km", Modifier.weight(1f))
                     Stat("Tracked for", "$trackedMinutes min", Modifier.weight(1f))
+                }
+                profile.kind.typicalAltitudeM?.let { altitude ->
+                    Stat("Altitude (typical for its class)", "~${formatAltitude(altitude)}", Modifier.fillMaxWidth())
                 }
             }
         }
@@ -393,15 +429,17 @@ private fun TargetDetail(track: DroneTrack, now: Long, places: List<Place>, onBa
 @Composable
 private fun ThreatDetail(marker: ThreatMarker, onBack: () -> Unit, onClose: () -> Unit) {
     val profile = remember(marker.id, marker.message) { TargetClassifier.classify(marker) }
-    LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
-        item {
+    StickyHeaderList(
+        header = {
             PanelHeader(
                 title = marker.title,
                 subtitle = listOf(marker.type.label, "${marker.level.name} level", "active").joinToString(" · "),
                 onClose = onClose,
                 leading = { TextButton(onClick = onBack) { Text("‹ All targets") } },
             )
-        }
+        },
+        contentPadding = PaddingValues(bottom = 16.dp),
+    ) {
         item {
             ProfileCard(
                 profile = profile,

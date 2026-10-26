@@ -36,9 +36,10 @@ data class ProximityHit(
 
 object ThreatMapper {
 
-    fun toMarkers(alerts: List<Alert>, dronesOnly: Boolean): List<ThreatMarker> = alerts
+    /** With [smartMapping] off, raion alerts are scattered in their oblast instead of placed at the raion (see [locate]). */
+    fun toMarkers(alerts: List<Alert>, dronesOnly: Boolean, smartMapping: Boolean = true): List<ThreatMarker> = alerts
         .flatMap { alert ->
-            val point = locate(alert) ?: return@flatMap emptyList()
+            val point = locate(alert, smartMapping) ?: return@flatMap emptyList()
             val oblastUid = oblastUid(alert)
             alert.threats
                 .filter { !dronesOnly || it.threatType == ThreatType.Drones.apiValue }
@@ -70,7 +71,12 @@ object ThreatMapper {
         ?: listOfNotNull(alert.locationOblastUid, alert.locationUid.toIntOrNull().takeIf { alert.locationType == "oblast" })
             .firstOrNull { Regions.oblast(it) != null }
 
-    fun locate(alert: Alert): GeoPoint? {
+    /**
+     * Where to show [alert]. Oblasts sit at their centre and named cities and hromadas at the city. Raions sit at
+     * their centre with [smartMapping], or else, like any other place without coordinates, at a stable
+     * pseudo-random spot in their oblast.
+     */
+    fun locate(alert: Alert, smartMapping: Boolean = true): GeoPoint? {
         val oblastUid = oblastUid(alert)
         if (alert.locationType == "oblast" || oblastUid == Regions.KYIV_CITY_UID || oblastUid == Regions.SEVASTOPOL_UID) {
             return oblastUid?.let(Regions::center)
@@ -78,6 +84,10 @@ object ThreatMapper {
         // Raion names often share a city's stem ("Харківський район"), so only cities/hromadas snap to a city.
         if (alert.locationType == "city" || alert.locationType == "hromada") {
             Regions.cityForTitle(alert.locationTitle, oblastUid)?.let { return it.point }
+        }
+        // Most alerts are per raion: placed at its centre, so tracks built from them follow real geography.
+        if (smartMapping && alert.locationType == "raion") {
+            Regions.raionForTitle(alert.locationTitle, oblastUid)?.let { return it.point }
         }
         return oblastUid?.let { GeoMath.scatterInOblast(it, alert.locationUid.ifBlank { alert.id.toString() }) }
     }

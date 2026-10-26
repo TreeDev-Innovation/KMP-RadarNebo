@@ -35,7 +35,7 @@ class BuildThreatPictureUseCase {
         /** Server time, for the speeds that tell drone types apart. */
         now: Long = Clock.System.now().toEpochMilliseconds(),
     ): ThreatPicture {
-        val threats = ThreatMapper.toMarkers(alerts, settings.dronesOnly)
+        val threats = ThreatMapper.toMarkers(alerts, settings.dronesOnly, settings.smartMapping)
         val shownTracks = if (settings.dronesOnly) tracks.filter { it.type == ThreatType.Drones } else tracks
         return ThreatPicture(
             threats = threats,

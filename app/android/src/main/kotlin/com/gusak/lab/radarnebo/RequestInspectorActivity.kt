@@ -27,7 +27,7 @@ class RequestInspectorActivity : ComponentActivity() {
         setContent {
             val exchanges by traffic.exchanges.collectAsState()
             val appSettings by settings.settings.collectAsState()
-            RadarTheme(appSettings.themeMode) {
+            RadarTheme(appSettings.themeMode, appSettings.colorPalette) {
                 RequestInspectorScreen(
                     exchanges,
                     onClear = traffic::clear,

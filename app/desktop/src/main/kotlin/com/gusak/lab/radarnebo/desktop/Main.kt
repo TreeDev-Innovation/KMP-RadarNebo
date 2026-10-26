@@ -70,8 +70,8 @@ fun main() {
                 state = rememberWindowState(width = 1100.dp, height = 760.dp),
             ) {
                 val exchanges by traffic.exchanges.collectAsState()
-                val themeMode by settings.settings.collectAsState()
-                RadarTheme(themeMode.themeMode) {
+                val appSettings by settings.settings.collectAsState()
+                RadarTheme(appSettings.themeMode, appSettings.colorPalette) {
                     RequestInspectorScreen(exchanges, onClear = traffic::clear)
                 }
             }

@@ -17,6 +17,7 @@ import com.gusak.lab.radarnebo.domain.usecase.AddFavoriteUseCase
 import com.gusak.lab.radarnebo.domain.usecase.BuildThreatPictureUseCase
 import com.gusak.lab.radarnebo.domain.usecase.RefreshAlertsUseCase
 import com.gusak.lab.radarnebo.domain.usecase.RemoveFavoriteUseCase
+import com.gusak.lab.radarnebo.domain.usecase.SettingsUpdate
 import com.gusak.lab.radarnebo.domain.usecase.UpdateSettingsUseCase
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import com.gusak.lab.radarnebo.ui.AppViewModel
@@ -105,10 +106,12 @@ class DependencyInjectionTest {
         assertTrue(k.get<FavoritesRepository>().favorites.value.isEmpty())
 
         val update2 = k.get<UpdateSettingsUseCase>()
-        assertEquals(false, update2 { it.copy(proximityRadiusKm = 80) })
+        assertEquals(SettingsUpdate(sourceChanged = false, trackingChanged = false), update2 { it.copy(proximityRadiusKm = 80) })
         assertEquals("80", storage.getString("proximity_radius_km"))
-        assertEquals(true, update2 { it.copy(accessKey = "key") }, "a new access key changes the data source")
-        assertEquals(true, update2 { it.copy(serverUrl = "https://radar.example") })
+        assertEquals(SettingsUpdate(sourceChanged = false, trackingChanged = true), update2 { it.copy(smartMapping = false) })
+        assertEquals("false", storage.getString("smart_mapping"))
+        assertTrue(update2 { it.copy(accessKey = "key") }.sourceChanged, "a new access key changes the data source")
+        assertTrue(update2 { it.copy(serverUrl = "https://radar.example") }.sourceChanged)
         assertEquals("https://radar.example", storage.getString("server_url"))
     }
 

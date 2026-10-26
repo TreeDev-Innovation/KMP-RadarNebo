@@ -26,6 +26,13 @@ fun formatAgo(instant: Instant): String {
     }
 }
 
+/** "50 m", "2 km", "1.5 km". */
+fun formatAltitude(meters: Int): String = when {
+    meters < 1_000 -> "$meters m"
+    meters % 1_000 == 0 -> "${meters / 1_000} km"
+    else -> "${meters / 1_000}.${meters % 1_000 / 100} km"
+}
+
 fun formatCoord(value: Double): String {
     val scaled = (value * 10_000).roundToLong()
     val whole = scaled / 10_000
