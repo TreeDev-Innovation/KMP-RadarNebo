@@ -1,5 +1,11 @@
 package com.gusak.lab.radarnebo
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.remember
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.layout.Box
@@ -72,8 +78,11 @@ fun App(
         CompositionLocalProvider(LocalMapTiles provides mapTiles) {
             val backdrop = rememberGlassBackdrop()
             // Screens run edge to edge underneath the floating bar and pad their scrollable content instead.
-            val bottomInset = GlassNavBarDefaults.ContentInset +
-                WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val systemBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val bottomInset = GlassNavBarDefaults.ContentInset + systemBottom
+            // The cinematic map is a clean full-screen shot: the bar slides away and the map takes its space.
+            val navBarVisible = !(tab == Tab.Map && state.settings.mapMode == MapMode.Cinematic)
+            val mapBottomInset by animateDpAsState(if (navBarVisible) bottomInset else systemBottom)
             val topAndSides = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
 
             Box(Modifier.fillMaxSize()) {
@@ -91,7 +100,7 @@ fun App(
                             onTargetFilterChange = { filter -> vm.updateSettings { it.copy(targetFilter = filter) } },
                             onOpenRequests = onOpenRequests,
                             onReconnect = vm::reconnect,
-                            bottomInset = bottomInset,
+                            bottomInset = mapBottomInset,
                         )
                         Tab.Favorites -> Box(topAndSides) {
                             FavoritesScreen(state, onAdd = vm::addFavorite, onRemove = vm::removeFavorite, bottomInset = bottomInset)
@@ -102,18 +111,24 @@ fun App(
                     }
                 }
 
-                GlassNavigationBar(
-                    items = Tab.entries.map { item ->
-                        GlassNavItem(item.label, item.glyph, badge = if (item == Tab.Favorites) state.proximity.size else 0)
-                    },
-                    selectedIndex = tab.ordinal,
-                    onSelect = { tab = Tab.entries[it] },
-                    backdrop = backdrop,
+                AnimatedVisibility(
+                    visible = navBarVisible,
+                    enter = fadeIn() + slideInVertically { it },
+                    exit = fadeOut() + slideOutVertically { it },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
                         .padding(bottom = GlassNavBarDefaults.Margin),
-                )
+                ) {
+                    GlassNavigationBar(
+                        items = Tab.entries.map { item ->
+                            GlassNavItem(item.label, item.glyph, badge = if (item == Tab.Favorites) state.proximity.size else 0)
+                        },
+                        selectedIndex = tab.ordinal,
+                        onSelect = { tab = Tab.entries[it] },
+                        backdrop = backdrop,
+                    )
+                }
             }
         }
     }

@@ -72,7 +72,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gusak.lab.radarnebo.data.AppSettings
 import com.gusak.lab.radarnebo.data.MapMode
-import com.gusak.lab.radarnebo.data.ThreatLevel
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -93,10 +92,7 @@ import com.gusak.lab.radarnebo.ui.map.CinematicShot
 import com.gusak.lab.radarnebo.ui.map.MapCamera
 import com.gusak.lab.radarnebo.ui.map.MapSelection
 import com.gusak.lab.radarnebo.ui.map.ShotPlanner
-import com.gusak.lab.radarnebo.ui.map.TargetIcon
 import com.gusak.lab.radarnebo.ui.map.UkraineMap
-import com.gusak.lab.radarnebo.tracking.TargetClassifier
-import com.gusak.lab.radarnebo.tracking.TargetProfile
 import com.gusak.lab.radarnebo.ui.map.rememberCinematicDirector
 
 /**
@@ -107,11 +103,13 @@ data class MapScreenStart(
     val camera: MapCamera = MapCamera.Overview,
     /** Opens the targets panel on this target's details. */
     val selectedTrackId: String? = null,
+    /** Opens the targets panel on this threat, for one no track follows. */
+    val selectedThreatId: String? = null,
     val selection: MapSelection? = null,
     /** Shows the "add this place to favorites?" card for this spot. */
     val pendingFavorite: GeoPoint? = null,
     val radiusOpen: Boolean = false,
-    val targetsOpen: Boolean = selectedTrackId != null,
+    val targetsOpen: Boolean = selectedTrackId != null || selectedThreatId != null,
 )
 
 @Composable
@@ -144,6 +142,9 @@ fun MapScreen(
         radiusDraft = null
     }
     var selectedTrackId by rememberSaveable { mutableStateOf(start.selectedTrackId) }
+    // A threat picked on the map that no track follows; the targets panel shows it like a target.
+    var selectedThreatId by rememberSaveable { mutableStateOf(start.selectedThreatId) }
+    val selectedThreat = state.threats.firstOrNull { it.id == selectedThreatId }
     var staticCamera by remember { mutableStateOf(start.camera) }
     var serverInfoOpen by rememberSaveable { mutableStateOf(false) }
     // Hovering a row in the targets list previews that target; the map returns when the pointer leaves.
@@ -158,8 +159,15 @@ fun MapScreen(
     val cinematic = state.settings.mapMode == MapMode.Cinematic
     val panelVisible = targetsOpen && !cinematic
     val onMapSelect: (MapSelection?) -> Unit = { picked ->
-        if (picked is MapSelection.Track) {
-            selectedTrackId = picked.track.id
+        // Threats open in the targets panel too: on their track when one follows them, on their own otherwise.
+        val trackId = when (picked) {
+            is MapSelection.Track -> picked.track.id
+            is MapSelection.Threat -> state.allTracks.firstOrNull { picked.marker.id in it.markerIds }?.id
+            else -> null
+        }
+        if (picked is MapSelection.Track || picked is MapSelection.Threat) {
+            selectedTrackId = trackId
+            selectedThreatId = if (trackId == null) (picked as MapSelection.Threat).marker.id else null
             targetsOpen = true
             selection = null
         } else {
@@ -185,10 +193,14 @@ fun MapScreen(
             }
         }
 
-        // Frames a target's whole path and predicted destination in the part of the map left visible.
-        fun framing(trackId: String?): MapCamera? {
-            val track = state.tracks.firstOrNull { it.id == trackId } ?: return null
+        // Frames a target's whole path and predicted destination (or a lone threat) in the part of the map left visible.
+        fun framing(trackId: String?, threatId: String? = null): MapCamera? {
             if (viewport.width <= 0f) return null
+            val track = state.tracks.firstOrNull { it.id == trackId }
+            if (track == null) {
+                val threat = state.threats.firstOrNull { it.id == threatId } ?: return null
+                return MapCamera.framing(listOf(threat.point), viewport, visibleArea)
+            }
             val now = Clock.System.now().toEpochMilliseconds() + state.clockOffsetMs
             val points = track.samples.map { it.point } +
                 listOfNotNull(TrackPredictor.predict(track, now, predictionPlaces)?.place?.point)
@@ -208,9 +220,9 @@ fun MapScreen(
         }
 
         // Fly the static map to the selected target.
-        LaunchedEffect(selectedTrackId, panelVisible) {
+        LaunchedEffect(selectedTrackId, selectedThreatId, panelVisible) {
             if (!panelVisible) return@LaunchedEffect
-            framing(selectedTrackId)?.let { flyTo(it) }
+            framing(selectedTrackId, selectedThreatId)?.let { flyTo(it) }
         }
 
         // Preview the hovered target, and fly back once the pointer leaves the list. The short wait keeps
@@ -242,6 +254,7 @@ fun MapScreen(
                     proximityRadiusKm = radiusKm,
                     modifier = Modifier.fillMaxSize(),
                     selectedTrackId = (selectedTrackId ?: hoveredTrackId).takeIf { panelVisible },
+                    highlightedThreatId = selectedThreatId.takeIf { panelVisible },
                     predictionPlaces = predictionPlaces,
                     tracks = state.tracks,
                     clockOffsetMs = state.clockOffsetMs,
@@ -342,6 +355,7 @@ fun MapScreen(
                 onSelect = {
                     // Choosing a target keeps the map on it instead of returning from the hover preview.
                     selectedTrackId = it
+                    selectedThreatId = null
                     hoveredTrackId = null
                     cameraBeforeHover = null
                 },
@@ -352,6 +366,7 @@ fun MapScreen(
                 onHover = { id, hovered ->
                     if (hovered) hoveredTrackId = id else if (hoveredTrackId == id) hoveredTrackId = null
                 },
+                selectedThreat = selectedThreat,
             )
         }
 
@@ -664,31 +679,8 @@ private fun SelectionCard(selection: MapSelection, state: UiState, onDismiss: ()
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.padding(14.dp)) {
             when (selection) {
-                is MapSelection.Threat -> {
-                    val m = selection.marker
-                    val levelColor = if (m.level == ThreatLevel.Red) radarColors.danger else radarColors.warning
-                    val profile = remember(m.id) { TargetClassifier.classify(m) }
-                    Row(verticalAlignment = Alignment.Top) {
-                        TargetIcon(profile.kind, headingDeg = 0f, color = levelColor, size = 40.dp)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(m.title, style = MaterialTheme.typography.titleMedium)
-                            Text("${m.type.label} · ${m.level.name} level", color = levelColor)
-                            Text(
-                                profile.model + if (profile.source == TargetProfile.Source.Probable) " (probable)" else "",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(profile.role, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("${m.oblastName} · ${m.locationType}", style = MaterialTheme.typography.bodySmall)
-                            m.startedAt?.let { Text("Since ${formatTime(it)} (${formatAgo(it)})", style = MaterialTheme.typography.bodySmall) }
-                            m.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                            if (m.isRegionWide) Text("Region-wide: position shown at the oblast center", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-                // Tracks open in the targets panel instead of this card.
-                is MapSelection.Track -> Unit
+                // Targets and threats open in the targets panel instead of this card.
+                is MapSelection.Track, is MapSelection.Threat -> Unit
                 is MapSelection.Favorite -> {
                     val f = selection.favorite
                     val hit = state.proximity.firstOrNull { it.favorite.id == f.id }

@@ -174,18 +174,18 @@ private fun MapTargetsListPreview() = Screen(PreviewData.scenario(), start = Map
 
 // --- Cards and controls ---------------------------------------------------------------------------------
 
-@Preview(name = "Map · threat card · Kinzhal", widthDp = 420, heightDp = 860)
+@Preview(name = "Map · threat panel · Kinzhal", widthDp = 420, heightDp = 860)
 @Composable
 private fun ThreatCardPreview() {
     val state = PreviewData.scenario()
-    Screen(state, start = MapScreenStart(selection = MapSelection.Threat(state.threats.first { it.id.startsWith("ballistic") })))
+    Screen(state, start = MapScreenStart(selectedThreatId = state.threats.first { it.id.startsWith("ballistic") }.id))
 }
 
-@Preview(name = "Map · threat card · region-wide, yellow", widthDp = 420, heightDp = 860)
+@Preview(name = "Map · threat panel · region-wide, yellow", widthDp = 420, heightDp = 860)
 @Composable
 private fun RegionWideThreatCardPreview() {
     val state = PreviewData.scenario(ThemeMode.Light)
-    Screen(state, start = MapScreenStart(selection = MapSelection.Threat(state.threats.first { it.id.startsWith("drones-wide") })))
+    Screen(state, start = MapScreenStart(selectedThreatId = state.threats.first { it.id.startsWith("drones-wide") }.id))
 }
 
 @Preview(name = "Map · favorite card · threat nearby", widthDp = 420, heightDp = 860)

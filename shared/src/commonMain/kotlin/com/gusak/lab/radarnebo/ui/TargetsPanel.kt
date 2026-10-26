@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.gusak.lab.radarnebo.data.TargetFilter
 import com.gusak.lab.radarnebo.data.ThreatLevel
 import com.gusak.lab.radarnebo.data.ThreatType
+import com.gusak.lab.radarnebo.domain.ThreatMarker
 import com.gusak.lab.radarnebo.geo.Regions
 import com.gusak.lab.radarnebo.tracking.ArrivalPrediction
 import com.gusak.lab.radarnebo.tracking.DroneTrack
@@ -77,7 +78,8 @@ fun targetName(trackId: String) = "T-" + trackId.substringAfter("trk-")
 /**
  * Tracked drone targets: a list of every target with its latest report and predicted arrival, and a
  * detail view with the timestamped history of reported positions. [tracks] includes targets [filter]
- * hides, so the list can count them and offer to show them again.
+ * hides, so the list can count them and offer to show them again. [selectedThreat] shows a threat
+ * picked on the map that has no track yet; [onSelect] with null leaves either detail view.
  */
 @Composable
 fun TargetsPanel(
@@ -92,6 +94,7 @@ fun TargetsPanel(
     onHover: (trackId: String, hovered: Boolean) -> Unit = { _, _ -> },
     filter: TargetFilter = TargetFilter(),
     onFilterChange: (TargetFilter) -> Unit = {},
+    selectedThreat: ThreatMarker? = null,
 ) {
     // Positions and ETAs move continuously; refresh the panel once a second.
     val now by produceState(Clock.System.now().toEpochMilliseconds() + clockOffsetMs, clockOffsetMs) {
@@ -108,10 +111,10 @@ fun TargetsPanel(
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         shadowElevation = 12.dp,
     ) {
-        if (selected == null) {
-            TargetList(tracks, now, places, filter, onFilterChange, onSelect, onClose, onHover)
-        } else {
-            TargetDetail(selected, now, places, onBack = { onSelect(null) }, onClose = onClose)
+        when {
+            selected != null -> TargetDetail(selected, now, places, onBack = { onSelect(null) }, onClose = onClose)
+            selectedThreat != null -> ThreatDetail(selectedThreat, onBack = { onSelect(null) }, onClose = onClose)
+            else -> TargetList(tracks, now, places, filter, onFilterChange, onSelect, onClose, onHover)
         }
     }
 }
@@ -298,7 +301,15 @@ private fun TargetDetail(track: DroneTrack, now: Long, places: List<Place>, onBa
                 leading = { TextButton(onClick = onBack) { Text("‹ All targets") } },
             )
         }
-        item { ProfileCard(track, profile, position) }
+        item {
+            ProfileCard(
+                profile = profile,
+                level = track.level,
+                headingDeg = (position?.headingDeg ?: 270.0).toFloat(),
+                id = "${targetName(track.id)} · track ${track.id}",
+                alertIds = track.markerIds.map { it.substringBefore(':') }.distinct(),
+            )
+        }
         item {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -370,6 +381,75 @@ private fun TargetDetail(track: DroneTrack, now: Long, places: List<Place>, onBa
         item {
             Text(
                 "Positions are inferred from area alerts, not radar. Predictions assume the target keeps its current heading and speed.",
+                Modifier.padding(16.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/** A threat on the map that no track follows yet, e.g. a single alert over a city. */
+@Composable
+private fun ThreatDetail(marker: ThreatMarker, onBack: () -> Unit, onClose: () -> Unit) {
+    val profile = remember(marker.id, marker.message) { TargetClassifier.classify(marker) }
+    LazyColumn(contentPadding = PaddingValues(bottom = 16.dp)) {
+        item {
+            PanelHeader(
+                title = marker.title,
+                subtitle = listOf(marker.type.label, "${marker.level.name} level", "active").joinToString(" · "),
+                onClose = onClose,
+                leading = { TextButton(onClick = onBack) { Text("‹ All targets") } },
+            )
+        }
+        item {
+            ProfileCard(
+                profile = profile,
+                level = marker.level,
+                headingDeg = 270f,
+                id = null,
+                alertIds = listOf(marker.id.substringBefore(':')),
+            )
+        }
+        item {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Stat("Since", marker.startedAt?.let(::formatTime) ?: "–", Modifier.weight(1f))
+                Stat("Reported", marker.startedAt?.let(::formatAgo) ?: "–", Modifier.weight(1f))
+            }
+        }
+        item {
+            Column(
+                Modifier
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .fillMaxWidth()
+                    .background(levelColor(marker.level).copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+            ) {
+                Text("Location", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(marker.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    listOf(marker.oblastName, marker.locationType).distinct().joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(coordinates(marker.point.lat, marker.point.lon), style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
+                if (marker.isRegionWide) {
+                    Text("Region-wide: position shown at the oblast center", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+        }
+        marker.message?.let { message ->
+            item {
+                Text(
+                    "Message",
+                    Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(message, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+        item {
+            Text(
+                "Not tracked yet: a target gets a path and predictions once another alert follows nearby.",
                 Modifier.padding(16.dp),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -477,8 +557,7 @@ private fun levelColor(level: ThreatLevel) = if (level == ThreatLevel.Red) radar
 
 /** Target type card: icon, model, maker, role and whether the model was reported or is inferred. */
 @Composable
-private fun ProfileCard(track: DroneTrack, profile: TargetProfile, position: InterpolatedPosition?) {
-    val alertIds = track.markerIds.map { it.substringBefore(':') }.distinct()
+private fun ProfileCard(profile: TargetProfile, level: ThreatLevel, headingDeg: Float, id: String?, alertIds: List<String>) {
     Row(
         Modifier
             .padding(horizontal = 16.dp, vertical = 4.dp)
@@ -489,8 +568,8 @@ private fun ProfileCard(track: DroneTrack, profile: TargetProfile, position: Int
     ) {
         TargetIcon(
             kind = profile.kind,
-            headingDeg = (position?.headingDeg ?: 270.0).toFloat(),
-            color = levelColor(track.level),
+            headingDeg = headingDeg,
+            color = levelColor(level),
             size = 44.dp,
         )
         Spacer(Modifier.width(12.dp))
@@ -513,7 +592,7 @@ private fun ProfileCard(track: DroneTrack, profile: TargetProfile, position: Int
             LabelValue("Make", profile.make)
             LabelValue("Role", profile.role)
             profile.cruiseSpeedKmh?.let { LabelValue("Typical speed", "${it.first}–${it.last} km/h") }
-            LabelValue("ID", "${targetName(track.id)} · track ${track.id}")
+            id?.let { LabelValue("ID", it) }
             if (alertIds.isNotEmpty()) LabelValue("Alerts", alertIds.joinToString(", ") { "#$it" })
             if (profile.source == TargetProfile.Source.Probable) {
                 Text(
@@ -633,5 +712,15 @@ private fun TargetDetailLightPreview() {
     val state = PreviewData.state(ThemeMode.Light)
     RadarTheme(ThemeMode.Light) {
         TargetsPanel(state.tracks, 0, TrackPredictor.cityPlaces, PreviewData.busiestTrackId(state), onSelect = {}, onClose = {})
+    }
+}
+
+@Preview(name = "Targets · untracked threat", widthDp = 380, heightDp = 640)
+@Composable
+private fun ThreatDetailPreview() {
+    val state = PreviewData.state()
+    val threat = state.threats.firstOrNull { marker -> state.allTracks.none { marker.id in it.markerIds } } ?: state.threats.first()
+    RadarTheme(ThemeMode.Dark) {
+        TargetsPanel(state.tracks, 0, TrackPredictor.cityPlaces, selectedTrackId = null, onSelect = {}, onClose = {}, selectedThreat = threat)
     }
 }
