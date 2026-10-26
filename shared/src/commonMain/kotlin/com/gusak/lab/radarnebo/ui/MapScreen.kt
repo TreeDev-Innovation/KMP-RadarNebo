@@ -29,6 +29,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -124,6 +125,8 @@ fun MapScreen(
     onTargetFilterChange: (TargetFilter) -> Unit = {},
     /** Opens the request inspector from the server card; null hides that button. */
     onOpenRequests: (() -> Unit)? = null,
+    /** Tries the server again now, from the status strip's Reconnect button while it can't be reached. */
+    onReconnect: () -> Unit = {},
     /** Space taken by floating UI at the bottom (the glass navigation bar); the map still draws beneath it. */
     bottomInset: Dp = 0.dp,
     start: MapScreenStart = MapScreenStart(),
@@ -260,7 +263,7 @@ fun MapScreen(
 
         Row(Modifier.statusBarsPadding().padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
-                StatusStrip(state, onClick = { serverInfoOpen = !serverInfoOpen })
+                StatusStrip(state, onClick = { serverInfoOpen = !serverInfoOpen }, onReconnect = onReconnect)
                 AnimatedVisibility(visible = serverInfoOpen, enter = fadeIn(), exit = fadeOut()) {
                     ServerStatusCard(state, onOpenRequests, Modifier.padding(top = 8.dp).widthIn(max = 360.dp))
                 }
@@ -493,7 +496,7 @@ private fun CinematicMap(
 }
 
 @Composable
-private fun StatusStrip(state: UiState, onClick: () -> Unit = {}) {
+private fun StatusStrip(state: UiState, onClick: () -> Unit = {}, onReconnect: () -> Unit = {}) {
     val server = ServerState.of(state)
     val text = buildString {
         if (state.simulated) append("SIMULATED DATA · not the real situation · ")
@@ -515,7 +518,47 @@ private fun StatusStrip(state: UiState, onClick: () -> Unit = {}) {
             Text(text, color = radarColors.onOverlay, fontSize = 12.sp)
             Text("${serverHost(state.settings.serverUrl)} · ${server.label}", color = server.color(), fontSize = 11.sp)
             state.error?.let { Text(it, color = radarColors.danger, fontSize = 12.sp) }
+            if (server == ServerState.Offline) ReconnectRow(state, onReconnect)
         }
+    }
+}
+
+/** Counts down to the next attempt at an unreachable server, with a button to try right away. */
+@Composable
+private fun ReconnectRow(state: UiState, onReconnect: () -> Unit) {
+    val retryAt = state.nextRetryAt
+    var now by remember { mutableStateOf(Clock.System.now()) }
+    LaunchedEffect(retryAt) {
+        while (true) {
+            now = Clock.System.now()
+            delay(250)
+        }
+    }
+    val secondsLeft = retryAt?.let { ((it - now).inWholeMilliseconds + 999) / 1000 }?.coerceAtLeast(0)
+    val trying = state.loading || secondsLeft == 0L
+    val primary = MaterialTheme.colorScheme.primary
+    Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            when {
+                trying -> "Reconnecting…"
+                secondsLeft != null -> "Retrying in ${secondsLeft}s"
+                else -> "Not connected"
+            },
+            color = radarColors.onOverlayMuted,
+            fontSize = 11.sp,
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            "Reconnect",
+            Modifier
+                .clip(RoundedCornerShape(6.dp))
+                .border(1.dp, primary.copy(alpha = if (trying) 0.4f else 1f), RoundedCornerShape(6.dp))
+                .clickable(enabled = !trying, role = Role.Button, onClick = onReconnect)
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+            color = primary.copy(alpha = if (trying) 0.4f else 1f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 

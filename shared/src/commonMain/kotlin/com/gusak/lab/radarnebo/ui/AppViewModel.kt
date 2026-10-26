@@ -31,6 +31,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 data class UiState(
@@ -56,6 +57,8 @@ data class UiState(
     val simulated: Boolean = false,
     /** The server's last health report; null while it can't be reached. */
     val serverHealth: ServerHealth? = null,
+    /** When the app tries the server again after a failed poll; null while polls succeed. */
+    val nextRetryAt: Instant? = null,
 )
 
 /**
@@ -96,14 +99,19 @@ class AppViewModel(
         pollJob?.cancel()
         pollJob = viewModelScope.launch {
             while (isActive) {
-                val backoff = fetchOnce()
-                delay(_state.value.settings.pollSeconds * 1000L * backoff)
+                delay(fetchOnce())
             }
         }
     }
 
-    /** Returns a poll interval multiplier: back off after rate-limit or auth errors. */
-    private suspend fun fetchOnce(): Int {
+    /** Tries the server right away instead of waiting for the reconnect timer. */
+    fun reconnect() = startPolling()
+
+    /**
+     * Returns how long to wait before the next poll: the poll interval, or after a failure the reconnect delay,
+     * so a server started after the app is picked up within seconds. Rate-limit and auth errors back off instead.
+     */
+    private suspend fun fetchOnce(): Long {
         _state.update { it.copy(loading = true) }
         return when (val update = refreshAlerts()) {
             is AlertsUpdate.Updated -> {
@@ -116,14 +124,23 @@ class AppViewModel(
                         clockOffsetMs = update.snapshot.clockOffsetMs,
                         simulated = update.snapshot.simulated,
                         serverHealth = update.snapshot.health,
+                        nextRetryAt = null,
                     )
                 }
                 recompute()
-                1
+                _state.value.settings.pollSeconds * 1000L
             }
             is AlertsUpdate.Failed -> {
-                _state.update { it.copy(loading = false, error = update.message, serverHealth = null) }
-                4
+                val waitMs = if (update.backOff) _state.value.settings.pollSeconds * 1000L * 4 else RECONNECT_MS
+                _state.update {
+                    it.copy(
+                        loading = false,
+                        error = update.message,
+                        serverHealth = null,
+                        nextRetryAt = Clock.System.now() + waitMs.milliseconds,
+                    )
+                }
+                waitMs
             }
         }
     }
@@ -146,7 +163,7 @@ class AppViewModel(
     fun updateSettings(transform: (AppSettings) -> AppSettings) {
         if (updateSettingsUseCase(transform)) {
             snapshot = null
-            _state.update { it.copy(error = null, tracks = emptyList(), allTracks = emptyList(), clockOffsetMs = 0, simulated = false, serverHealth = null, lastUpdated = null) }
+            _state.update { it.copy(error = null, tracks = emptyList(), allTracks = emptyList(), clockOffsetMs = 0, simulated = false, serverHealth = null, lastUpdated = null, nextRetryAt = null) }
             startPolling()
         }
     }
@@ -159,3 +176,6 @@ class AppViewModel(
 
     fun removeFavorite(id: String) = removeFavoriteUseCase(id)
 }
+
+/** How soon the app tries an unreachable server again. */
+private const val RECONNECT_MS = 5_000L

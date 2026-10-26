@@ -24,6 +24,8 @@ import com.gusak.lab.radarnebo.ui.map.UkraineMap
 import com.gusak.lab.radarnebo.ui.preview.PreviewData.Targets
 import com.gusak.lab.radarnebo.ui.preview.PreviewData.camera
 import com.gusak.lab.radarnebo.ui.preview.PreviewData.city
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
 
 // Previews of the map in every mode and state, built from PreviewData.scenario() so each one always
 // shows what its name says. Phone previews are 420 x 860 dp, tablet ones 1100 x 760 dp.
@@ -94,6 +96,16 @@ private fun MapQuietPreview() = Screen(PreviewData.quiet())
 @Preview(name = "Map · connection error", widthDp = 420, heightDp = 860)
 @Composable
 private fun MapErrorPreview() = Screen(PreviewData.quiet().copy(error = "Upstream rate limit hit (429)", lastUpdated = null))
+
+@Preview(name = "Map · server unreachable, reconnecting", widthDp = 420, heightDp = 860)
+@Composable
+private fun MapReconnectingPreview() = Screen(
+    PreviewData.quiet().copy(
+        error = "Failed to connect to localhost/[0:0:0:0:0:0:0:1]:8080",
+        lastUpdated = null,
+        nextRetryAt = Clock.System.now() + 4.seconds,
+    ),
+)
 
 @Preview(name = "Map · every threat type", widthDp = 420, heightDp = 860)
 @Composable

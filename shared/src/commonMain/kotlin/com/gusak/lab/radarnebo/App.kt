@@ -90,6 +90,7 @@ fun App(
                             onRadiusChange = { km -> vm.updateSettings { it.copy(proximityRadiusKm = km) } },
                             onTargetFilterChange = { filter -> vm.updateSettings { it.copy(targetFilter = filter) } },
                             onOpenRequests = onOpenRequests,
+                            onReconnect = vm::reconnect,
                             bottomInset = bottomInset,
                         )
                         Tab.Favorites -> Box(topAndSides) {

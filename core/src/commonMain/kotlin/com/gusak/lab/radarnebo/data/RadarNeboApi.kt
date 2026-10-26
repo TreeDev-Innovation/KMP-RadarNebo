@@ -24,7 +24,8 @@ import kotlinx.serialization.json.Json
 sealed interface FetchResult {
     data class Fresh(val alerts: List<Alert>) : FetchResult
     data object NotModified : FetchResult
-    data class Failure(val message: String) : FetchResult
+    /** [backOff]: the server asked the app to slow down (rate limit) or refused it (auth), so retrying soon won't help. */
+    data class Failure(val message: String, val backOff: Boolean = false) : FetchResult
 }
 
 /** The RadarNebo server the app talks to. [accessKey] is only needed when the server requires client keys. */
@@ -76,8 +77,8 @@ class RadarNeboApi(
                 FetchResult.Fresh(response.body<ActiveAlertsResponse>().alerts)
             }
             HttpStatusCode.NotModified -> FetchResult.NotModified
-            HttpStatusCode.Unauthorized -> FetchResult.Failure("The server needs a valid access key (401)")
-            HttpStatusCode.TooManyRequests -> FetchResult.Failure("Too many requests, slowing down (429)")
+            HttpStatusCode.Unauthorized -> FetchResult.Failure("The server needs a valid access key (401)", backOff = true)
+            HttpStatusCode.TooManyRequests -> FetchResult.Failure("Too many requests, slowing down (429)", backOff = true)
             HttpStatusCode.ServiceUnavailable -> FetchResult.Failure("The server is starting up, no data yet (503)")
             else -> FetchResult.Failure("Unexpected response ${response.status.value}")
         }

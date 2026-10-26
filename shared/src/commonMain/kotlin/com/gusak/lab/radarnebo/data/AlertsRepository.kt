@@ -18,7 +18,8 @@ data class AlertsSnapshot(
 
 sealed interface AlertsUpdate {
     data class Updated(val snapshot: AlertsSnapshot) : AlertsUpdate
-    data class Failed(val message: String) : AlertsUpdate
+    /** [backOff] as in [FetchResult.Failure]. */
+    data class Failed(val message: String, val backOff: Boolean = false) : AlertsUpdate
 }
 
 /**
@@ -38,7 +39,7 @@ class AlertsRepository(
         when (val result = api.activeAlerts(endpoint)) {
             is FetchResult.Fresh -> alerts = result.alerts
             FetchResult.NotModified -> Unit
-            is FetchResult.Failure -> return AlertsUpdate.Failed(result.message)
+            is FetchResult.Failure -> return AlertsUpdate.Failed(result.message, result.backOff)
         }
         // Tracks move even when alerts don't, so they are fetched on every poll. A failed request keeps the
         // previous tracks rather than wiping the map.
