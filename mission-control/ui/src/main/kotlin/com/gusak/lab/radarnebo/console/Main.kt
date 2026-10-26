@@ -11,7 +11,7 @@ import com.gusak.lab.radarnebo.ui.applyAppIdentity
 import kotlinx.coroutines.runBlocking
 import kotlin.system.exitProcess
 
-/** `./gradlew :server-console:run`: the server in a window, started right away. */
+/** `./gradlew :mission-control:ui:run`: the server in a window, started right away. */
 fun main() {
     val icon = applyAppIdentity("RadarNebo Server", "radarnebo-server.png")
     // Before anything logs, so the Logs tab has the server's whole output.

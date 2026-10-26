@@ -35,8 +35,8 @@ dependencyResolutionManagement {
 
 include(":core")
 include(":shared")
-include(":server")
-include(":server-console")
+include(":mission-control:server")
+include(":mission-control:ui")
 include(":app:android")
 include(":app:desktop")
 // Android Studio's hot-reload run configurations ask for the bare task "hotRun" (or "hotDev") plus --mainClass.
@@ -47,7 +47,7 @@ include(":app:desktop")
 // the background and ends the build at once; app.desktop keeps hotRun, with its Run window and Stop button.
 val hotReloadTargets = mapOf(
     "com.gusak.lab.radarnebo.desktop.MainKt" to (":app:desktop" to ""),
-    "com.gusak.lab.radarnebo.console.MainKt" to (":server-console" to "Async"),
+    "com.gusak.lab.radarnebo.console.MainKt" to (":mission-control:ui" to "Async"),
 )
 gradle.startParameter.taskNames.let { names ->
     val mainClass = names.getOrNull(names.indexOf("--mainClass") + 1)?.takeIf { "--mainClass" in names }

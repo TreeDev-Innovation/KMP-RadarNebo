@@ -22,7 +22,7 @@ java {
 }
 
 dependencies {
-    implementation(project(":server"))
+    implementation(project(":mission-control:server"))
     implementation(project(":shared"))
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.cio)
@@ -61,12 +61,12 @@ compose.desktop {
     }
 }
 
-// Run like :server:run, also under Compose Hot Reload: with server/.env loaded and the archive under server/data.
+// Run like :mission-control:server:run, also under Compose Hot Reload: with mission-control/server/.env loaded and the archive under mission-control/server/data.
 // The console reads both from this property (see consoleConfig) rather than from environment variables and the
 // working directory, because hotRunAsync, which Android Studio's runs use, starts the app from hotRun's argfile
 // and only carries over its JVM arguments.
 tasks.withType<JavaExec>().matching { it.name in setOf("run", "hotRun", "hotDev") }.configureEach {
-    val serverDir = rootProject.file("server")
+    val serverDir = rootProject.file("mission-control/server")
     workingDir = serverDir
     jvmArgs("-Dradarnebo.server.dir=${serverDir.absolutePath}")
 }

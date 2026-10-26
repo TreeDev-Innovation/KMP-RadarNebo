@@ -1,6 +1,6 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="server-console (shell)" type="ShConfigurationType">
-    <option name="SCRIPT_TEXT" value="./gradlew :server-console:hotRun" />
+  <configuration default="false" name="mission-control:ui (shell)" type="ShConfigurationType">
+    <option name="SCRIPT_TEXT" value="./gradlew :mission-control:ui:hotRun" />
     <option name="INDEPENDENT_SCRIPT_PATH" value="true" />
     <option name="SCRIPT_PATH" value="" />
     <option name="SCRIPT_OPTIONS" value="" />

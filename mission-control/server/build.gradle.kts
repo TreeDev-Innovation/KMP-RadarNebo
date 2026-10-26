@@ -48,7 +48,7 @@ dependencies {
     testImplementation(libs.ktor.client.mock)
 }
 
-// Local secrets for `./gradlew :server:run`: KEY=value lines from server/.env (git-ignored).
+// Local secrets for `./gradlew :mission-control:server:run`: KEY=value lines from mission-control/server/.env (git-ignored).
 // Variables already set in the environment win.
 tasks.named<JavaExec>("run") {
     val envFile = file(".env")

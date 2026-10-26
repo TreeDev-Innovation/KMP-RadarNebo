@@ -152,7 +152,7 @@ Map controls on desktop:
 ## Server (`:server`)
 
 The app's only data source. The server decides where the data comes from, tracks targets and archives everything;
-apps only read. It is a Ktor (CIO) application in DDD layers, under `server/src/main/kotlin/.../server/`:
+apps only read. It is a Ktor (CIO) application in DDD layers, under `mission-control/server/src/main/kotlin/.../server/`:
 
 | Layer | Package | What |
 |---|---|---|
@@ -241,12 +241,12 @@ are finished. Records older than `ARCHIVE_RETENTION_DAYS` are pruned hourly.
 ### Running
 
 ```
-./gradlew :server:run                                   # simulation on :8080
-ALERTS_API_TOKEN=... CLIENT_KEYS=key1,key2 ./gradlew :server:run
-./gradlew :server:buildFatJar                           # build/libs/server-all.jar
+./gradlew :mission-control:server:run                                   # simulation on :8080
+ALERTS_API_TOKEN=... CLIENT_KEYS=key1,key2 ./gradlew :mission-control:server:run
+./gradlew :mission-control:server:buildFatJar                           # build/libs/server-all.jar
 ```
 
-For local runs, put the variables in `server/.env` (git-ignored; start from `server/.env.example`). `:server:run`
+For local runs, put the variables in `mission-control/server/.env` (git-ignored; start from `mission-control/server/.env.example`). `:mission-control:server:run`
 loads it, and variables already set in the environment win.
 
 ### Map background
@@ -264,8 +264,8 @@ after changing the map's bounds or zoom limits, put a Carto basemaps key in `loc
 
 ### Server console
 
-`./gradlew :server-console:run` runs the server inside a desktop window instead of a terminal, configured the same way
-(environment and `server/.env`, same archive). The window has:
+`./gradlew :mission-control:ui:run` runs the server inside a desktop window instead of a terminal, configured the same way
+(environment and `mission-control/server/.env`, same archive). The window has:
 - **Start/Stop** buttons and the port, the addresses it listens on (localhost and LAN) and its uptime.
 - The data source, the alerts.in.ua budget used, the last and next poll, and the situation it serves.
 - **Requests**: every call from clients (↓) and to alerts.in.ua (↑), with headers and pretty-printed JSON. Keys and
@@ -274,7 +274,7 @@ after changing the map's bounds or zoom limits, put a Carto basemaps key in `loc
 - **Logs**: the server's log, filterable by level and text.
 
 Restarting from the console keeps one alerts.in.ua rate limiter, so restarts can't exceed the budget. Don't run it
-alongside `:server:run`: they share port 8080 and would each poll alerts.in.ua.
+alongside `:mission-control:server:run`: they share port 8080 and would each poll alerts.in.ua.
 
 The apps have a request inspector too: the ⇄ button on the map, *Show requests* on the server card, or Settings →
 Developer. On desktop it opens a separate window, on Android a separate screen.

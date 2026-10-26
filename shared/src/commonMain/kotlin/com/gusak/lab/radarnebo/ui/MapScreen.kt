@@ -624,7 +624,7 @@ private fun ServerStatusCard(state: UiState, onOpenRequests: (() -> Unit)?, modi
             state.error?.let { StatusLine("Error", it, radarColors.danger) }
             if (server == ServerState.Offline) {
                 Text(
-                    "Is the server running? Start it with ./gradlew :server:run, or change its address in Settings.",
+                    "Is the server running? Start it with ./gradlew :mission-control:server:run, or change its address in Settings.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

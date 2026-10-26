@@ -1,6 +1,6 @@
 #!/bin/sh
 # Regenerates the desktop icons from tools/make-icons.swift: the app's (app/desktop) and the server
-# console's (server-console), as .icns (macOS), .ico (Windows) and .png (Linux, and the Dock at run time).
+# console's (mission-control/ui), as .icns (macOS), .ico (Windows) and .png (Linux, and the Dock at run time).
 set -e
 cd "$(dirname "$0")/.."
 work=$(mktemp -d)
@@ -32,6 +32,6 @@ PY
     cp "$work/png/$name-512.png" "$dir/src/main/resources/$name.png"
 }
 pack radarnebo app/desktop
-pack radarnebo-server server-console
+pack radarnebo-server mission-control/ui
 rm -rf "$work"
-echo "Icons written to app/desktop/icons and server-console/icons"
+echo "Icons written to app/desktop/icons and mission-control/ui/icons"

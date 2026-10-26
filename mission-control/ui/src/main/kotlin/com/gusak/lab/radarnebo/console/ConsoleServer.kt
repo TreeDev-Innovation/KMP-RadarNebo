@@ -48,7 +48,7 @@ sealed interface ServerState {
 }
 
 /**
- * Runs the RadarNebo server inside the console, configured like `:server:run` (environment and server/.env),
+ * Runs the RadarNebo server inside the console, configured like `:mission-control:server:run` (environment and mission-control/server/.env),
  * and keeps what the console shows: traffic both ways, clients and the server's state.
  */
 class ConsoleServer(private val baseConfig: ServerConfig = ServerConfig.fromEnv()) {
@@ -75,7 +75,7 @@ class ConsoleServer(private val baseConfig: ServerConfig = ServerConfig.fromEnv(
     /** Where the server gets its alerts; [switchDataSource] changes it, restarting a running server. */
     val dataSource: StateFlow<DataSourceKind> = _dataSource.asStateFlow()
 
-    /** alerts.in.ua needs ALERTS_API_TOKEN (environment or server/.env). */
+    /** alerts.in.ua needs ALERTS_API_TOKEN (environment or mission-control/server/.env). */
     val alertsInUaAvailable get() = !baseConfig.upstream.token.isNullOrBlank()
 
     val defaultPort get() = baseConfig.port

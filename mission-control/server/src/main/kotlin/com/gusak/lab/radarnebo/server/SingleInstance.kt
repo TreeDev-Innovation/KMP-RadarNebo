@@ -20,7 +20,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 /**
- * Keeps one RadarNebo server per machine, whether started headless (`:server:run`) or in the console. The newest
+ * Keeps one RadarNebo server per machine, whether started headless (`:mission-control:server:run`) or in the console. The newest
  * one wins: [acquire] asks a running instance to shut down, waits for it to go, and then holds the lock until
  * [close] or exit. The OS releases the lock when a process dies, so a crashed instance never blocks the next one.
  *
