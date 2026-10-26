@@ -1,5 +1,11 @@
 package com.gusak.lab.radarnebo.server.infrastructure.upstream
 
+import com.gusak.lab.radarnebo.debug.TrafficRecorder
+import com.gusak.lab.radarnebo.debug.httpTrafficCapture
+import io.ktor.client.plugins.logging.LogLevel
+import io.ktor.client.plugins.logging.Logger
+import io.ktor.client.plugins.logging.Logging
+import org.slf4j.LoggerFactory
 import com.gusak.lab.radarnebo.server.application.AlertsDataSource
 import com.gusak.lab.radarnebo.server.application.FetchResult
 import com.gusak.lab.radarnebo.server.application.SituationReport
@@ -80,12 +86,27 @@ class AlertsInUaSource(
     companion object {
         const val ACTIVE_ALERTS_PATH = "/v1/alerts/active.json"
 
-        fun defaultClient() = HttpClient(CIO) {
+        /**
+         * With [logHttp], each exchange is logged with its body under the `http.upstream` logger; [traffic] receives
+         * them for the server console. The token is masked in both.
+         */
+        fun defaultClient(logHttp: Boolean = false, traffic: TrafficRecorder? = null) = HttpClient(CIO) {
             expectSuccess = false
             install(HttpTimeout) {
                 requestTimeoutMillis = 15_000
                 connectTimeoutMillis = 10_000
             }
+            if (logHttp) {
+                val log = LoggerFactory.getLogger("http.upstream")
+                install(Logging) {
+                    logger = object : Logger {
+                        override fun log(message: String) = log.info(message)
+                    }
+                    level = LogLevel.ALL
+                    sanitizeHeader { it == HttpHeaders.Authorization }
+                }
+            }
+            if (traffic != null) install(httpTrafficCapture(traffic))
         }
     }
 }

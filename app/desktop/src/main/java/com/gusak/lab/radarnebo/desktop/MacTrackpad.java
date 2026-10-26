@@ -33,6 +33,9 @@ public final class MacTrackpad {
             });
             return true;
         } catch (Throwable unsupported) {
+            // Usually IllegalAccessError: the JVM was started without the --add-exports flag above.
+            System.err.println("Trackpad pinch-to-zoom unavailable: " + unsupported
+                + " (start the JVM with --add-exports java.desktop/com.apple.eawt.event=ALL-UNNAMED)");
             return false;
         }
     }

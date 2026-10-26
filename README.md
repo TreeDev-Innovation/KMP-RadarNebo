@@ -249,6 +249,40 @@ ALERTS_API_TOKEN=... CLIENT_KEYS=key1,key2 ./gradlew :server:run
 For local runs, put the variables in `server/.env` (git-ignored; start from `server/.env.example`). `:server:run`
 loads it, and variables already set in the environment win.
 
+### Map background
+
+The map can show a real map under the oblasts: a dark or light map that follows the theme, or satellite imagery
+(Settings → Map). The dark and light maps are Carto's label-free basemaps, bundled with the app as resources
+(`shared/src/commonMain/composeResources/files/map`) so they work offline; satellite imagery comes from Esri's public
+tile service (no key needed). Tiles are cached in memory and drawn reprojected onto the app's map, so coastlines and
+rivers line up with the oblast borders. The required credit is shown in the map's corner. Tests and previews draw
+no tiles.
+
+The bundled tiles cover everything the camera can show (zoom 3–9; closer views upscale zoom 9). To refresh them, or
+after changing the map's bounds or zoom limits, put a Carto basemaps key in `local.properties` as `carto.apiKey=…`
+(or `CARTO_API_KEY`) and run `python3 -I tools/download-map-tiles.py`; `--dry-run` prints the area and tile counts.
+
+### Server console
+
+`./gradlew :server-console:run` runs the server inside a desktop window instead of a terminal, configured the same way
+(environment and `server/.env`, same archive). The window has:
+- **Start/Stop** buttons and the port, the addresses it listens on (localhost and LAN) and its uptime.
+- The data source, the alerts.in.ua budget used, the last and next poll, and the situation it serves.
+- **Requests**: every call from clients (↓) and to alerts.in.ua (↑), with headers and pretty-printed JSON. Keys and
+  tokens are masked.
+- **Clients**: who has called, how often, their last request and status.
+- **Logs**: the server's log, filterable by level and text.
+
+Restarting from the console keeps one alerts.in.ua rate limiter, so restarts can't exceed the budget. Don't run it
+alongside `:server:run`: they share port 8080 and would each poll alerts.in.ua.
+
+The apps have a request inspector too: the ⇄ button on the map, *Show requests* on the server card, or Settings →
+Developer. On desktop it opens a separate window, on Android a separate screen.
+
+To see the JSON going over the wire, set `LOG_HTTP=true`: the server logs its alerts.in.ua exchanges, and the desktop
+app (`LOG_HTTP=true ./gradlew :app:desktop:run`) logs its requests to the server and the responses. Both print to the
+console they run in; access keys and tokens are masked.
+
 | Env var | Default | Meaning |
 |---|---|---|
 | `ALERTS_API_TOKEN` | – | alerts.in.ua token. If unset, the server runs the simulation and makes no upstream requests. |
@@ -265,6 +299,7 @@ loads it, and variables already set in the environment win.
 | `CLIENT_REQUESTS_PER_MINUTE` | 120 | Per-IP limit for clients |
 | `HISTORY_REQUESTS_PER_MINUTE` | 2 | Per-IP limit for the history endpoint |
 | `PORT` | 8080 | |
+| `LOG_HTTP` | – | `true` logs each alerts.in.ua request and response with its JSON body (token masked) |
 
 ## Connecting the app
 

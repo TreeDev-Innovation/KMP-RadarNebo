@@ -1,5 +1,7 @@
 package com.gusak.lab.radarnebo.desktop
 
+import com.gusak.lab.radarnebo.data.TargetFilter
+import com.gusak.lab.radarnebo.tracking.TargetKind
 import com.gusak.lab.radarnebo.data.AlertsRepository
 import com.gusak.lab.radarnebo.data.AlertsUpdate
 import com.gusak.lab.radarnebo.data.FavoritesRepository
@@ -45,6 +47,7 @@ class DependencyInjectionTest {
         val body = when (request.url.encodedPath) {
             RadarNeboApi.ACTIVE_ALERTS_PATH -> ALERTS
             RadarNeboApi.TRACKS_PATH -> TRACKS
+            RadarNeboApi.HEALTH_PATH -> """{"status":"degraded","source":"AlertsInUa","lastError":"Upstream returned 500","extra":1}"""
             else -> error("unexpected ${request.url}")
         }
         respond(body, headers = headersOf(HttpHeaders.ContentType, "application/json"))
@@ -87,10 +90,12 @@ class DependencyInjectionTest {
     @Test
     fun useCasesWorkThroughTheInjectedRepositories() {
         val k = koin.koin
-        // The app only talks to its server: alerts, then the server's tracks.
+        // The app only talks to its server: alerts, the server's tracks, then how the server is doing.
         val update = runBlocking { k.get<RefreshAlertsUseCase>()() }
         assertTrue(update is AlertsUpdate.Updated && update.snapshot.alerts.isNotEmpty() && update.snapshot.simulated)
-        assertEquals(listOf(RadarNeboApi.ACTIVE_ALERTS_PATH, RadarNeboApi.TRACKS_PATH), requested)
+        assertEquals(listOf(RadarNeboApi.ACTIVE_ALERTS_PATH, RadarNeboApi.TRACKS_PATH, RadarNeboApi.HEALTH_PATH), requested)
+        val health = update.snapshot.health!!
+        assertTrue(!health.isOk && health.lastError == "Upstream returned 500", "a failing data source shows as degraded")
         assertEquals(RadarNeboApi.DEFAULT_SERVER_URL, k.get<SettingsRepository>().settings.value.serverUrl)
 
         val favorite = k.get<AddFavoriteUseCase>()("  ", GeoPoint(50.4501, 30.5234))
@@ -118,6 +123,21 @@ class DependencyInjectionTest {
         assertTrue(dronesOnly.tracks.all { it.type == ThreatType.Drones })
         assertTrue(all.tracks.size > dronesOnly.tracks.size, "the cruise missile shows only with every threat class")
         assertTrue(all.threats.size >= dronesOnly.threats.size)
+
+        val missiles = all.tracks.count { it.type != ThreatType.Drones }
+        val noProbable = build(snapshot.alerts, snapshot.tracks, settings.copy(dronesOnly = false, targetFilter = TargetFilter(hideProbable = true)), emptyList())
+        assertTrue(noProbable.tracks.isEmpty(), "the fixture names no types, so every target is probable")
+        assertEquals(all.tracks, noProbable.unfilteredTracks, "the list still sees what the filter hides")
+        val noDrones = build(snapshot.alerts, snapshot.tracks, settings.copy(dronesOnly = false, targetFilter = TargetFilter(hiddenKinds = setOf(TargetKind.AttackDrone))), emptyList())
+        assertEquals(missiles, noDrones.tracks.size)
+        assertEquals(all.threats, noDrones.threats, "alerts are never filtered away")
+    }
+
+    @Test
+    fun theTargetFilterIsSaved() {
+        val storage = InMemoryStorage()
+        SettingsRepository(storage).update { it.copy(targetFilter = TargetFilter(setOf(TargetKind.DecoyDrone, TargetKind.GuidedBomb), hideProbable = true)) }
+        assertEquals(TargetFilter(setOf(TargetKind.DecoyDrone, TargetKind.GuidedBomb), hideProbable = true), SettingsRepository(storage).settings.value.targetFilter)
     }
 
     @Test

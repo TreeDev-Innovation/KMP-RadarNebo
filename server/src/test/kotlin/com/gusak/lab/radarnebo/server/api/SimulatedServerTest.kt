@@ -63,5 +63,8 @@ class SimulatedServerTest {
 
         val health = client.get("/health").bodyAsText()
         assertTrue("\"simulated\":true" in health && "\"upstreamRequestsTotal\":0" in health && "\"source\":\"Simulation\"" in health, health)
+
+        val page = client.get("/").bodyAsText()
+        assertTrue("RadarNebo server" in page && "Simulation (not the real situation)" in page, "a status page for browsers")
     }
 }

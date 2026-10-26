@@ -13,28 +13,40 @@ import com.gusak.lab.radarnebo.App
 import com.gusak.lab.radarnebo.data.RadarNeboApi
 import com.gusak.lab.radarnebo.data.FavoriteLocation
 import com.gusak.lab.radarnebo.data.InMemoryStorage
+import com.gusak.lab.radarnebo.data.MapMode
 import com.gusak.lab.radarnebo.data.ThemeMode
 import com.gusak.lab.radarnebo.di.isolatedKoin
 import com.gusak.lab.radarnebo.ui.FavoritesScreen
 import com.gusak.lab.radarnebo.ui.RadarTheme
 import com.gusak.lab.radarnebo.ui.SettingsScreen
+import com.gusak.lab.radarnebo.ui.map.MapTiles
 import kotlinx.serialization.builtins.ListSerializer
 import org.koin.compose.KoinIsolatedContext
+import org.koin.dsl.module
 
 /**
  * The whole app as it starts (demo data), with a Koin container and ViewModel store of its own, so
- * previews never touch real settings and work in the IDE, which has no app-wide Koin.
+ * previews never touch real settings and work in the IDE, which has no app-wide Koin. With [map], the street
+ * map is drawn from the bundled tiles (never downloaded).
  */
 @Composable
-internal fun AppPreviewHost(theme: ThemeMode, favorites: List<FavoriteLocation> = PreviewData.favorites) {
-    val koin = remember(theme) {
+internal fun AppPreviewHost(
+    theme: ThemeMode,
+    favorites: List<FavoriteLocation> = PreviewData.favorites,
+    mapMode: MapMode = MapMode.Static,
+    map: Boolean = false,
+) {
+    val koin = remember(theme, mapMode, map) {
         val storage = InMemoryStorage().apply {
             putString("theme_mode", theme.name)
+            putString("map_mode", mapMode.name)
             putString("favorites", RadarNeboApi.json.encodeToString(ListSerializer(FavoriteLocation.serializer()), favorites))
         }
-        isolatedKoin(storage)
+        isolatedKoin(storage).apply {
+            if (map) modules(module { single { MapTiles(client = null, blocking = true) } })
+        }
     }
-    val owner = remember(theme) {
+    val owner = remember(koin) {
         object : ViewModelStoreOwner {
             override val viewModelStore = ViewModelStore()
         }

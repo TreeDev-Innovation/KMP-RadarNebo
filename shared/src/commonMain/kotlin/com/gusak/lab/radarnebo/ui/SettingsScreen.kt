@@ -1,5 +1,6 @@
 package com.gusak.lab.radarnebo.ui
 
+import com.gusak.lab.radarnebo.data.MapBackground
 import androidx.compose.material3.Surface
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -48,6 +50,8 @@ fun SettingsScreen(
     settings: AppSettings,
     onChange: ((AppSettings) -> AppSettings) -> Unit,
     bottomInset: Dp = 0.dp,
+    /** Opens the request inspector; null hides the Developer section. */
+    onOpenRequests: (() -> Unit)? = null,
 ) {
     var serverUrl by remember(settings.serverUrl) { mutableStateOf(settings.serverUrl) }
     var accessKey by remember(settings.accessKey) { mutableStateOf(settings.accessKey) }
@@ -101,7 +105,34 @@ fun SettingsScreen(
         )
         Button(onClick = { onChange { it.copy(serverUrl = serverUrl.trim(), accessKey = accessKey.trim()) } }) { Text("Save & reconnect") }
 
+        if (onOpenRequests != null) {
+            Text("Developer", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "See every request the app sends to its server and the JSON it gets back.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            OutlinedButton(onClick = onOpenRequests) { Text("Open request inspector") }
+        }
+
         Text("Map", style = MaterialTheme.typography.titleMedium)
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            MapBackground.entries.forEachIndexed { index, background ->
+                SegmentedButton(
+                    selected = settings.mapBackground == background,
+                    onClick = { onChange { it.copy(mapBackground = background) } },
+                    shape = SegmentedButtonDefaults.itemShape(index, MapBackground.entries.size),
+                ) {
+                    Text(
+                        when (background) {
+                            MapBackground.None -> "No map"
+                            MapBackground.Streets -> "Map"
+                            MapBackground.Satellite -> "Satellite"
+                        }
+                    )
+                }
+            }
+        }
+        Text("What the map shows under the oblasts. Map and satellite tiles are downloaded from Esri.", style = MaterialTheme.typography.bodySmall)
         IntSlider(
             label = "Max drones shown on map",
             value = settings.maxMapMarkers,

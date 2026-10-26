@@ -1,0 +1,8 @@
+# zoom x0 x1 y0 y1: the tile ranges bundled for each style (tools/download-map-tiles.py)
+3 4 5 1 3
+4 8 10 3 6
+5 16 21 7 13
+6 32 42 14 27
+7 65 84 28 54
+8 133 166 72 100
+9 273 326 157 194

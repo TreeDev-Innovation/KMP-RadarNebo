@@ -3,6 +3,7 @@ package com.gusak.lab.radarnebo.server.api
 import com.gusak.lab.radarnebo.server.application.SituationPoller
 import com.gusak.lab.radarnebo.server.application.SituationService
 import com.gusak.lab.radarnebo.server.config.ClientApiConfig
+import com.gusak.lab.radarnebo.debug.TrafficRecorder
 import com.gusak.lab.radarnebo.server.contract.AlertsInUaContract
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -55,8 +56,11 @@ fun Application.radarApi(
     clients: ClientApiConfig,
     upstreamBudgetPerMinute: Int?,
     clock: () -> Long = System::currentTimeMillis,
+    /** Receives every call with its response, for the server console. */
+    traffic: TrafficRecorder? = null,
 ) {
     val log = LoggerFactory.getLogger("RadarApi")
+    if (traffic != null) install(ServerTrafficCapture) { recorder = traffic }
     install(ContentNegotiation) { json(AlertsInUaContract.json) }
     install(CallLogging)
     install(Compression) {

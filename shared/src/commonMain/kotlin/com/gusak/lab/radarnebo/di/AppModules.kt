@@ -13,6 +13,8 @@ import com.gusak.lab.radarnebo.domain.usecase.RefreshAlertsUseCase
 import com.gusak.lab.radarnebo.domain.usecase.RemoveFavoriteUseCase
 import com.gusak.lab.radarnebo.domain.usecase.UpdateSettingsUseCase
 import com.gusak.lab.radarnebo.ui.AppViewModel
+import com.gusak.lab.radarnebo.debug.TrafficLog
+import io.ktor.client.plugins.logging.Logger
 import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
@@ -28,7 +30,10 @@ import org.koin.dsl.module
 
 /** The server client and repositories. They hold state (caches), so one each. */
 fun dataModule() = module {
-    single { RadarNeboApi() }
+    // Every request to the server and its response, for the request inspector.
+    single { TrafficLog() }
+    // A platform module may provide a Logger to log the server's requests and responses.
+    single { RadarNeboApi(RadarNeboApi.defaultClient(getOrNull<Logger>(), get<TrafficLog>())) }
     singleOf(::SettingsRepository)
     singleOf(::FavoritesRepository)
     single { AlertsRepository(get()) }

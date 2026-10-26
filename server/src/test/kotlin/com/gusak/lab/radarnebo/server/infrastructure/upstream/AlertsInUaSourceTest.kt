@@ -4,6 +4,9 @@ import com.gusak.lab.radarnebo.server.Archives
 import com.gusak.lab.radarnebo.server.ServerComponents
 import com.gusak.lab.radarnebo.server.config.ServerConfig
 import com.gusak.lab.radarnebo.server.config.UpstreamConfig
+import com.gusak.lab.radarnebo.debug.HttpExchange
+import com.gusak.lab.radarnebo.debug.TrafficLog
+import com.gusak.lab.radarnebo.debug.httpTrafficCapture
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
@@ -114,5 +117,25 @@ class AlertsInUaSourceTest {
         assertTrue(server.poller.status.lastError!!.contains("429"))
         assertEquals(1, situation.tracks.size, "tracked from the alerts")
         assertTrue(situation.tracks.single().id.startsWith("trk-"), situation.tracks.single().id)
+    }
+
+    @Test
+    fun upstreamTrafficIsRecordedAndTheBodyStillParses() = runBlocking {
+        val log = TrafficLog()
+        val engine = MockEngine {
+            respond(alertsJson("7", "Бровари", 14, "2026-10-25T10:00:00.000Z"), headers = headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val upstream = UpstreamConfig(token = "secret-token")
+        val source = AlertsInUaSource(
+            upstream, HttpClient(engine) { expectSuccess = false; install(httpTrafficCapture(log)) },
+            UpstreamRateLimiter(upstream.effectivePerMinute, sleep = {}),
+        )
+        val result = source.fetch(null)
+        assertTrue(result is com.gusak.lab.radarnebo.server.application.FetchResult.Fresh, "the source still reads the body: $result")
+        val exchange = log.exchanges.value.single()
+        assertEquals(HttpExchange.Direction.Outgoing, exchange.direction)
+        assertEquals(200, exchange.status)
+        assertTrue("Бровари" in exchange.responseBody!!)
+        assertEquals("***", exchange.requestHeaders.single { it.first == HttpHeaders.Authorization }.second, "the token is masked")
     }
 }

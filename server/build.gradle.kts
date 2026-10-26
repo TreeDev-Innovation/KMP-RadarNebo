@@ -36,6 +36,7 @@ dependencies {
     implementation(libs.ktor.server.compression)
     implementation(libs.ktor.serialization.json)
     implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.logging)
     implementation(libs.logback.classic)
     implementation(libs.exposed.core)
     implementation(libs.exposed.jdbc)
@@ -60,3 +61,6 @@ tasks.named<JavaExec>("run") {
             .forEach { (key, value) -> environment(key, value) }
     }
 }
+
+// The process is called "RadarNebo Server" rather than "java" (buildSrc/src/main/kotlin/LaunchAs.kt).
+launchAs("RadarNebo Server")

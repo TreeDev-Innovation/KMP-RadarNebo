@@ -30,7 +30,7 @@ internal fun Route.alertsInUaRoutes(situation: SituationService, maxAge: () -> D
         if (call.notModifiedSince(board, maxAge(), clock())) return@get
         // Encoded once per board version, however many clients ask.
         val body = encoded.get()?.takeIf { it.first == board.version }?.second
-            ?: AlertsInUaContract.encode(board.alerts).also { encoded.set(board.version to it) }
+            ?: AlertsInUaContract.encode(board.alerts, board.changedAt).also { encoded.set(board.version to it) }
         call.respondText(body, ContentType.Application.Json)
     }
 

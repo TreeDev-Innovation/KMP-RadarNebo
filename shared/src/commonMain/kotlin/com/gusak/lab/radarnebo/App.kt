@@ -23,9 +23,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.gusak.lab.radarnebo.data.MapMode
 import com.gusak.lab.radarnebo.data.ThemeMode
 import com.gusak.lab.radarnebo.ui.preview.AppPreviewHost
+import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinViewModel
+import androidx.compose.runtime.CompositionLocalProvider
+import com.gusak.lab.radarnebo.ui.map.LocalMapTiles
+import com.gusak.lab.radarnebo.ui.map.MapTiles
 import com.gusak.lab.radarnebo.ui.AppViewModel
 import com.gusak.lab.radarnebo.ui.FavoritesScreen
 import com.gusak.lab.radarnebo.ui.GlassNavBarDefaults
@@ -49,57 +54,66 @@ private enum class Tab(val label: String, val glyph: String) {
  *
  * @param onThemeApplied called with the chosen mode and whether the resolved theme is dark, so the
  * platform host can match system chrome (status bar icons, window appearance).
+ * @param onOpenRequests opens the request inspector (a window on desktop, an activity on Android); null hides
+ * the buttons for it.
  */
 @Composable
 fun App(
     onThemeApplied: (mode: ThemeMode, dark: Boolean) -> Unit = { _, _ -> },
+    onOpenRequests: (() -> Unit)? = null,
 ) {
     val vm = koinViewModel<AppViewModel>()
+    // Provided by the platform modules only, so tests and previews never download map tiles.
+    val mapTiles = getKoin().getOrNull<MapTiles>()
     val state by vm.state.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Map) }
 
     RadarTheme(state.settings.themeMode, onThemeApplied) {
-        val backdrop = rememberGlassBackdrop()
-        // Screens run edge to edge underneath the floating bar and pad their scrollable content instead.
-        val bottomInset = GlassNavBarDefaults.ContentInset +
-            WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-        val topAndSides = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+        CompositionLocalProvider(LocalMapTiles provides mapTiles) {
+            val backdrop = rememberGlassBackdrop()
+            // Screens run edge to edge underneath the floating bar and pad their scrollable content instead.
+            val bottomInset = GlassNavBarDefaults.ContentInset +
+                WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            val topAndSides = Modifier.windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
 
-        Box(Modifier.fillMaxSize()) {
-            // Surface (not a plain background) so screens inherit the theme's content colour.
-            Surface(
-                Modifier.fillMaxSize().glassBackdropSource(backdrop),
-                color = MaterialTheme.colorScheme.background,
-            ) {
-                when (tab) {
-                    Tab.Map -> MapScreen(
-                        state,
-                        onModeChange = vm::setMapMode,
-                        onAddFavorite = vm::addFavorite,
-                        onRadiusChange = { km -> vm.updateSettings { it.copy(proximityRadiusKm = km) } },
-                        bottomInset = bottomInset,
-                    )
-                    Tab.Favorites -> Box(topAndSides) {
-                        FavoritesScreen(state, onAdd = vm::addFavorite, onRemove = vm::removeFavorite, bottomInset = bottomInset)
-                    }
-                    Tab.Settings -> Box(topAndSides) {
-                        SettingsScreen(state.settings, onChange = vm::updateSettings, bottomInset = bottomInset)
+            Box(Modifier.fillMaxSize()) {
+                // Surface (not a plain background) so screens inherit the theme's content colour.
+                Surface(
+                    Modifier.fillMaxSize().glassBackdropSource(backdrop),
+                    color = MaterialTheme.colorScheme.background,
+                ) {
+                    when (tab) {
+                        Tab.Map -> MapScreen(
+                            state,
+                            onModeChange = vm::setMapMode,
+                            onAddFavorite = vm::addFavorite,
+                            onRadiusChange = { km -> vm.updateSettings { it.copy(proximityRadiusKm = km) } },
+                            onTargetFilterChange = { filter -> vm.updateSettings { it.copy(targetFilter = filter) } },
+                            onOpenRequests = onOpenRequests,
+                            bottomInset = bottomInset,
+                        )
+                        Tab.Favorites -> Box(topAndSides) {
+                            FavoritesScreen(state, onAdd = vm::addFavorite, onRemove = vm::removeFavorite, bottomInset = bottomInset)
+                        }
+                        Tab.Settings -> Box(topAndSides) {
+                            SettingsScreen(state.settings, onChange = vm::updateSettings, bottomInset = bottomInset, onOpenRequests = onOpenRequests)
+                        }
                     }
                 }
-            }
 
-            GlassNavigationBar(
-                items = Tab.entries.map { item ->
-                    GlassNavItem(item.label, item.glyph, badge = if (item == Tab.Favorites) state.proximity.size else 0)
-                },
-                selectedIndex = tab.ordinal,
-                onSelect = { tab = Tab.entries[it] },
-                backdrop = backdrop,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = GlassNavBarDefaults.Margin),
-            )
+                GlassNavigationBar(
+                    items = Tab.entries.map { item ->
+                        GlassNavItem(item.label, item.glyph, badge = if (item == Tab.Favorites) state.proximity.size else 0)
+                    },
+                    selectedIndex = tab.ordinal,
+                    onSelect = { tab = Tab.entries[it] },
+                    backdrop = backdrop,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = GlassNavBarDefaults.Margin),
+                )
+            }
         }
     }
 }
@@ -107,3 +121,7 @@ fun App(
 @Preview(name = "App · phone", widthDp = 420, heightDp = 880)
 @Composable
 private fun AppPreview() = AppPreviewHost(ThemeMode.Dark)
+
+@Preview(name = "App · phone · cinematic", widthDp = 420, heightDp = 880)
+@Composable
+private fun AppCinematicPreview() = AppPreviewHost(ThemeMode.Dark, mapMode = MapMode.Cinematic, map = true)

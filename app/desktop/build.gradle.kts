@@ -25,10 +25,26 @@ tasks.withType<JavaCompile>().configureEach {
     options.compilerArgs.addAll(macGestureExports)
 }
 
+// The name and icon macOS shows in the Dock and app switcher, instead of "MainKt" and the Java cup.
+// -Xdock is macOS-only; other JVMs refuse to start with it.
+val dockArgs = if (System.getProperty("os.name").startsWith("Mac")) {
+    listOf("-Xdock:name=RadarNebo", "-Xdock:icon=${file("icons/radarnebo.png").absolutePath}")
+} else {
+    emptyList()
+}
+
+// Every way of starting the app needs these too, not only `run` (which gets compose.desktop's jvmArgs):
+// Compose Hot Reload's hotRun/hotDev, which the IDE's "[hot]" run configuration uses.
+tasks.withType<JavaExec>().configureEach {
+    jvmArgs("--add-exports=java.desktop/com.apple.eawt.event=ALL-UNNAMED")
+    jvmArgs(dockArgs)
+}
+
 dependencies {
     implementation(project(":shared"))
     implementation(compose.desktop.currentOs)
     implementation(libs.kotlinx.coroutines.swing)
+    implementation(libs.logback.classic)
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.androidx.lifecycle.viewmodelCompose)
@@ -54,12 +70,26 @@ compose.desktop {
     application {
         mainClass = "com.gusak.lab.radarnebo.desktop.MainKt"
         jvmArgs("--add-exports=java.desktop/com.apple.eawt.event=ALL-UNNAMED")
+        jvmArgs(*dockArgs.toTypedArray())
         System.getProperty("radarnebo.settings")?.let { jvmArgs("-Dradarnebo.settings=$it") }
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "RadarNebo"
             packageVersion = "1.0.0"
+            // The packaged app ships a trimmed JDK. `suggestRuntimeModules` finds the first three; logback needs
+            // java.naming (loaded reflectively, so not detected) and HTTPS tile servers need jdk.crypto.ec.
+            modules("java.instrument", "java.management", "jdk.unsupported", "java.naming", "jdk.crypto.ec")
+            // Regenerate with tools/make-icons.sh.
+            macOS {
+                iconFile.set(project.file("icons/radarnebo.icns"))
+                bundleID = "com.gusak.lab.radarnebo"
+            }
+            windows { iconFile.set(project.file("icons/radarnebo.ico")) }
+            linux { iconFile.set(project.file("icons/radarnebo.png")) }
         }
     }
 }
+
+// The process is called "RadarNebo" rather than "java" (buildSrc/src/main/kotlin/LaunchAs.kt).
+launchAs("RadarNebo")

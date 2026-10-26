@@ -1,5 +1,6 @@
 package com.gusak.lab.radarnebo.server
 
+import com.gusak.lab.radarnebo.debug.TrafficRecorder
 import com.gusak.lab.radarnebo.server.api.radarApi
 import com.gusak.lab.radarnebo.server.application.AlertsDataSource
 import com.gusak.lab.radarnebo.server.application.SituationPoller
@@ -18,6 +19,7 @@ import com.gusak.lab.radarnebo.server.infrastructure.persistence.InMemoryTrackAr
 import com.gusak.lab.radarnebo.server.infrastructure.simulation.SimulatedAlertsSource
 import com.gusak.lab.radarnebo.server.infrastructure.tracking.AlertDerivedTracking
 import com.gusak.lab.radarnebo.server.infrastructure.upstream.AlertsInUaSource
+import com.gusak.lab.radarnebo.server.infrastructure.upstream.UpstreamRateLimiter
 import io.ktor.server.application.Application
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
@@ -50,12 +52,23 @@ class ServerComponents(
     val situation: SituationService,
     val poller: SituationPoller,
     val clock: () -> Long,
+    /** Receives the server's HTTP traffic, both ways; the server console sets it. */
+    val traffic: TrafficRecorder? = null,
 ) {
+    /** The alerts.in.ua budget `/health` reports; null for the simulation. */
+    val upstreamBudgetPerMinute get() = config.upstream.effectivePerMinute.takeIf { config.dataSource == DataSourceKind.AlertsInUa }
+
     companion object {
+        /**
+         * [upstreamLimiter] guards every alerts.in.ua request; pass the same one to components built one after
+         * another (a server restarted by the console) so restarts can't exceed the budget.
+         */
         fun create(
             config: ServerConfig,
             clock: () -> Long = System::currentTimeMillis,
-            source: AlertsDataSource = defaultSource(config, clock),
+            traffic: TrafficRecorder? = null,
+            upstreamLimiter: UpstreamRateLimiter = UpstreamRateLimiter(config.upstream.effectivePerMinute),
+            source: AlertsDataSource = defaultSource(config, clock, traffic, upstreamLimiter),
             archives: Archives = Archives.create(config),
         ): ServerComponents {
             // A source with air surveillance gives real flight paths; otherwise tracks are inferred from alerts.
@@ -67,12 +80,18 @@ class ServerComponents(
                 locations = LocationDirectory(source.locations),
                 simulated = source.kind == DataSourceKind.Simulation,
             )
-            return ServerComponents(config, situation, SituationPoller(source, situation, config.archive.retention, clock), clock)
+            return ServerComponents(config, situation, SituationPoller(source, situation, config.archive.retention, clock), clock, traffic)
         }
 
-        private fun defaultSource(config: ServerConfig, clock: () -> Long): AlertsDataSource = when (config.dataSource) {
+        private fun defaultSource(
+            config: ServerConfig,
+            clock: () -> Long,
+            traffic: TrafficRecorder?,
+            limiter: UpstreamRateLimiter,
+        ): AlertsDataSource = when (config.dataSource) {
             DataSourceKind.Simulation -> SimulatedAlertsSource(config.simulation, clock)
-            DataSourceKind.AlertsInUa -> AlertsInUaSource(config.upstream, clock = clock)
+            DataSourceKind.AlertsInUa ->
+                AlertsInUaSource(config.upstream, AlertsInUaSource.defaultClient(config.logHttp, traffic), limiter, clock)
         }
     }
 }
@@ -84,8 +103,9 @@ fun Application.radarServer(components: ServerComponents, startPoller: Boolean =
         situation = components.situation,
         poller = components.poller,
         clients = config.clients,
-        upstreamBudgetPerMinute = config.upstream.effectivePerMinute.takeIf { config.dataSource == DataSourceKind.AlertsInUa },
+        upstreamBudgetPerMinute = components.upstreamBudgetPerMinute,
         clock = components.clock,
+        traffic = components.traffic,
     )
     if (startPoller) launch { components.poller.run() }
 }

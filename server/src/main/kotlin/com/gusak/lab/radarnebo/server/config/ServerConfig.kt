@@ -19,6 +19,8 @@ data class ServerConfig(
     val clients: ClientApiConfig = ClientApiConfig(),
     /** Explicit choice; by default alerts.in.ua when a token is set, the simulation otherwise. */
     val dataSourceOverride: DataSourceKind? = null,
+    /** Logs every alerts.in.ua request and response, body included, with the token masked. */
+    val logHttp: Boolean = false,
 ) {
     val dataSource: DataSourceKind
         get() = dataSourceOverride ?: if (upstream.token.isNullOrBlank()) DataSourceKind.Simulation else DataSourceKind.AlertsInUa
@@ -56,6 +58,7 @@ data class ServerConfig(
                     "alerts_in_ua", "alerts.in.ua", "upstream" -> DataSourceKind.AlertsInUa
                     else -> null
                 },
+                logHttp = text("LOG_HTTP").toBoolean(),
             )
         }
     }

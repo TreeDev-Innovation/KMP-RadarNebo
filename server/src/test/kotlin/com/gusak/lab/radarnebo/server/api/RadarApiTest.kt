@@ -6,6 +6,8 @@ import com.gusak.lab.radarnebo.data.ThreatLevel
 import com.gusak.lab.radarnebo.server.Archives
 import com.gusak.lab.radarnebo.server.Fixtures
 import com.gusak.lab.radarnebo.server.Fixtures.alert
+import com.gusak.lab.radarnebo.debug.HttpExchange
+import com.gusak.lab.radarnebo.debug.TrafficLog
 import com.gusak.lab.radarnebo.server.ServerComponents
 import com.gusak.lab.radarnebo.server.application.AlertsDataSource
 import com.gusak.lab.radarnebo.server.application.FetchResult
@@ -112,7 +114,8 @@ class RadarApiTest {
         server.poll()
         val changed = client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfNoneMatch, etag) }
         assertEquals(HttpStatusCode.OK, changed.status)
-        assertEquals("""{"alerts":[]}""", changed.bodyAsText())
+        // Like alerts.in.ua: the alerts and when they last changed (now, in the test's clock).
+        assertEquals("""{"alerts":[],"meta":{"last_updated_at":"2026/10/19 10:01:00 +0000","type":"full"}}""", changed.bodyAsText())
     }
 
     @Test
@@ -206,5 +209,24 @@ class RadarApiTest {
         server.poll()
         val response: HttpResponse = client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.AcceptEncoding, "gzip") }
         assertEquals("gzip", response.headers[HttpHeaders.ContentEncoding])
+    }
+
+    @Test
+    fun theConsoleSeesEachCallWithItsUncompressedBodyAndMaskedKey() = testApplication {
+        val log = TrafficLog()
+        val components = ServerComponents.create(
+            ServerConfig(clients = ClientApiConfig(keys = setOf("app-key"), requestsPerMinute = 10_000)),
+            clock = { now }, traffic = log, source = source, archives = Archives.inMemory(),
+        )
+        application { radarServer(components, startPoller = false) }
+        source.alerts = (1L..40).map { alert(it, Fixtures.brovary) }
+        components.poll()
+
+        client.get(RadarNeboApi.ACTIVE_ALERTS_PATH + "?token=app-key") { header(HttpHeaders.AcceptEncoding, "gzip") }
+        val exchange = log.exchanges.value.single()
+        assertEquals(HttpExchange.Direction.Incoming, exchange.direction)
+        assertEquals(RadarNeboApi.ACTIVE_ALERTS_PATH + "?token=***", exchange.url)
+        assertEquals(200, exchange.status)
+        assertTrue(exchange.responseBody!!.startsWith("{\"alerts\""), "recorded before compression")
     }
 }

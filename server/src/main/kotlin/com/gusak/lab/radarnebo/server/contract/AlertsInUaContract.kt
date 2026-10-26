@@ -2,6 +2,7 @@ package com.gusak.lab.radarnebo.server.contract
 
 import com.gusak.lab.radarnebo.data.ActiveAlertsResponse
 import com.gusak.lab.radarnebo.data.Alert
+import com.gusak.lab.radarnebo.data.AlertsMeta
 import com.gusak.lab.radarnebo.data.Threat
 import com.gusak.lab.radarnebo.data.ThreatLevel
 import com.gusak.lab.radarnebo.data.ThreatType
@@ -39,8 +40,16 @@ object AlertsInUaContract {
 
     fun decodeActive(raw: String): List<Alert> = json.decodeFromString(ActiveAlertsResponse.serializer(), raw).alerts
 
-    fun encode(alerts: List<AirAlert>): String =
-        json.encodeToString(ActiveAlertsResponse.serializer(), ActiveAlertsResponse(alerts.map { it.toDto() }))
+    private val metaTimestamp = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss Z").withZone(ZoneOffset.UTC)
+
+    /** With [changedAt], adds alerts.in.ua's `meta` block, saying when the data last changed. */
+    fun encode(alerts: List<AirAlert>, changedAt: Instant? = null): String = json.encodeToString(
+        ActiveAlertsResponse.serializer(),
+        ActiveAlertsResponse(
+            alerts = alerts.map { it.toDto() },
+            meta = changedAt?.let { AlertsMeta(lastUpdatedAt = metaTimestamp.format(it.toJavaInstant())) },
+        ),
+    )
 
     fun AirAlert.toDto(): Alert = Alert(
         id = id,
@@ -53,9 +62,10 @@ object AlertsInUaContract {
         alertType = type.apiValue,
         locationUid = location.uid,
         locationOblast = location.oblastTitle,
-        locationOblastUid = location.oblastUid,
+        locationOblastUid = location.sourceOblastUid ?: location.oblastUid,
         locationRaion = location.raionTitle,
         notes = notes,
+        country = country,
         alertLevel = level?.apiValue,
         threats = threats.map { threat ->
             Threat(
@@ -71,6 +81,7 @@ object AlertsInUaContract {
     fun Alert.toDomain(receivedAt: Instant): AirAlert {
         val started = parse(startedAt) ?: receivedAt
         val level = alertLevel?.let(ThreatLevel::from)
+        val oblastUid = ThreatMapper.oblastUid(this)
         return AirAlert(
             id = id,
             location = AlertLocation(
@@ -78,9 +89,10 @@ object AlertsInUaContract {
                 title = locationTitle,
                 titleEn = locationTitleEn,
                 type = LocationType.from(locationType),
-                oblastUid = ThreatMapper.oblastUid(this@toDomain),
+                oblastUid = oblastUid,
                 oblastTitle = locationOblast,
                 raionTitle = locationRaion,
+                sourceOblastUid = locationOblastUid.takeIf { it != oblastUid },
             ),
             type = AlertType.from(alertType),
             level = level,
@@ -88,6 +100,7 @@ object AlertsInUaContract {
             updatedAt = parse(updatedAt),
             finishedAt = parse(finishedAt),
             notes = notes,
+            country = country,
             threats = threats.map { threat ->
                 ThreatSignal(
                     type = ThreatType.from(threat.threatType),

@@ -16,10 +16,11 @@ data class AlertBoard(
 
     /**
      * The board after the source reported [next] at [at]. Alerts that disappeared are finished at [at]
-     * unless the source already finished them.
+     * unless the source already finished them. Alerts keep the source's order, so clients get the list as
+     * alerts.in.ua sent it.
      */
     fun next(next: List<AirAlert>, at: Instant): BoardChange {
-        val active = next.filter { it.isActive }.sortedBy { it.id }
+        val active = next.filter { it.isActive }
         if (active == alerts) return BoardChange(copy(confirmedAt = at))
         val nextIds = active.mapTo(HashSet()) { it.id }
         val finishedBySource = next.filterNot { it.isActive }.associateBy { it.id }

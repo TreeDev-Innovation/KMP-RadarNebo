@@ -143,3 +143,14 @@ class LocateTest {
         assertEquals(9, ThreatMapper.toMarkers(response.alerts, dronesOnly = false).single().oblastUid)
     }
 }
+
+class OblastCentresTest {
+    @Test
+    fun everyOblastHasItsCentreAndNoNamesakeTown() {
+        val centres = com.gusak.lab.radarnebo.geo.UkraineCities.oblastCentres
+        assertEquals(26, centres.size)
+        assertEquals(26, centres.map { it.name }.toSet().size, "one city per name")
+        assertTrue(centres.single { it.name == "Mykolaiv" }.lon > 31, "the oblast centre on the Southern Bug, not the town near Lviv")
+        assertTrue(centres.single { it.name == "Rivne" }.lat > 50, "the oblast centre, not the town in Kirovohrad Oblast")
+    }
+}

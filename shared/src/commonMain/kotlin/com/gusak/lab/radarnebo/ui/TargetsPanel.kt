@@ -6,9 +6,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -30,6 +35,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -43,6 +50,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.gusak.lab.radarnebo.data.TargetFilter
 import com.gusak.lab.radarnebo.data.ThreatLevel
 import com.gusak.lab.radarnebo.data.ThreatType
 import com.gusak.lab.radarnebo.geo.Regions
@@ -55,6 +63,7 @@ import com.gusak.lab.radarnebo.tracking.TrackInterpolator
 import com.gusak.lab.radarnebo.tracking.TrackPredictor
 import com.gusak.lab.radarnebo.tracking.TrackSample
 import com.gusak.lab.radarnebo.tracking.TargetClassifier
+import com.gusak.lab.radarnebo.tracking.TargetKind
 import com.gusak.lab.radarnebo.tracking.TargetProfile
 import com.gusak.lab.radarnebo.tracking.TrackMetrics
 import com.gusak.lab.radarnebo.ui.map.TargetIcon
@@ -67,7 +76,8 @@ fun targetName(trackId: String) = "T-" + trackId.substringAfter("trk-")
 
 /**
  * Tracked drone targets: a list of every target with its latest report and predicted arrival, and a
- * detail view with the timestamped history of reported positions.
+ * detail view with the timestamped history of reported positions. [tracks] includes targets [filter]
+ * hides, so the list can count them and offer to show them again.
  */
 @Composable
 fun TargetsPanel(
@@ -78,6 +88,10 @@ fun TargetsPanel(
     onSelect: (String?) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** A list row gained (true) or lost (false) the mouse pointer. */
+    onHover: (trackId: String, hovered: Boolean) -> Unit = { _, _ -> },
+    filter: TargetFilter = TargetFilter(),
+    onFilterChange: (TargetFilter) -> Unit = {},
 ) {
     // Positions and ETAs move continuously; refresh the panel once a second.
     val now by produceState(Clock.System.now().toEpochMilliseconds() + clockOffsetMs, clockOffsetMs) {
@@ -95,7 +109,7 @@ fun TargetsPanel(
         shadowElevation = 12.dp,
     ) {
         if (selected == null) {
-            TargetList(tracks, now, places, onSelect, onClose)
+            TargetList(tracks, now, places, filter, onFilterChange, onSelect, onClose, onHover)
         } else {
             TargetDetail(selected, now, places, onBack = { onSelect(null) }, onClose = onClose)
         }
@@ -121,45 +135,107 @@ private fun TargetList(
     tracks: List<DroneTrack>,
     now: Long,
     places: List<Place>,
+    filter: TargetFilter,
+    onFilterChange: (TargetFilter) -> Unit,
     onSelect: (String?) -> Unit,
     onClose: () -> Unit,
+    onHover: (trackId: String, hovered: Boolean) -> Unit,
 ) {
     var activeOnly by remember { mutableStateOf(true) }
-    val active = tracks.count { it.active }
-    val shown = tracks
+    var filterOpen by remember { mutableStateOf(false) }
+    val profiles = tracks.associate { it.id to TargetFilter.profileAt(it, now) }
+    val allowed = tracks.filter { filter.allows(profiles.getValue(it.id)) }
+    val hidden = tracks.size - allowed.size
+    val active = allowed.count { it.active }
+    val shown = allowed
         .filter { !activeOnly || it.active }
         .sortedWith(compareByDescending<DroneTrack> { it.active }.thenByDescending { it.samples.last().t })
 
     Column {
-        PanelHeader("Targets", "$active active · ${tracks.size} tracked", onClose)
+        PanelHeader("Targets", "$active active · ${allowed.size} tracked" + if (hidden > 0) " · $hidden hidden" else "", onClose)
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(activeOnly, onClick = { activeOnly = true }, label = { Text("Active ($active)") })
-            FilterChip(!activeOnly, onClick = { activeOnly = false }, label = { Text("All (${tracks.size})") })
+            FilterChip(!activeOnly, onClick = { activeOnly = false }, label = { Text("All (${allowed.size})") })
+            FilterChip(
+                filterOpen || filter.isActive,
+                onClick = { filterOpen = !filterOpen },
+                label = { Text(if (filter.isActive) "Filter · $hidden" else "Filter") },
+            )
+        }
+        if (filterOpen) {
+            TargetFilterOptions(filter, profiles.values.toList(), onFilterChange)
         }
         if (shown.isEmpty()) {
             Text(
-                "No drone targets tracked yet. Targets appear when a drone alert is followed by another one nearby.",
+                if (hidden > 0 && tracks.any { !activeOnly || it.active }) {
+                    "Every target here is hidden by the filter."
+                } else {
+                    "No drone targets tracked yet. Targets appear when a drone alert is followed by another one nearby."
+                },
                 Modifier.padding(16.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
         }
         LazyColumn(contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 12.dp)) {
             items(shown, key = { it.id }) { track ->
-                TargetRow(track, now, TrackPredictor.predict(track, now, places)) { onSelect(track.id) }
+                TargetRow(track, now, TrackPredictor.predict(track, now, places), onHover = { onHover(track.id, it) }) { onSelect(track.id) }
             }
         }
     }
 }
 
+/** Chips that show or hide probable types and each kind of target present (or already hidden). */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun TargetRow(track: DroneTrack, now: Long, prediction: ArrivalPrediction?, onClick: () -> Unit) {
+private fun TargetFilterOptions(filter: TargetFilter, profiles: List<TargetProfile>, onChange: (TargetFilter) -> Unit) {
+    val counts = profiles.groupingBy { it.kind }.eachCount()
+    val kinds = TargetKind.entries.filter { it in counts || it in filter.hiddenKinds }
+    val probable = profiles.count { it.source == TargetProfile.Source.Probable }
+    FlowRow(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            !filter.hideProbable,
+            onClick = { onChange(filter.copy(hideProbable = !filter.hideProbable)) },
+            label = { Text("Probable types ($probable)") },
+        )
+        kinds.forEach { kind ->
+            val shown = kind !in filter.hiddenKinds
+            FilterChip(
+                shown,
+                onClick = { onChange(filter.copy(hiddenKinds = if (shown) filter.hiddenKinds + kind else filter.hiddenKinds - kind)) },
+                label = { Text("${kind.label} (${counts[kind] ?: 0})") },
+                leadingIcon = { TargetIcon(kind = kind, headingDeg = 270f, color = MaterialTheme.colorScheme.onSurfaceVariant, size = 16.dp) },
+            )
+        }
+        if (filter.isActive) {
+            TextButton(onClick = { onChange(TargetFilter()) }) { Text("Show all") }
+        }
+    }
+}
+
+@Composable
+private fun TargetRow(
+    track: DroneTrack,
+    now: Long,
+    prediction: ArrivalPrediction?,
+    onHover: (Boolean) -> Unit,
+    onClick: () -> Unit,
+) {
     val colors = radarColors
+    val hoverSource = remember { MutableInteractionSource() }
+    val hovered by hoverSource.collectIsHoveredAsState()
+    LaunchedEffect(hovered) { onHover(hovered) }
+    // A row scrolled away or replaced by the detail view no longer reports its exit.
+    DisposableEffect(Unit) { onDispose { onHover(false) } }
     val last = track.samples.last()
     val motion = TrackInterpolator.positionAt(track, now)
     Column(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
+            .hoverable(hoverSource)
             .clickable(onClick = onClick)
             .padding(horizontal = 8.dp, vertical = 10.dp),
     ) {

@@ -21,6 +21,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".RequestInspectorActivity"
+            android:exported="false"
+            android:label="Requests" />
     </application>
 
 </manifest>

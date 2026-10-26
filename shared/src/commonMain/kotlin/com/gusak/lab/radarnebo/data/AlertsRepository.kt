@@ -12,6 +12,8 @@ data class AlertsSnapshot(
     val clockOffsetMs: Long,
     /** The server says its data is simulated; the UI must label it. */
     val simulated: Boolean,
+    /** The server's own report on its data source; null if it didn't answer. */
+    val health: ServerHealth? = null,
 )
 
 sealed interface AlertsUpdate {
@@ -45,7 +47,7 @@ class AlertsRepository(
             clockOffsetMs = response.serverTime - clock()
             simulated = response.simulated
         }
-        return AlertsUpdate.Updated(AlertsSnapshot(alerts, tracks, clockOffsetMs, simulated))
+        return AlertsUpdate.Updated(AlertsSnapshot(alerts, tracks, clockOffsetMs, simulated, api.health(endpoint)))
     }
 
     /** Forgets everything fetched, e.g. after switching to another server. */

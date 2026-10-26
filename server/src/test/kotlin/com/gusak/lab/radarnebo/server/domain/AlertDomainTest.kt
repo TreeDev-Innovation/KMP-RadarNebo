@@ -23,10 +23,10 @@ class AlertBoardTest {
         val kharkiv = alert(2, Fixtures.kharkiv)
         val first = AlertBoard.empty(t0).next(listOf(kharkiv, brovary), t0)
         assertEquals(1, first.board.version)
-        assertEquals(listOf(brovary, kharkiv), first.board.alerts, "sorted by id")
-        assertEquals(listOf(brovary, kharkiv), first.opened)
+        assertEquals(listOf(kharkiv, brovary), first.board.alerts, "in the source's order")
+        assertEquals(listOf(kharkiv, brovary), first.opened)
 
-        val same = first.board.next(listOf(brovary, kharkiv), t0 + 1.minutes)
+        val same = first.board.next(listOf(kharkiv, brovary), t0 + 1.minutes)
         assertFalse(same.changed)
         assertEquals(1, same.board.version)
         assertEquals(t0 + 1.minutes, same.board.confirmedAt)

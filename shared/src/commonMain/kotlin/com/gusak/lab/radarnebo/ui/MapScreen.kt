@@ -1,5 +1,8 @@
 package com.gusak.lab.radarnebo.ui
 
+import com.gusak.lab.radarnebo.ui.map.LocalMapTiles
+import com.gusak.lab.radarnebo.ui.map.TileSource
+import com.gusak.lab.radarnebo.data.TargetFilter
 import com.gusak.lab.radarnebo.data.ThemeMode
 import com.gusak.lab.radarnebo.ui.preview.PreviewData
 import androidx.compose.ui.tooling.preview.Preview
@@ -13,6 +16,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.delay
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.lerp
@@ -24,6 +28,8 @@ import kotlin.time.Clock
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -114,6 +120,10 @@ fun MapScreen(
     onAddFavorite: (String, GeoPoint) -> Unit,
     /** Saves a new warning radius (km) around favorites. */
     onRadiusChange: (Int) -> Unit = {},
+    /** Saves which targets the Targets list and the map show. */
+    onTargetFilterChange: (TargetFilter) -> Unit = {},
+    /** Opens the request inspector from the server card; null hides that button. */
+    onOpenRequests: (() -> Unit)? = null,
     /** Space taken by floating UI at the bottom (the glass navigation bar); the map still draws beneath it. */
     bottomInset: Dp = 0.dp,
     start: MapScreenStart = MapScreenStart(),
@@ -132,6 +142,10 @@ fun MapScreen(
     }
     var selectedTrackId by rememberSaveable { mutableStateOf(start.selectedTrackId) }
     var staticCamera by remember { mutableStateOf(start.camera) }
+    var serverInfoOpen by rememberSaveable { mutableStateOf(false) }
+    // Hovering a row in the targets list previews that target; the map returns when the pointer leaves.
+    var hoveredTrackId by remember { mutableStateOf<String?>(null) }
+    var cameraBeforeHover by remember { mutableStateOf<MapCamera?>(null) }
     val inspectionMode = LocalInspectionMode.current
     val alertedFavoriteIds = remember(state.proximity) { state.proximity.map { it.favorite.id }.toSet() }
     // Favorites first so that, at equal distance, a favorite wins over the city it sits in.
@@ -168,18 +182,21 @@ fun MapScreen(
             }
         }
 
-        // Fly the static map to the selected target, framing its whole path and predicted destination.
-        LaunchedEffect(selectedTrackId, panelVisible) {
-            val track = state.tracks.firstOrNull { it.id == selectedTrackId } ?: return@LaunchedEffect
-            if (!panelVisible || viewport.width <= 0f) return@LaunchedEffect
+        // Frames a target's whole path and predicted destination in the part of the map left visible.
+        fun framing(trackId: String?): MapCamera? {
+            val track = state.tracks.firstOrNull { it.id == trackId } ?: return null
+            if (viewport.width <= 0f) return null
             val now = Clock.System.now().toEpochMilliseconds() + state.clockOffsetMs
             val points = track.samples.map { it.point } +
                 listOfNotNull(TrackPredictor.predict(track, now, predictionPlaces)?.place?.point)
-            val target = MapCamera.framing(points, viewport, visibleArea)
+            return MapCamera.framing(points, viewport, visibleArea)
+        }
+
+        suspend fun flyTo(target: MapCamera) {
             // Previews render only the first frames: cut straight to the framing instead of flying there.
             if (inspectionMode) {
                 staticCamera = target
-                return@LaunchedEffect
+                return
             }
             val from = staticCamera
             animate(0f, 1f, animationSpec = tween(700, easing = FastOutSlowInEasing)) { f, _ ->
@@ -187,9 +204,33 @@ fun MapScreen(
             }
         }
 
+        // Fly the static map to the selected target.
+        LaunchedEffect(selectedTrackId, panelVisible) {
+            if (!panelVisible) return@LaunchedEffect
+            framing(selectedTrackId)?.let { flyTo(it) }
+        }
+
+        // Preview the hovered target, and fly back once the pointer leaves the list. The short wait keeps
+        // the map still while the pointer merely crosses rows.
+        LaunchedEffect(hoveredTrackId, panelVisible) {
+            val hovered = hoveredTrackId.takeIf { panelVisible }
+            delay(if (hovered != null) 200 else 300)
+            val target = framing(hovered)
+            if (target != null) {
+                if (cameraBeforeHover == null) cameraBeforeHover = staticCamera
+                flyTo(target)
+            } else {
+                cameraBeforeHover?.let {
+                    cameraBeforeHover = null
+                    flyTo(it)
+                }
+            }
+        }
+
         Crossfade(state.settings.mapMode) { mode ->
             when (mode) {
                 MapMode.Static -> UkraineMap(
+                    tileSource = tileSource(state),
                     camera = staticCamera,
                     threats = state.mapThreats,
                     alertedOblasts = state.alertedOblasts,
@@ -197,7 +238,7 @@ fun MapScreen(
                     alertedFavoriteIds = alertedFavoriteIds,
                     proximityRadiusKm = radiusKm,
                     modifier = Modifier.fillMaxSize(),
-                    selectedTrackId = selectedTrackId.takeIf { panelVisible },
+                    selectedTrackId = (selectedTrackId ?: hoveredTrackId).takeIf { panelVisible },
                     predictionPlaces = predictionPlaces,
                     tracks = state.tracks,
                     clockOffsetMs = state.clockOffsetMs,
@@ -219,7 +260,10 @@ fun MapScreen(
 
         Row(Modifier.statusBarsPadding().padding(12.dp).fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column(Modifier.weight(1f)) {
-                StatusStrip(state)
+                StatusStrip(state, onClick = { serverInfoOpen = !serverInfoOpen })
+                AnimatedVisibility(visible = serverInfoOpen, enter = fadeIn(), exit = fadeOut()) {
+                    ServerStatusCard(state, onOpenRequests, Modifier.padding(top = 8.dp).widthIn(max = 360.dp))
+                }
                 if (!cinematic && state.proximity.isNotEmpty() && !(panelVisible && !wide)) {
                     Spacer(Modifier.height(8.dp))
                     ProximityBanner(state)
@@ -260,6 +304,12 @@ fun MapScreen(
                         },
                     )
                 }
+                if (onOpenRequests != null) {
+                    AnimatedVisibility(visible = !cinematic, enter = fadeIn(), exit = fadeOut()) {
+                        // Below the radius button's hanging "km" label.
+                        RequestsButton(onClick = onOpenRequests, modifier = Modifier.padding(top = 12.dp))
+                    }
+                }
             }
         }
 
@@ -282,13 +332,23 @@ fun MapScreen(
             },
         ) {
             TargetsPanel(
-                tracks = state.tracks,
+                tracks = state.allTracks,
                 clockOffsetMs = state.clockOffsetMs,
                 places = predictionPlaces,
                 selectedTrackId = selectedTrackId,
-                onSelect = { selectedTrackId = it },
+                onSelect = {
+                    // Choosing a target keeps the map on it instead of returning from the hover preview.
+                    selectedTrackId = it
+                    hoveredTrackId = null
+                    cameraBeforeHover = null
+                },
                 onClose = { targetsOpen = false },
                 modifier = Modifier.fillMaxSize(),
+                filter = state.settings.targetFilter,
+                onFilterChange = onTargetFilterChange,
+                onHover = { id, hovered ->
+                    if (hovered) hoveredTrackId = id else if (hoveredTrackId == id) hoveredTrackId = null
+                },
             )
         }
 
@@ -314,6 +374,19 @@ fun MapScreen(
                 onPreview = { radiusDraft = it },
                 onCommit = { radiusDraft?.let(onRadiusChange) },
                 onClose = closeRadius,
+            )
+        }
+
+        // Kept off the cinematic view, which is framed as a clean camera shot.
+        tileSource(state)?.takeIf { !cinematic }?.let { source ->
+            Text(
+                source.attribution,
+                Modifier.align(Alignment.BottomStart)
+                    .padding(start = 8.dp, bottom = bottomInset + 4.dp)
+                    .background(radarColors.overlay, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 5.dp, vertical = 1.dp),
+                color = radarColors.onOverlay.copy(alpha = 0.8f),
+                fontSize = 9.sp,
             )
         }
 
@@ -344,6 +417,11 @@ fun MapScreen(
 
 private val PanelWidth = 380.dp
 
+/** The tiles the map draws under the oblasts, when the platform provides them and the settings ask for a map. */
+@Composable
+private fun tileSource(state: UiState): TileSource? =
+    if (LocalMapTiles.current == null) null else TileSource.of(state.settings.mapBackground, radarColors.isDark)
+
 @Composable
 private fun CinematicMap(
     state: UiState,
@@ -364,6 +442,7 @@ private fun CinematicMap(
 
     Box(Modifier.fillMaxSize()) {
         UkraineMap(
+            tileSource = tileSource(state),
             camera = director.camera,
             threats = state.mapThreats,
             alertedOblasts = state.alertedOblasts,
@@ -414,7 +493,8 @@ private fun CinematicMap(
 }
 
 @Composable
-private fun StatusStrip(state: UiState) {
+private fun StatusStrip(state: UiState, onClick: () -> Unit = {}) {
+    val server = ServerState.of(state)
     val text = buildString {
         if (state.simulated) append("SIMULATED DATA · not the real situation · ")
         append("${state.threats.size} ${if (state.settings.dronesOnly) "drone threats" else "threats"}")
@@ -422,15 +502,100 @@ private fun StatusStrip(state: UiState) {
         state.lastUpdated?.let { append(" · updated ${formatTime(it)}") }
     }
     Row(
-        Modifier.background(radarColors.overlay, RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(radarColors.overlay)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.size(8.dp).background(if (state.error != null) radarColors.danger else radarColors.ok, CircleShape))
+        Box(Modifier.size(8.dp).background(server.color(), CircleShape))
         Spacer(Modifier.width(8.dp))
         Column {
             Text(text, color = radarColors.onOverlay, fontSize = 12.sp)
+            Text("${serverHost(state.settings.serverUrl)} · ${server.label}", color = server.color(), fontSize = 11.sp)
             state.error?.let { Text(it, color = radarColors.danger, fontSize = 12.sp) }
         }
+    }
+}
+
+/** The app's view of its server, shown by the status dot and [ServerStatusCard]. */
+private enum class ServerState(val label: String) {
+    Connecting("connecting…"),
+    Live("server live"),
+    /** The server answers but its own data source (alerts.in.ua) fails; it keeps serving the last data. */
+    Degraded("server up, its data source is failing"),
+    Offline("no data from the server");
+
+    @Composable
+    fun color() = when (this) {
+        Connecting -> radarColors.onOverlay.copy(alpha = 0.6f)
+        Live -> radarColors.ok
+        Degraded -> radarColors.warning
+        Offline -> radarColors.danger
+    }
+
+    companion object {
+        fun of(state: UiState) = when {
+            state.error != null -> Offline
+            state.serverHealth?.isOk == false -> Degraded
+            state.lastUpdated == null -> Connecting
+            else -> Live
+        }
+    }
+}
+
+private fun serverHost(url: String) = url.substringAfter("://").trimEnd('/').ifBlank { url }
+
+/** Details behind the status dot: where the app gets its data and how the server is doing. */
+@Composable
+private fun ServerStatusCard(state: UiState, onOpenRequests: (() -> Unit)?, modifier: Modifier = Modifier) {
+    val server = ServerState.of(state)
+    val health = state.serverHealth
+    Card(modifier, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(10.dp).background(server.color(), CircleShape))
+                Spacer(Modifier.width(8.dp))
+                Text("Server", style = MaterialTheme.typography.titleMedium)
+            }
+            StatusLine("Address", state.settings.serverUrl)
+            StatusLine("Status", server.label.replaceFirstChar { it.uppercase() })
+            state.lastUpdated?.let { StatusLine("Last data", formatClock(it.toEpochMilliseconds())) }
+            if (health != null) {
+                StatusLine(
+                    "Source",
+                    when {
+                        health.simulated -> "Simulation (not the real situation)"
+                        health.source == "AlertsInUa" -> "alerts.in.ua"
+                        else -> health.source
+                    },
+                )
+                health.upstreamBudgetPerMinute?.let { budget ->
+                    StatusLine("Upstream", "${health.upstreamRequestsLastMinute} of $budget requests in the last minute")
+                }
+                if (health.pollIntervalSeconds > 0) StatusLine("Polled", "every ${health.pollIntervalSeconds} s")
+                health.lastAttemptAt?.let { StatusLine("Last poll", formatClock(it)) }
+                health.lastError?.let { StatusLine("Source error", it, radarColors.danger) }
+            }
+            state.error?.let { StatusLine("Error", it, radarColors.danger) }
+            if (server == ServerState.Offline) {
+                Text(
+                    "Is the server running? Start it with ./gradlew :server:run, or change its address in Settings.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (onOpenRequests != null) TextButton(onClick = onOpenRequests) { Text("Show requests") }
+        }
+    }
+}
+
+@Composable
+private fun StatusLine(label: String, value: String, valueColor: Color = MaterialTheme.colorScheme.onSurface) {
+    Row {
+        Text(label, Modifier.width(96.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(value, style = MaterialTheme.typography.bodySmall, color = valueColor)
     }
 }
 

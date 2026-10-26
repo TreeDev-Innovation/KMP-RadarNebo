@@ -8,6 +8,7 @@ import com.gusak.lab.radarnebo.data.AppSettings
 import com.gusak.lab.radarnebo.data.FavoriteLocation
 import com.gusak.lab.radarnebo.data.FavoritesRepository
 import com.gusak.lab.radarnebo.data.MapMode
+import com.gusak.lab.radarnebo.data.ServerHealth
 import com.gusak.lab.radarnebo.data.SettingsRepository
 import com.gusak.lab.radarnebo.domain.ProximityHit
 import com.gusak.lab.radarnebo.domain.ThreatMarker
@@ -47,10 +48,14 @@ data class UiState(
     val lastUpdated: Instant? = null,
     /** Target position history from the server (shown classes only); the app interpolates between reports. */
     val tracks: List<DroneTrack> = emptyList(),
+    /** [tracks] including those the target filter hides. */
+    val allTracks: List<DroneTrack> = tracks,
     /** Server clock minus local clock, applied before interpolating track positions. */
     val clockOffsetMs: Long = 0,
     /** The server's data is simulated, not the real situation; always shown as such. */
     val simulated: Boolean = false,
+    /** The server's last health report; null while it can't be reached. */
+    val serverHealth: ServerHealth? = null,
 )
 
 /**
@@ -110,13 +115,14 @@ class AppViewModel(
                         lastUpdated = Clock.System.now(),
                         clockOffsetMs = update.snapshot.clockOffsetMs,
                         simulated = update.snapshot.simulated,
+                        serverHealth = update.snapshot.health,
                     )
                 }
                 recompute()
                 1
             }
             is AlertsUpdate.Failed -> {
-                _state.update { it.copy(loading = false, error = update.message) }
+                _state.update { it.copy(loading = false, error = update.message, serverHealth = null) }
                 4
             }
         }
@@ -124,13 +130,15 @@ class AppViewModel(
 
     private fun recompute() {
         _state.update { s ->
-            val picture = buildThreatPicture(snapshot?.alerts.orEmpty(), snapshot?.tracks.orEmpty(), s.settings, s.favorites)
+            val now = Clock.System.now().toEpochMilliseconds() + s.clockOffsetMs
+            val picture = buildThreatPicture(snapshot?.alerts.orEmpty(), snapshot?.tracks.orEmpty(), s.settings, s.favorites, now)
             s.copy(
                 threats = picture.threats,
                 mapThreats = picture.mapThreats,
                 proximity = picture.proximity,
                 alertedOblasts = picture.alertedOblasts,
                 tracks = picture.tracks,
+                allTracks = picture.unfilteredTracks,
             )
         }
     }
@@ -138,7 +146,7 @@ class AppViewModel(
     fun updateSettings(transform: (AppSettings) -> AppSettings) {
         if (updateSettingsUseCase(transform)) {
             snapshot = null
-            _state.update { it.copy(error = null, tracks = emptyList(), clockOffsetMs = 0, simulated = false) }
+            _state.update { it.copy(error = null, tracks = emptyList(), allTracks = emptyList(), clockOffsetMs = 0, simulated = false, serverHealth = null, lastUpdated = null) }
             startPolling()
         }
     }

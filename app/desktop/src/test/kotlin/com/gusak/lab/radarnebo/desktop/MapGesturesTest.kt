@@ -1,8 +1,13 @@
 package com.gusak.lab.radarnebo.desktop
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -14,10 +19,12 @@ import com.gusak.lab.radarnebo.ui.UiState
 import com.gusak.lab.radarnebo.ui.map.LocalPinchZoom
 import com.gusak.lab.radarnebo.ui.map.MapCamera
 import com.gusak.lab.radarnebo.ui.map.ScrollSmoother
+import com.gusak.lab.radarnebo.ui.map.UkraineMap
 import kotlinx.coroutines.flow.MutableSharedFlow
 import org.jetbrains.skia.Image
 import javax.swing.JPanel
 import kotlin.math.abs
+import kotlin.math.pow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -57,6 +64,31 @@ class MapGesturesTest {
             repeat(3) { frame() }
             val zoomed = frame().pixels()
             assertTrue(changedFraction(panned, zoomed) > 0.05, "pinch should zoom the map")
+        }
+    }
+
+    @Test
+    fun aBurstOfPinchEventsWithinOneFrameZoomsByAllOfThem() {
+        // The macOS trackpad reports a pinch as many small steps, several per frame.
+        val pinch = MutableSharedFlow<Float>(extraBufferCapacity = 64)
+        var camera by mutableStateOf(MapCamera.Overview)
+        ImageComposeScene(width = 1000, height = 800, density = Density(1f)) {
+            CompositionLocalProvider(LocalPinchZoom provides pinch) {
+                RadarTheme {
+                    UkraineMap(
+                        camera = camera, threats = emptyList(), alertedOblasts = emptyMap(), favorites = emptyList(),
+                        alertedFavoriteIds = emptySet(), proximityRadiusKm = 50, modifier = Modifier.fillMaxSize(),
+                        onCameraChange = { camera = it },
+                    )
+                }
+            }
+        }.use { scene ->
+            var t = 0L
+            fun frame() = scene.render(t).also { t += 16_000_000L }
+            repeat(3) { frame() }
+            repeat(10) { assertTrue(pinch.tryEmit(1.05f)) }
+            repeat(3) { frame() }
+            assertEquals(1.05.pow(10).toFloat(), camera.zoom, 1e-3f, "every step counts")
         }
     }
 

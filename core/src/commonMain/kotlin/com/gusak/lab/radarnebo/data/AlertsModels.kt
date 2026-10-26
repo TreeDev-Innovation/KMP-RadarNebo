@@ -1,6 +1,8 @@
 package com.gusak.lab.radarnebo.data
 
 import kotlinx.serialization.SerialName
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.descriptors.PrimitiveKind
@@ -11,38 +13,58 @@ import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
 
-/** Response of `GET /v1/alerts/active.json` from https://devs.alerts.in.ua. */
+/**
+ * Response of `GET /v1/alerts/active.json` from https://devs.alerts.in.ua. Properties are declared in
+ * alerts.in.ua's key order, and those it leaves out when empty are left out here too, so the server's
+ * output reads like the original.
+ */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ActiveAlertsResponse(
     val alerts: List<Alert> = emptyList(),
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val meta: AlertsMeta? = null,
 )
 
+@Serializable
+data class AlertsMeta(
+    /** When the data last changed, as `2026/10/26 08:38:08 +0000`. */
+    @SerialName("last_updated_at") val lastUpdatedAt: String,
+    val type: String = "full",
+)
+
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class Alert(
     val id: Long,
     @SerialName("location_title") val locationTitle: String = "",
-    @SerialName("location_title_en") val locationTitleEn: String? = null,
     @SerialName("location_type") val locationType: String = "unknown",
     @SerialName("started_at") val startedAt: String? = null,
     @SerialName("finished_at") val finishedAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null,
     @SerialName("alert_type") val alertType: String = "air_raid",
-    @SerialName("location_uid") val locationUid: String = "",
     @SerialName("location_oblast") val locationOblast: String = "",
-    /** A number in alerts.in.ua; older RadarNebo servers sent it as a string, which still decodes. */
-    @SerialName("location_oblast_uid") @Serializable(with = LenientIntSerializer::class) val locationOblastUid: Int? = null,
-    @SerialName("location_raion") val locationRaion: String? = null,
+    @SerialName("location_uid") val locationUid: String = "",
     val notes: String? = null,
+    val country: String? = null,
     @SerialName("alert_level") val alertLevel: String? = null,
-    val threats: List<Threat> = emptyList(),
+    @SerialName("location_title_en") val locationTitleEn: String? = null,
+    @EncodeDefault(EncodeDefault.Mode.NEVER) val threats: List<Threat> = emptyList(),
+    @SerialName("location_raion") @EncodeDefault(EncodeDefault.Mode.NEVER) val locationRaion: String? = null,
+    /**
+     * A number in alerts.in.ua; older RadarNebo servers sent it as a string, which still decodes. Despite the
+     * name, alerts.in.ua puts the raion's or hromada's own UID here; [com.gusak.lab.radarnebo.domain.ThreatMapper.oblastUid]
+     * finds the oblast.
+     */
+    @SerialName("location_oblast_uid") @Serializable(with = LenientIntSerializer::class) val locationOblastUid: Int? = null,
 )
 
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class Threat(
     @SerialName("threat_type") val threatType: String,
     val level: String? = null,
     @SerialName("started_at") val startedAt: String? = null,
-    @SerialName("source_message") val sourceMessage: String? = null,
+    @SerialName("source_message") @EncodeDefault(EncodeDefault.Mode.NEVER) val sourceMessage: String? = null,
 )
 
 enum class ThreatType(val apiValue: String, val label: String) {

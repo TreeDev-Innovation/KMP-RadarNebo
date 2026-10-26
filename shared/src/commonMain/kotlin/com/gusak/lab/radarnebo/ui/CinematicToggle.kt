@@ -1,5 +1,7 @@
 package com.gusak.lab.radarnebo.ui
 
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import com.gusak.lab.radarnebo.data.ThemeMode
@@ -190,6 +192,42 @@ fun RadiusButton(open: Boolean, radiusKm: Int, onClick: () -> Unit, modifier: Mo
             Text("$radiusKm km", color = radarColors.mapBackground, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
+}
+
+/** Opens the request inspector: the requests the app sends to its server, with the responses. */
+@Composable
+fun RequestsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier
+            .size(48.dp)
+            .clip(CircleShape)
+            .background(radarColors.overlay, CircleShape)
+            .border(1.5.dp, primary, CircleShape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = "Requests to the server" },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(22.dp)) { drawExchange(primary) }
+    }
+}
+
+/** Two opposed arrows, a request going out and its response coming back. */
+private fun DrawScope.drawExchange(color: Color) {
+    val stroke = 1.8.dp.toPx()
+    val w = size.width
+    val h = size.height
+    val head = w * 0.22f
+    fun arrow(y: Float, toRight: Boolean) {
+        val from = if (toRight) w * 0.08f else w * 0.92f
+        val to = if (toRight) w * 0.92f else w * 0.08f
+        drawLine(color, Offset(from, y), Offset(to, y), stroke, cap = StrokeCap.Round)
+        val back = if (toRight) -head else head
+        drawLine(color, Offset(to, y), Offset(to + back, y - head * 0.8f), stroke, cap = StrokeCap.Round)
+        drawLine(color, Offset(to, y), Offset(to + back, y + head * 0.8f), stroke, cap = StrokeCap.Round)
+    }
+    arrow(h * 0.32f, toRight = true)
+    arrow(h * 0.68f, toRight = false)
 }
 
 /** A pin with a dashed ring around it, like the warning ring around favorites on the map. */

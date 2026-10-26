@@ -3,6 +3,8 @@ package com.gusak.lab.radarnebo.di
 import com.gusak.lab.radarnebo.SharedPrefsStorage
 import com.gusak.lab.radarnebo.data.KeyValueStorage
 import com.gusak.lab.radarnebo.data.ServerDefaults
+import com.gusak.lab.radarnebo.ui.map.MapTiles
+import io.ktor.client.HttpClient
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
 
@@ -13,4 +15,5 @@ import org.koin.dsl.module
 val androidModule = module {
     single<KeyValueStorage> { SharedPrefsStorage(androidContext()) }
     single { ServerDefaults(url = "http://10.0.2.2:8080") }
+    single { MapTiles(HttpClient()) }
 }

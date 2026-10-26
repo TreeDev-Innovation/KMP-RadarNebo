@@ -469,4 +469,14 @@ object UkraineCities {
         MapCity("Bakhmut", 48.5894f, 38.0021f, 0),
         MapCity("Prypiat", 51.4060f, 30.0574f, 0),
     )
+
+    /** Administrative centres of the oblasts, plus Kyiv and Sevastopol: always named on the map. */
+    val oblastCentres: Set<MapCity> = setOf(
+        "Kyiv", "Vinnytsia", "Lutsk", "Dnipro", "Donetsk", "Zhytomyr", "Uzhhorod", "Zaporizhzhia", "Ivano-Frankivsk",
+        "Kropyvnytskyi", "Luhansk", "Lviv", "Mykolaiv", "Odesa", "Poltava", "Rivne", "Sumy", "Ternopil", "Kharkiv",
+        "Kherson", "Khmelnytskyi", "Cherkasy", "Chernivtsi", "Chernihiv", "Simferopol", "Sevastopol",
+    ).mapNotNull { name ->
+        // Small towns share some of these names (Mykolaiv near Lviv, Rivne in Kirovohrad Oblast): take the largest.
+        all.filter { it.name == name }.maxByOrNull { it.population }
+    }.toSet()
 }

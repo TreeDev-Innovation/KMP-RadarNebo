@@ -2,6 +2,8 @@ package com.gusak.lab.radarnebo.ui.preview
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.gusak.lab.radarnebo.data.FavoriteLocation
@@ -14,7 +16,9 @@ import com.gusak.lab.radarnebo.ui.MapScreen
 import com.gusak.lab.radarnebo.ui.MapScreenStart
 import com.gusak.lab.radarnebo.ui.RadarTheme
 import com.gusak.lab.radarnebo.ui.UiState
+import com.gusak.lab.radarnebo.ui.map.LocalMapTiles
 import com.gusak.lab.radarnebo.ui.map.MapCamera
+import com.gusak.lab.radarnebo.ui.map.MapTiles
 import com.gusak.lab.radarnebo.ui.map.MapSelection
 import com.gusak.lab.radarnebo.ui.map.UkraineMap
 import com.gusak.lab.radarnebo.ui.preview.PreviewData.Targets
@@ -24,13 +28,20 @@ import com.gusak.lab.radarnebo.ui.preview.PreviewData.city
 // Previews of the map in every mode and state, built from PreviewData.scenario() so each one always
 // shows what its name says. Phone previews are 420 x 860 dp, tablet ones 1100 x 760 dp.
 
+/** With [map], the street map is drawn underneath from the bundled Carto tiles (never downloaded). */
 @Composable
 private fun Screen(
     state: UiState,
     theme: ThemeMode = state.settings.themeMode,
     start: MapScreenStart = MapScreenStart(),
+    map: Boolean = false,
 ) {
-    RadarTheme(theme) { MapScreen(state, onModeChange = {}, onAddFavorite = { _, _ -> }, start = start) }
+    val tiles = remember(map) { if (map) MapTiles(client = null, blocking = true) else null }
+    RadarTheme(theme) {
+        CompositionLocalProvider(LocalMapTiles provides tiles) {
+            MapScreen(state, onModeChange = {}, onAddFavorite = { _, _ -> }, start = start)
+        }
+    }
 }
 
 /** The map alone, without the screen's buttons and cards: for close-ups of what it draws. */
@@ -213,3 +224,15 @@ private fun CinematicOverviewPreview() = Screen(PreviewData.quiet(mapMode = MapM
 @Preview(name = "Cinematic · light theme setting", widthDp = 420, heightDp = 860)
 @Composable
 private fun CinematicLightPreview() = Screen(PreviewData.scenario(ThemeMode.Light, mapMode = MapMode.Cinematic))
+
+@Preview(name = "Cinematic · street map · threat near a favorite", widthDp = 420, heightDp = 860)
+@Composable
+private fun CinematicMapThreatPreview() = Screen(PreviewData.scenario(mapMode = MapMode.Cinematic), map = true)
+
+@Preview(name = "Cinematic · street map · threat near a favorite · tablet", widthDp = 1100, heightDp = 760)
+@Composable
+private fun CinematicMapThreatTabletPreview() = Screen(PreviewData.scenario(mapMode = MapMode.Cinematic), map = true)
+
+@Preview(name = "Cinematic · street map · quiet, overview", widthDp = 420, heightDp = 860)
+@Composable
+private fun CinematicMapOverviewPreview() = Screen(PreviewData.quiet(mapMode = MapMode.Cinematic), map = true)

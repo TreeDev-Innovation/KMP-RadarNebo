@@ -1,5 +1,6 @@
 package com.gusak.lab.radarnebo
 
+import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -22,6 +23,7 @@ class MainActivity : ComponentActivity() {
                     }
                     enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                 },
+                onOpenRequests = { startActivity(Intent(this, RequestInspectorActivity::class.java)) },
             )
         }
     }

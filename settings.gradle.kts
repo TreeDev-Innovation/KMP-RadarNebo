@@ -14,6 +14,12 @@ pluginManagement {
     }
 }
 
+// Lets Gradle download JDK toolchains it can't find locally. Compose Hot Reload (the IDE's "[hot]" run
+// configuration, hotRunJvm/hotDev) asks for a JetBrains Runtime 25 toolchain, which most machines don't have.
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 dependencyResolutionManagement {
     repositories {
         google {
@@ -30,5 +36,6 @@ dependencyResolutionManagement {
 include(":core")
 include(":shared")
 include(":server")
+include(":server-console")
 include(":app:android")
 include(":app:desktop")
