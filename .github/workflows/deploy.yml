@@ -136,9 +136,9 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          script_stop: true
           envs: ALERTS_API_TOKEN,CLIENT_KEYS,DOMAIN
           script: |
+            set -e  # this ssh-action carries on after a failed command otherwise
             export RADARNEBO_SERVER_IMAGE=${{ env.IMAGE }}:${{ github.sha }}
             cd $PWD/${{ env.APP_DIR }}
             docker pull $RADARNEBO_SERVER_IMAGE

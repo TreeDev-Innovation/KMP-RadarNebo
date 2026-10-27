@@ -6,8 +6,7 @@ services:
       - radarnebo-server
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN}
-    ports:
-      - "80:80"
+    ports:                     # no port 80: it belongs to another service on the VM, and HTTPS doesn't need it
       - "443:443"
       - "443:443/udp"          # HTTP/3
     volumes:

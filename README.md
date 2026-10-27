@@ -272,14 +272,14 @@ SSH, and runs `docker compose up -d --wait`, so a container that doesn't turn he
 Secrets it needs: `DOCKERHUB_USERNAME`, `DOCKERHUB_PASSWORD`, `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY`, `SSH_PORT`,
 `ALERTS_IN_UA_API_KEY` (the server's `ALERTS_API_TOKEN`; empty runs the simulation) and `CLIENT_KEYS`.
 
-Caddy (`mission-control/server/Caddyfile`) sits in front of the server and is the only thing with published ports. On
-first start it gets a Let's Encrypt certificate for `DOMAIN` (`radar-nebo.worxbend.com`; a repository variable `DOMAIN`
-overrides it) and renews it on its own; plain HTTP redirects to HTTPS.
+Caddy (`mission-control/server/Caddyfile`) runs as a second container in the same compose project, in front of the
+server, and is the only thing with a published port (443). On first start it gets a Let's Encrypt certificate for `DOMAIN` (`radar-nebo.worxbend.com`; a repository variable `DOMAIN`
+overrides it) and renews it on its own, proving the domain over port 443 (TLS-ALPN-01), so port 80 can stay with another service.
 `DOMAIN`'s DNS A record must point at the VM. The server isn't published, so it trusts Caddy's `X-Forwarded-For`
 (`TRUST_PROXY_HEADERS=true`) to rate-limit each client by its own IP. Apps use `https://<DOMAIN>` as the server URL.
 
-The VM needs Docker with Compose v2.17 or later, and ports 80 and 443 (TCP, plus UDP 443 for HTTP/3) open in the
-subnet's security list and the host firewall. The archive and lock live in the `radarnebo-data` volume, the
+The VM needs Docker with Compose v2.17 or later, and port 443 (TCP, plus UDP for HTTP/3) open in the subnet's
+security list and the host firewall. The archive and lock live in the `radarnebo-data` volume, the
 certificates in `caddy-data`.
 
 To run the same image locally:
