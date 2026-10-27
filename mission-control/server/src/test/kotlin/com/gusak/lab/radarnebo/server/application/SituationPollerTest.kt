@@ -177,4 +177,18 @@ class SituationPollerTest {
         assertFalse("SELECT" in error || "/data" in error, "the message stays in the server log: $error")
         job.cancel()
     }
+
+    @Test
+    fun aPollerKilledByAnErrorSaysSoInItsStatus() = runTest {
+        val dying = object : AlertsDataSource {
+            override val kind = DataSourceKind.AlertsInUa
+            override val description = "dying"
+            override val pollInterval: Duration = 15.seconds
+            override val providesObservations = false
+            override suspend fun fetch(lastModified: String?): FetchResult = throw NotImplementedError("boom")
+        }
+        val poller = poller(dying)
+        assertFailsWith<NotImplementedError> { poller.run() }
+        assertEquals("Poller stopped (NotImplementedError)", poller.status.lastError)
+    }
 }

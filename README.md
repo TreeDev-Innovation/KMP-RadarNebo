@@ -214,7 +214,8 @@ Clients authenticate like alerts.in.ua (`Authorization: Bearer <key>` or `?token
 A `?token=` that is not a valid bearer token is a 400. Rate limits apply before the key check, so requests with a wrong
 key count too. Errors are `{"message": "..."}`. The active-alert and IoT status endpoints (`/v1/alerts/active.json`
 and `/v{1,2}/iot/...`) support `ETag`/`If-None-Match` and `Last-Modified`/`If-Modified-Since` and report the data's age
-in `X-Data-Age-Seconds`. Responses over 1 KB are gzipped.
+in `X-Data-Age-Seconds`. ETags look like `"<boot id>-v<version>"` and change on every restart, so a copy from before a
+restart never gets a 304. Responses over 1 KB are gzipped.
 
 Limits are per client IP (`CLIENT_REQUESTS_PER_MINUTE`, 120/min; history `HISTORY_REQUESTS_PER_MINUTE`, 2/min).
 Behind a TLS reverse proxy every client shares the proxy's IP, so the limits become global: raise both, or rate-limit
@@ -239,7 +240,13 @@ against the server:
 | `GET /v1/drones/tracks.json[?active=true]` | Every tracked target (drones, cruise and ballistic missiles, guided bombs) with its position history, plus `serverTime` and `simulated`. Long tracks are thinned so polls stay small. |
 | `GET /v1/drones/positions.json?at=<ms or ISO-8601>` | Positions interpolated between samples, or dead-reckoned past the last one |
 | `GET /v1/drones/archive.json?from=&to=&type=&limit=` | Finished and current tracks in a time window (default: the last day) |
-| `GET /health` | Data source, freshness, upstream budget, last error (no key needed, but rate limited per IP like the other routes) |
+| `GET /health` | `status`, data source, freshness (`dataAgeSeconds`), upstream budget and outcome counts, last error (no key needed, but rate limited per IP like the other routes). Always 200; see below |
+
+`/health` `status` is `warming_up` (no data yet), `ok`, `degraded` (the data source is failing and the server is backing
+off; the last data is still served) or `stale` (the data is older than max(3 × poll interval, 60 s) while polls succeed,
+or the poller is more than two poll intervals overdue). `upstreamRateLimitedTotal` (429), `upstreamRejectedTotal`
+(401/403), `upstreamOtherFailuresTotal` and `upstreamLastSuccessAt` count alerts.in.ua outcomes since start, so a token
+or IP drifting towards a block shows before it fails outright.
 
 ### Archive
 
@@ -305,6 +312,10 @@ container is limited to 512 MB (the JVM heap is 75% of that, and an `OutOfMemory
 The VM needs Docker with Compose v2.17 or later, and port 443 (TCP, plus UDP for HTTP/3) open in the subnet's
 security list and the host firewall. The archive and lock live in the `radarnebo-data` volume, the
 certificates in `caddy-data`.
+
+Monitoring: `/health` answers 200 in every state, so a status-code check can't see stale or failing data. In Uptime
+Kuma, add an `HTTP(s) - Keyword` monitor on `https://<DOMAIN>/health` for the keyword `"status":"ok"`. Kuma runs on the
+same VM, so it can't see the VM itself go down: add one more uptime check from another provider against the same URL.
 
 To run the same image locally:
 

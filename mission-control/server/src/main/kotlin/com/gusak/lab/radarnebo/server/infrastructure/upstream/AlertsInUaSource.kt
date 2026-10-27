@@ -50,6 +50,22 @@ class AlertsInUaSource(
     override var requestsTotal = 0L
         private set
 
+    @Volatile
+    override var rateLimitedTotal = 0L
+        private set
+
+    @Volatile
+    override var rejectedTotal = 0L
+        private set
+
+    @Volatile
+    override var otherFailuresTotal = 0L
+        private set
+
+    @Volatile
+    override var lastSuccessAt: Long? = null
+        private set
+
     override suspend fun fetch(lastModified: String?): FetchResult {
         limiter.acquire()
         requestsTotal++
@@ -64,27 +80,41 @@ class AlertsInUaSource(
                     val now = clock()
                     val alerts = AlertsInUaContract.decodeActive(response.bodyAsText())
                         .map { it.toDomain(Instant.fromEpochMilliseconds(now)) }
+                    // After decoding, so a body that doesn't decode counts as a failure, not a success.
+                    lastSuccessAt = now
                     FetchResult.Fresh(SituationReport(now, alerts), response.headers[HttpHeaders.LastModified])
                 }
-                HttpStatusCode.NotModified -> FetchResult.NotModified
-                HttpStatusCode.TooManyRequests -> FetchResult.Failed(
-                    "Upstream rate limit hit (429)",
-                    minWaitMs = RATE_LIMITED_WAIT_MS,
-                    retryAfterMs = response.headers[HttpHeaders.RetryAfter]?.toLongOrNull()?.times(1000),
-                    maxWaitMs = PENALTY_MAX_WAIT_MS,
-                )
-                HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden ->
+                HttpStatusCode.NotModified -> {
+                    lastSuccessAt = clock()
+                    FetchResult.NotModified
+                }
+                HttpStatusCode.TooManyRequests -> {
+                    rateLimitedTotal++
+                    FetchResult.Failed(
+                        "Upstream rate limit hit (429)",
+                        minWaitMs = RATE_LIMITED_WAIT_MS,
+                        retryAfterMs = response.headers[HttpHeaders.RetryAfter]?.toLongOrNull()?.times(1000),
+                        maxWaitMs = PENALTY_MAX_WAIT_MS,
+                    )
+                }
+                HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden -> {
+                    rejectedTotal++
                     FetchResult.Failed(
                         "Upstream rejected credentials or IP (${response.status.value})",
                         minWaitMs = REJECTED_WAIT_MS,
                         maxWaitMs = PENALTY_MAX_WAIT_MS,
                     )
-                else -> FetchResult.Failed("Upstream returned ${response.status.value}", minWaitMs = intervalMs)
+                }
+                else -> {
+                    otherFailuresTotal++
+                    FetchResult.Failed("Upstream returned ${response.status.value}", minWaitMs = intervalMs)
+                }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             log.debug("Upstream request failed", e)
+            otherFailuresTotal++
             FetchResult.Failed("Upstream request failed: ${e.message ?: e::class.simpleName}", minWaitMs = intervalMs)
         }
     }

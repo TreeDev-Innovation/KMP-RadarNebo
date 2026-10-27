@@ -22,35 +22,48 @@ data class Health(
     val upstreamBudgetPerMinute: Int?,
     val upstreamRequestsLastMinute: Int,
     val upstreamRequestsTotal: Long,
+    val upstreamRateLimitedTotal: Long,
+    val upstreamRejectedTotal: Long,
+    val upstreamOtherFailuresTotal: Long,
+    val upstreamLastSuccessAt: Long?,
     val pollIntervalSeconds: Long,
     val lastAttemptAt: Long?,
     val nextPollAt: Long?,
     val dataVersion: Long?,
     val dataConfirmedAt: Long?,
+    val dataAgeSeconds: Long?,
     val alerts: Int,
     val tracks: Int,
     val activeTracks: Int,
     val lastError: String?,
 )
 
-internal fun Route.healthRoutes(situation: SituationService, poller: SituationPoller, upstreamBudgetPerMinute: Int?) {
+internal fun Route.healthRoutes(situation: SituationService, poller: SituationPoller, upstreamBudgetPerMinute: Int?, clock: () -> Long) {
+    // Always 200, stale included, so the container health check and `compose up --wait` survive an upstream outage.
     get("/health") {
-        call.respond(health(situation, poller, upstreamBudgetPerMinute))
+        call.respond(health(situation, poller, upstreamBudgetPerMinute, clock()))
     }
     // The same report for people: open the server's address in a browser to see whether it is running and getting data.
     get("/") {
-        call.respondText(statusPage(health(situation, poller, upstreamBudgetPerMinute)), ContentType.Text.Html)
+        call.respondText(statusPage(health(situation, poller, upstreamBudgetPerMinute, clock())), ContentType.Text.Html)
     }
 }
 
-/** What `/health` reports; the server console shows it too. */
-fun health(situation: SituationService, poller: SituationPoller, upstreamBudgetPerMinute: Int?): Health {
+/**
+ * What `/health` reports at [nowMs]; the server console shows it too. `stale` wins over `degraded`: the data is
+ * too old while polls succeed, or the poller is overdue (dead or hung).
+ */
+fun health(situation: SituationService, poller: SituationPoller, upstreamBudgetPerMinute: Int?, nowMs: Long): Health {
     val board = situation.board
     val status = poller.status
     val source = poller.source
+    val intervalMs = source.pollInterval.inWholeMilliseconds
+    val ageMs = board?.let { (nowMs - it.confirmedAt.toEpochMilliseconds()).coerceAtLeast(0) }
+    val overdue = status.nextPollAt?.let { nowMs > it + 2 * intervalMs } == true
     return Health(
         status = when {
             board == null -> "warming_up"
+            overdue || (status.lastError == null && ageMs != null && ageMs > staleAfterMs(intervalMs)) -> "stale"
             status.lastError != null -> "degraded"
             else -> "ok"
         },
@@ -59,17 +72,28 @@ fun health(situation: SituationService, poller: SituationPoller, upstreamBudgetP
         upstreamBudgetPerMinute = upstreamBudgetPerMinute,
         upstreamRequestsLastMinute = source.requestsInLastMinute,
         upstreamRequestsTotal = source.requestsTotal,
+        upstreamRateLimitedTotal = source.rateLimitedTotal,
+        upstreamRejectedTotal = source.rejectedTotal,
+        upstreamOtherFailuresTotal = source.otherFailuresTotal,
+        upstreamLastSuccessAt = source.lastSuccessAt,
         pollIntervalSeconds = source.pollInterval.inWholeSeconds,
         lastAttemptAt = status.lastAttemptAt,
         nextPollAt = status.nextPollAt,
         dataVersion = board?.version,
         dataConfirmedAt = board?.confirmedAt?.toEpochMilliseconds(),
+        dataAgeSeconds = ageMs?.let { it / 1000 },
         alerts = board?.alerts?.size ?: 0,
         tracks = situation.tracks.size,
         activeTracks = situation.tracks.count { it.active },
         lastError = status.lastError,
     )
 }
+
+/**
+ * Data older than this while polls succeed is `stale`. DESIGN.md §9 sets the freshness SLO at 60 s; three missed
+ * intervals tolerate a slow upstream when the interval is longer than that.
+ */
+private fun staleAfterMs(pollIntervalMs: Long): Long = maxOf(3 * pollIntervalMs, 60_000)
 
 private fun statusPage(h: Health): String {
     val time = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
@@ -78,13 +102,14 @@ private fun statusPage(h: Health): String {
     val (color, headline) = when (h.status) {
         "ok" -> "#2e9d5b" to "Running · getting data"
         "warming_up" -> "#d08a1f" to "Running · waiting for the first data"
+        "stale" -> "#c0392b" to "Running · data is stale"
         else -> "#d08a1f" to "Running · its data source is failing"
     }
     val rows = listOfNotNull(
         "Source" to if (h.simulated) "Simulation (not the real situation)" else if (h.source == DataSourceKind.AlertsInUa.key) "alerts.in.ua" else h.source,
         h.upstreamBudgetPerMinute?.let { "Upstream" to "${h.upstreamRequestsLastMinute} of $it requests in the last minute · ${h.upstreamRequestsTotal} in total" },
         "Polled" to "every ${h.pollIntervalSeconds} s · last ${at(h.lastAttemptAt)} · next ${at(h.nextPollAt)}",
-        "Data confirmed" to at(h.dataConfirmedAt),
+        "Data confirmed" to "${at(h.dataConfirmedAt)}${h.dataAgeSeconds?.let { " · $it s ago" } ?: ""}",
         "Alerts" to h.alerts.toString(),
         "Tracks" to "${h.activeTracks} active of ${h.tracks}",
         h.lastError?.let { "Last error" to it },

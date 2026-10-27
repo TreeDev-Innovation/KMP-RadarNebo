@@ -34,7 +34,7 @@ data class ServerEndpoint(val url: String, val accessKey: String = "")
 /** The server's `/health` report: whether it is getting data, and from where. Unknown fields are ignored. */
 @Serializable
 data class ServerHealth(
-    /** `ok`, `degraded` (the data source is failing; the last data is still served) or `warming_up`. */
+    /** `ok`, `degraded` (the data source is failing; the last data is still served), `stale` (the data is too old) or `warming_up`. */
     val status: String,
     /** `AlertsInUa` or `Simulation`. */
     val source: String = "",

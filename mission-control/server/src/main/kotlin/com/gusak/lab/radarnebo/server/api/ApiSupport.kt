@@ -37,12 +37,15 @@ internal fun SituationService.requireData() {
     board.orWarmingUp()
 }
 
+/** A process's start time in base36: board versions restart with the process, so ETags carry it to stay unique. */
+fun bootId(startedAtMs: Long): String = (startedAtMs / 1000).toString(36)
+
 /**
- * Conditional GET over data derived from [board]: `ETag` from the board version, `Last-Modified` from when
- * it changed. Returns true (and has answered 304) when the client's copy is current.
+ * Conditional GET over data derived from [board]: `ETag` from [bootId] and the board version, `Last-Modified`
+ * from when it changed. Returns true (and has answered 304) when the client's copy is current.
  */
-internal suspend fun ApplicationCall.notModifiedSince(board: AlertBoard, maxAge: Duration, nowMs: Long): Boolean {
-    val etag = "\"v${board.version}\""
+internal suspend fun ApplicationCall.notModifiedSince(board: AlertBoard, maxAge: Duration, nowMs: Long, bootId: String): Boolean {
+    val etag = "\"$bootId-v${board.version}\""
     val lastModified = httpDate(board.changedAt)
     response.header(HttpHeaders.ETag, etag)
     response.header(HttpHeaders.LastModified, lastModified)

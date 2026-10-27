@@ -6,6 +6,7 @@ import com.gusak.lab.radarnebo.server.Archives
 import com.gusak.lab.radarnebo.server.Fixtures
 import com.gusak.lab.radarnebo.server.Fixtures.alert
 import com.gusak.lab.radarnebo.server.ServerComponents
+import com.gusak.lab.radarnebo.server.api.bootId
 import com.gusak.lab.radarnebo.server.application.AlertsDataSource
 import com.gusak.lab.radarnebo.server.application.FetchResult
 import com.gusak.lab.radarnebo.server.application.SituationReport
@@ -130,7 +131,7 @@ class ApiContractGoldenTest {
         val transcript = StringBuilder()
         record(transcript, "/health")
         record(transcript, "/v1/alerts/active.json", mapOf(HttpHeaders.Origin to "https://example.org"))
-        record(transcript, "/v1/alerts/active.json", mapOf(HttpHeaders.IfNoneMatch to "\"v2\""))
+        record(transcript, "/v1/alerts/active.json", mapOf(HttpHeaders.IfNoneMatch to "\"${bootId(Fixtures.t0.toEpochMilliseconds())}-v2\""))
         record(transcript, "/v1/alerts/active.json", mapOf(HttpHeaders.IfModifiedSince to "Mon, 19 Oct 2026 10:20:00 GMT"))
         listOf("v1", "v2").forEach { v ->
             record(transcript, "/$v/iot/active_air_raid_alerts_by_oblast.json")

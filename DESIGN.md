@@ -319,6 +319,7 @@ move to versioned migrations when the first column is renamed or dropped (deferr
 ### Observability & reliability
 
 - SLI: freshness, `now - dataConfirmedAt` from `/health` (the board routes send it as `X-Data-Age-Seconds`); SLO: data age ≤ 60 s for 99 % of minutes while upstream is healthy.
+- `/health` reports `dataAgeSeconds` and turns `stale` when the data is older than max(3 × poll interval, 60 s) while polls succeed, or when the poller is more than two intervals overdue (dead or hung). It stays 200 in every state, so container health checks survive an upstream outage; monitors match on `"status":"ok"` instead.
 - Logs: logback, captured into the console's Logs tab. Traffic: `TrafficLog` (500 exchanges) in the console. There is no per-request access log: the full URI can carry `?token=`, and request traffic is already in `TrafficLog`; errors log the path only.
 - Degradation: on upstream failure, serve last known state and expose the error in `/health`; clients show it.
 
@@ -382,7 +383,7 @@ the console's built-in client silently pointed at the wrong server and demos fai
 | Risk | Likelihood | Impact | Mitigation | Owner | Early warning |
 |---|---|---|---|---|---|
 | Predictions read as official warnings | Medium | High | In-app disclaimer; "probable" labels already shown; validation experiment (§5) | Developer | User feedback quoting predictions |
-| Upstream block or format change | Medium | High | Limiter, backoff, contract tests on the `contract` package | Developer | `/health` lastError, 401/403/429 counts |
+| Upstream block or format change | Medium | High | Limiter, backoff, contract tests on the `contract` package | Developer | `/health` `lastError`, `upstreamRateLimitedTotal` (429), `upstreamRejectedTotal` (401/403), `upstreamOtherFailuresTotal`, `upstreamLastSuccessAt` |
 | UI regressions on one platform | High | Medium | `PreviewsRenderTest`; add `:shared` tests; split large files | Developer | Bugs reported per platform |
 | Single maintainer | High | Medium | README and this document; small modules | Developer | Commit gaps |
 

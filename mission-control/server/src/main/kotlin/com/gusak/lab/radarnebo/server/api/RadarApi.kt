@@ -60,6 +60,8 @@ fun Application.radarApi(
     clients: ClientApiConfig,
     upstreamBudgetPerMinute: Int?,
     clock: () -> Long = System::currentTimeMillis,
+    /** Tells this process's ETags apart from the last one's, whose board versions repeat. */
+    bootId: String = bootId(clock()),
     /** Receives every call with its response, for the server console. */
     traffic: TrafficRecorder? = null,
 ) {
@@ -89,12 +91,12 @@ fun Application.radarApi(
     routing {
         // Throttled like everything else but never authenticated, so container health checks and monitors work.
         rateLimit(CLIENTS) {
-            healthRoutes(situation, poller, upstreamBudgetPerMinute)
+            healthRoutes(situation, poller, upstreamBudgetPerMinute, clock)
         }
         // The limits wrap authentication, so callers guessing keys are throttled too.
         rateLimit(CLIENTS) {
             clientRoute(authRequired) {
-                alertsInUaRoutes(situation, pollInterval, clock)
+                alertsInUaRoutes(situation, pollInterval, clock, bootId)
                 trackingRoutes(situation, pollInterval, clock)
             }
         }

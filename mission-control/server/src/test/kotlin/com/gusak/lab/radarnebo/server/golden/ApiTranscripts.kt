@@ -7,7 +7,7 @@ internal object ApiTranscripts {
         GET /health
         200
         Content-Type: application/json
-        {"status":"warming_up","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"pollIntervalSeconds":15,"lastAttemptAt":null,"nextPollAt":null,"dataVersion":null,"dataConfirmedAt":null,"alerts":0,"tracks":0,"activeTracks":0,"lastError":null}
+        {"status":"warming_up","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"upstreamRateLimitedTotal":0,"upstreamRejectedTotal":0,"upstreamOtherFailuresTotal":0,"upstreamLastSuccessAt":null,"pollIntervalSeconds":15,"lastAttemptAt":null,"nextPollAt":null,"dataVersion":null,"dataConfirmedAt":null,"dataAgeSeconds":null,"alerts":0,"tracks":0,"activeTracks":0,"lastError":null}
 
         GET /v1/alerts/active.json
         503
@@ -63,12 +63,12 @@ internal object ApiTranscripts {
         GET /health
         200
         Content-Type: application/json
-        {"status":"ok","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"pollIntervalSeconds":15,"lastAttemptAt":1792405200000,"nextPollAt":null,"dataVersion":2,"dataConfirmedAt":1792405200000,"alerts":3,"tracks":2,"activeTracks":2,"lastError":null}
+        {"status":"ok","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"upstreamRateLimitedTotal":0,"upstreamRejectedTotal":0,"upstreamOtherFailuresTotal":0,"upstreamLastSuccessAt":null,"pollIntervalSeconds":15,"lastAttemptAt":1792405200000,"nextPollAt":null,"dataVersion":2,"dataConfirmedAt":1792405200000,"dataAgeSeconds":45,"alerts":3,"tracks":2,"activeTracks":2,"lastError":null}
 
         GET /v1/alerts/active.json [Origin: https://example.org]
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -76,9 +76,9 @@ internal object ApiTranscripts {
         Access-Control-Expose-Headers: ETag, X-Data-Age-Seconds
         {"alerts":[{"id":1,"location_title":"Харківська область","location_type":"oblast","started_at":"2026-10-19T10:00:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:00:00.000Z","alert_type":"air_raid","location_oblast":"Харківська область","location_uid":"22","notes":null,"country":null,"alert_level":"red","location_title_en":"Kharkiv Oblast","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:00:00.000Z","source_message":"Ударні БпЛА типу «Шахед»"}],"location_oblast_uid":22},{"id":3,"location_title":"м. Харків та Харківська територіальна громада","location_type":"hromada","started_at":"2026-10-19T10:00:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:00:00.000Z","alert_type":"air_raid","location_oblast":"Харківська область","location_uid":"1293","notes":null,"country":null,"alert_level":"red","location_title_en":"Kharkiv","threats":[{"threat_type":"cruise_missiles","level":"red","started_at":"2026-10-19T10:00:00.000Z","source_message":"Крилаті ракети"}],"location_oblast_uid":22},{"id":4,"location_title":"м. Київ","location_type":"city","started_at":"2026-10-19T10:20:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:20:00.000Z","alert_type":"air_raid","location_oblast":"м. Київ","location_uid":"31","notes":null,"country":null,"alert_level":"red","location_title_en":"Kyiv City","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:20:00.000Z","source_message":"Ударні БпЛА типу «Шахед»"}],"location_oblast_uid":31}],"meta":{"last_updated_at":"2026/10/19 10:20:00 +0000","type":"full"}}
 
-        GET /v1/alerts/active.json [If-None-Match: "v2"]
+        GET /v1/alerts/active.json [If-None-Match: "tn5fs0-v2"]
         304
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -86,7 +86,7 @@ internal object ApiTranscripts {
 
         GET /v1/alerts/active.json [If-Modified-Since: Mon, 19 Oct 2026 10:20:00 GMT]
         304
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -95,7 +95,7 @@ internal object ApiTranscripts {
         GET /v1/iot/active_air_raid_alerts_by_oblast.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -104,7 +104,7 @@ internal object ApiTranscripts {
         GET /v1/iot/active_air_raid_alerts.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -113,7 +113,7 @@ internal object ApiTranscripts {
         GET /v1/iot/active_air_raid_alerts/22.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -122,7 +122,7 @@ internal object ApiTranscripts {
         GET /v1/iot/active_air_raid_alerts/1293.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -131,7 +131,7 @@ internal object ApiTranscripts {
         GET /v1/iot/active_air_raid_alerts/14.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -140,7 +140,7 @@ internal object ApiTranscripts {
         GET /v1/iot/active_air_raid_alerts/1100.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -149,7 +149,7 @@ internal object ApiTranscripts {
         GET /v1/iot/active_air_raid_alerts/31.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -158,7 +158,7 @@ internal object ApiTranscripts {
         GET /v1/iot/active_air_raid_alerts/7.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -167,7 +167,7 @@ internal object ApiTranscripts {
         GET /v2/iot/active_air_raid_alerts_by_oblast.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -176,7 +176,7 @@ internal object ApiTranscripts {
         GET /v2/iot/active_air_raid_alerts.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -185,7 +185,7 @@ internal object ApiTranscripts {
         GET /v2/iot/active_air_raid_alerts/22.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -194,7 +194,7 @@ internal object ApiTranscripts {
         GET /v2/iot/active_air_raid_alerts/1293.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -203,7 +203,7 @@ internal object ApiTranscripts {
         GET /v2/iot/active_air_raid_alerts/14.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -212,7 +212,7 @@ internal object ApiTranscripts {
         GET /v2/iot/active_air_raid_alerts/1100.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -221,7 +221,7 @@ internal object ApiTranscripts {
         GET /v2/iot/active_air_raid_alerts/31.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -230,7 +230,7 @@ internal object ApiTranscripts {
         GET /v2/iot/active_air_raid_alerts/7.json
         200
         Content-Type: application/json
-        ETag: "v2"
+        ETag: "tn5fs0-v2"
         Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
@@ -299,7 +299,7 @@ internal object ApiTranscripts {
         GET /v1/alerts/active.json
         200
         Content-Type: application/json
-        ETag: "v3"
+        ETag: "tn5fs0-v3"
         Last-Modified: Mon, 19 Oct 2026 11:00:45 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 0
@@ -308,12 +308,12 @@ internal object ApiTranscripts {
         GET /health
         200
         Content-Type: application/json
-        {"status":"degraded","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"pollIntervalSeconds":15,"lastAttemptAt":1792407660000,"nextPollAt":null,"dataVersion":3,"dataConfirmedAt":1792407645000,"alerts":1,"tracks":2,"activeTracks":0,"lastError":"HTTP 502 from upstream"}
+        {"status":"degraded","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"upstreamRateLimitedTotal":0,"upstreamRejectedTotal":0,"upstreamOtherFailuresTotal":0,"upstreamLastSuccessAt":null,"pollIntervalSeconds":15,"lastAttemptAt":1792407660000,"nextPollAt":null,"dataVersion":3,"dataConfirmedAt":1792407645000,"dataAgeSeconds":15,"alerts":1,"tracks":2,"activeTracks":0,"lastError":"HTTP 502 from upstream"}
 
         GET /v1/alerts/active.json
         200
         Content-Type: application/json
-        ETag: "v3"
+        ETag: "tn5fs0-v3"
         Last-Modified: Mon, 19 Oct 2026 11:00:45 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 15
@@ -422,7 +422,7 @@ internal object ApiTranscripts {
         GET /v1/iot/active_air_raid_alerts/14.json [Authorization: Bearer app-key]
         200
         Content-Type: application/json
-        ETag: "v1"
+        ETag: "tn5fs0-v1"
         Last-Modified: Mon, 19 Oct 2026 10:00:00 GMT
         Cache-Control: max-age=15
         X-Data-Age-Seconds: 0
@@ -442,6 +442,6 @@ internal object ApiTranscripts {
         GET /health
         200
         Content-Type: application/json
-        {"status":"ok","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"pollIntervalSeconds":15,"lastAttemptAt":1792404000000,"nextPollAt":null,"dataVersion":1,"dataConfirmedAt":1792404000000,"alerts":1,"tracks":1,"activeTracks":1,"lastError":null}
+        {"status":"ok","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"upstreamRateLimitedTotal":0,"upstreamRejectedTotal":0,"upstreamOtherFailuresTotal":0,"upstreamLastSuccessAt":null,"pollIntervalSeconds":15,"lastAttemptAt":1792404000000,"nextPollAt":null,"dataVersion":1,"dataConfirmedAt":1792404000000,"dataAgeSeconds":0,"alerts":1,"tracks":1,"activeTracks":1,"lastError":null}
     """.trimIndent()
 }
