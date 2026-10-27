@@ -6,11 +6,13 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.gusak.lab.radarnebo.data.ServerDefaults
+import com.gusak.lab.radarnebo.data.SettingsRepository
 import com.gusak.lab.radarnebo.di.desktopModule
 import com.gusak.lab.radarnebo.di.initKoin
 import com.gusak.lab.radarnebo.server.SingleInstance
 import com.gusak.lab.radarnebo.ui.RadarTheme
 import com.gusak.lab.radarnebo.ui.applyAppIdentity
+import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.system.exitProcess
@@ -23,12 +25,12 @@ fun main() {
     val server = ConsoleServer(consoleConfig())
     // The embedded client app: its own settings file, so it starts out pointed at this server rather than whatever
     // the desktop app was last set to.
-    initKoin(
+    val clientSettings = initKoin(
         desktopModule(
             settingsFile = File(System.getProperty("user.home"), ".radarnebo/mission-control-client.properties"),
             serverDefaults = ServerDefaults("http://localhost:${server.defaultPort}"),
         ),
-    )
+    ).koin.get<SettingsRepository>()
     // One server per machine: a console started later takes over from this one.
     SingleInstance.acquire {
         runBlocking { server.stop() }
@@ -46,6 +48,11 @@ fun main() {
             state = windowState,
         ) {
             LaunchedEffect(Unit) { server.start(server.defaultPort) }
+            LaunchedEffect(Unit) {
+                server.state.filterIsInstance<ServerState.Running>().collect { running ->
+                    clientSettings.update { it.pointedAt(running.port, server.clientKey) }
+                }
+            }
             RadarTheme { ConsoleScreen(server, logs) }
         }
     }

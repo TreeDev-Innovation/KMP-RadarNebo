@@ -1,19 +1,19 @@
 package com.gusak.lab.radarnebo.desktop;
 
-import com.apple.eawt.event.GestureUtilities;
-import com.apple.eawt.event.MagnificationEvent;
-import com.apple.eawt.event.MagnificationListener;
-
 import javax.swing.JComponent;
+import java.lang.reflect.Proxy;
 import java.util.function.DoubleConsumer;
 
 /**
  * Bridges the macOS trackpad pinch (magnify) gesture, which AWT only exposes through the JDK-internal
  * {@code com.apple.eawt.event} package, to plain callbacks. Compose Desktop has no pinch support.
  *
- * Needs {@code --add-exports java.desktop/com.apple.eawt.event=ALL-UNNAMED} at compile and run time.
+ * The package only exists in macOS JDKs, so it is reached by reflection: the app still compiles and runs elsewhere.
+ * Needs {@code --add-exports java.desktop/com.apple.eawt.event=ALL-UNNAMED} at run time.
  */
 public final class MacTrackpad {
+    private static final String EVENTS = "com.apple.eawt.event.";
+
     private MacTrackpad() {
     }
 
@@ -24,16 +24,30 @@ public final class MacTrackpad {
     public static boolean installPinch(JComponent component, DoubleConsumer onMagnify) {
         if (!System.getProperty("os.name", "").toLowerCase().contains("mac")) return false;
         try {
-            GestureUtilities.addGestureListenerTo(component, new MagnificationListener() {
-                @Override
-                public void magnify(MagnificationEvent event) {
-                    onMagnify.accept(event.getMagnification());
-                    event.consume();
-                }
-            });
+            Class<?> listenerType = Class.forName(EVENTS + "MagnificationListener");
+            Class<?> eventType = Class.forName(EVENTS + "MagnificationEvent");
+            Class<?> gestureListenerType = Class.forName(EVENTS + "GestureListener");
+            Object listener = Proxy.newProxyInstance(listenerType.getClassLoader(), new Class<?>[]{listenerType},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("magnify")) {
+                        Object event = args[0];
+                        onMagnify.accept((Double) eventType.getMethod("getMagnification").invoke(event));
+                        eventType.getMethod("consume").invoke(event);
+                        return null;
+                    }
+                    // Object methods (hashCode, equals, toString) asked of the listener.
+                    return switch (method.getName()) {
+                        case "hashCode" -> System.identityHashCode(proxy);
+                        case "equals" -> proxy == args[0];
+                        default -> "MacTrackpad pinch listener";
+                    };
+                });
+            Class.forName(EVENTS + "GestureUtilities")
+                .getMethod("addGestureListenerTo", JComponent.class, gestureListenerType)
+                .invoke(null, component, listener);
             return true;
         } catch (Throwable unsupported) {
-            // Usually IllegalAccessError: the JVM was started without the --add-exports flag above.
+            // Usually IllegalAccessException: the JVM was started without the --add-exports flag above.
             System.err.println("Trackpad pinch-to-zoom unavailable: " + unsupported
                 + " (start the JVM with --add-exports java.desktop/com.apple.eawt.event=ALL-UNNAMED)");
             return false;

@@ -138,4 +138,4 @@ Desktop.ini
 
 # The server's archive database (ARCHIVE_JDBC_URL)
 mission-control/server/data/
-data/
+/data/
