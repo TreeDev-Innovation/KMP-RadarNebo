@@ -1,4 +1,20 @@
 services:
+  caddy:
+    image: docker.io/caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - radarnebo-server
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"          # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data       # certificates: keep them, or Let's Encrypt's rate limits bite on redeploys
+      - caddy-config:/config
+
   radarnebo-server:
     image: ${RADARNEBO_SERVER_IMAGE:?set RADARNEBO_SERVER_IMAGE}
     restart: unless-stopped
@@ -12,10 +28,11 @@ services:
     environment:
       - ALERTS_API_TOKEN       # empty runs the simulation
       - CLIENT_KEYS
-    ports:
-      - "${HOST_PORT:-8080}:8080"
+      - TRUST_PROXY_HEADERS=true   # safe only because no port is published: every call comes through Caddy
     volumes:
       - radarnebo-data:/data
 
 volumes:
   radarnebo-data:
+  caddy-data:
+  caddy-config:

@@ -67,6 +67,7 @@ data class ServerConfig(
                         .split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
                     requestsPerMinute = int("CLIENT_REQUESTS_PER_MINUTE") ?: defaults.clients.requestsPerMinute,
                     historyRequestsPerMinute = int("HISTORY_REQUESTS_PER_MINUTE") ?: defaults.clients.historyRequestsPerMinute,
+                    trustProxyHeaders = text("TRUST_PROXY_HEADERS").toBoolean(),
                 ),
                 dataSourceOverride = when (text("DATA_SOURCE")?.lowercase()) {
                     "simulation" -> DataSourceKind.Simulation
@@ -154,6 +155,12 @@ data class ClientApiConfig(
     val requestsPerMinute: Int = 120,
     /** alerts.in.ua allows 2 history requests per minute; the server keeps the same contract. */
     val historyRequestsPerMinute: Int = 2,
+    /**
+     * Behind a reverse proxy (Caddy in the deployment), every call comes from the proxy, so the client's IP is
+     * taken from the last `X-Forwarded-For` entry, the one the proxy added. Only set it when the server can't be
+     * reached around the proxy: otherwise a client could pick its own IP and dodge the rate limits.
+     */
+    val trustProxyHeaders: Boolean = false,
 ) {
     init {
         require(requestsPerMinute > 0) { "CLIENT_REQUESTS_PER_MINUTE must be positive" }

@@ -24,6 +24,7 @@ import io.ktor.server.plugins.compression.gzip
 import io.ktor.server.plugins.compression.minimumSize
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.cors.routing.CORS
+import io.ktor.server.plugins.forwardedheaders.XForwardedHeaders
 import io.ktor.server.plugins.origin
 import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
@@ -62,6 +63,7 @@ fun Application.radarApi(
     /** Receives every call with its response, for the server console. */
     traffic: TrafficRecorder? = null,
 ) {
+    if (clients.trustProxyHeaders) install(XForwardedHeaders) { useLastProxy() }
     if (traffic != null) install(ServerTrafficCapture) { recorder = traffic }
     install(ContentNegotiation) { json(AlertsInUaContract.json) }
     install(Compression) {

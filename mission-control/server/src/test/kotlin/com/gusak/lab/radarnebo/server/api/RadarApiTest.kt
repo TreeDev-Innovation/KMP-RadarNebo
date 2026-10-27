@@ -124,6 +124,27 @@ class RadarApiTest {
     }
 
     @Test
+    fun behindAProxyEachClientIpHasItsOwnLimitAndTheProxysEntryWins() = testApplication {
+        val server = server(ClientApiConfig(requestsPerMinute = 1, trustProxyHeaders = true))
+        server.poll()
+        suspend fun from(forwardedFor: String) =
+            client.get("/v1/alerts/active.json") { header(HttpHeaders.XForwardedFor, forwardedFor) }.status
+        assertEquals(HttpStatusCode.OK, from("203.0.113.1"))
+        assertEquals(HttpStatusCode.OK, from("203.0.113.2"), "another client behind the same proxy")
+        assertEquals(HttpStatusCode.TooManyRequests, from("198.51.100.9, 203.0.113.1"), "a client-supplied entry doesn't count")
+    }
+
+    @Test
+    fun forwardedHeadersAreIgnoredUnlessTrusted() = testApplication {
+        val server = server(ClientApiConfig(requestsPerMinute = 1))
+        server.poll()
+        suspend fun from(forwardedFor: String) =
+            client.get("/v1/alerts/active.json") { header(HttpHeaders.XForwardedFor, forwardedFor) }.status
+        assertEquals(HttpStatusCode.OK, from("203.0.113.1"))
+        assertEquals(HttpStatusCode.TooManyRequests, from("203.0.113.2"), "a spoofed header must not reset the limit")
+    }
+
+    @Test
     fun activeAlertsAreServedInTheAlertsInUaFormatWithConditionalRequests() = testApplication {
         val server = server()
         source.alerts = listOf(alert(42, Fixtures.brovary))

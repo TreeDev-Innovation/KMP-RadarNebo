@@ -118,14 +118,14 @@ jobs:
              - Image digest: ${{ steps.build.outputs.digest }}
 
             🐋 https://hub.docker.com/r/${{ env.IMAGE }}/tags
-      - name: Copy compose file to remote machine
+      - name: Copy compose file and Caddyfile to remote machine
         uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          source: mission-control/server/docker-compose.yaml
+          source: mission-control/server/docker-compose.yaml,mission-control/server/Caddyfile
           target: ${{ env.APP_DIR }}
           strip_components: 2
       - id: deploy
@@ -134,6 +134,7 @@ jobs:
           # Passed via envs:, never pasted into the script. Empty ALERTS_API_TOKEN runs the simulation.
           ALERTS_API_TOKEN: ${{ secrets.ALERTS_API_TOKEN }}
           CLIENT_KEYS: ${{ secrets.CLIENT_KEYS }}
+          DOMAIN: ${{ secrets.DOMAIN }}  # Caddy gets and renews its Let's Encrypt certificate for it
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -141,7 +142,7 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script_stop: true
-          envs: ALERTS_API_TOKEN,CLIENT_KEYS
+          envs: ALERTS_API_TOKEN,CLIENT_KEYS,DOMAIN
           script: |
             export RADARNEBO_SERVER_IMAGE=${{ env.IMAGE }}:${{ github.sha }}
             cd $PWD/${{ env.APP_DIR }}
@@ -158,4 +159,4 @@ jobs:
             #notifications
             🚀 Deployed!
 
-            📡 radarnebo-server has been re-deployed with `${{ env.IMAGE }}:${{ github.sha }}`
+            📡 radarnebo-server has been re-deployed with `${{ env.IMAGE }}:${{ github.sha }}` at https://${{ secrets.DOMAIN }}

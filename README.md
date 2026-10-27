@@ -268,19 +268,25 @@ builds an image from `mission-control/server/Dockerfile`, scans it with Trivy (f
 SSH, and runs `docker compose up -d --wait`, so a container that doesn't turn healthy fails the deploy.
 
 Secrets it needs: `DOCKERHUB_USERNAME`, `DOCKERHUB_PASSWORD`, `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY`, `SSH_PORT`,
-`ALERTS_API_TOKEN` (empty runs the simulation), `CLIENT_KEYS`, and `TELEGRAM_NOTIFY_CHAT` / `TELEGRAM_NOTIFY_TOKEN` for
-the status messages.
+`DOMAIN`, `ALERTS_API_TOKEN` (empty runs the simulation), `CLIENT_KEYS`, and `TELEGRAM_NOTIFY_CHAT` /
+`TELEGRAM_NOTIFY_TOKEN` for the status messages.
 
-The VM needs Docker with Compose v2.17 or later, and port 8080 open in the subnet's security list and the host
-firewall. The archive and lock live in the `radarnebo-data` volume. The server speaks plain HTTP: put a TLS proxy
-(e.g. Caddy) in front before sending client keys over the internet.
+Caddy (`mission-control/server/Caddyfile`) sits in front of the server and is the only thing with published ports. On
+first start it gets a Let's Encrypt certificate for `DOMAIN` and renews it on its own; plain HTTP redirects to HTTPS.
+`DOMAIN`'s DNS A record must point at the VM. The server isn't published, so it trusts Caddy's `X-Forwarded-For`
+(`TRUST_PROXY_HEADERS=true`) to rate-limit each client by its own IP. Apps use `https://<DOMAIN>` as the server URL.
+
+The VM needs Docker with Compose v2.17 or later, and ports 80 and 443 (TCP, plus UDP 443 for HTTP/3) open in the
+subnet's security list and the host firewall. The archive and lock live in the `radarnebo-data` volume, the
+certificates in `caddy-data`.
 
 To run the same image locally:
 
 ```
 ./gradlew :mission-control:server:buildFatJar
 docker build -t radarnebo-server:local mission-control/server
-RADARNEBO_SERVER_IMAGE=radarnebo-server:local docker compose -f mission-control/server/docker-compose.yaml up
+# DOMAIN=localhost: Caddy uses its own local CA instead of Let's Encrypt (curl -k https://localhost/health)
+RADARNEBO_SERVER_IMAGE=radarnebo-server:local DOMAIN=localhost docker compose -f mission-control/server/docker-compose.yaml up
 ```
 
 ### Map background
@@ -335,6 +341,7 @@ console they run in; access keys and tokens are masked.
 | `CLIENT_KEYS` | – | Comma-separated client keys (`PROXY_CLIENT_KEYS` still works) |
 | `CLIENT_REQUESTS_PER_MINUTE` | 120 | Per-IP limit for clients, at least 1 |
 | `HISTORY_REQUESTS_PER_MINUTE` | 2 | Per-IP limit for the history endpoint, at least 1 |
+| `TRUST_PROXY_HEADERS` | false | Take the client IP from the proxy's `X-Forwarded-For` entry. Only behind a proxy that is the sole way in |
 | `PORT` | 8080 | 0–65535; 0 picks a free port |
 | `LOG_HTTP` | – | `true` logs each alerts.in.ua request and response with its JSON body (token masked) |
 

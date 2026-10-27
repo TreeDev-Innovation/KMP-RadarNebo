@@ -1,0 +1,10 @@
+# Caddy gets a Let's Encrypt certificate for {$DOMAIN} on first start and renews it on its own; port 80 must be
+# reachable for the HTTP challenge and redirects to HTTPS. Certificates live in the caddy-data volume.
+{
+  admin off
+}
+
+{$DOMAIN} {
+  # The server compresses its own responses.
+  reverse_proxy radarnebo-server:8080
+}
