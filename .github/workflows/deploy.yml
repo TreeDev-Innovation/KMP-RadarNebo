@@ -13,8 +13,17 @@ on:
       - ".github/workflows/deploy.yml"
   workflow_dispatch:  # manual redeploy from the Actions tab (e.g. after rotating ALERTS_IN_UA_API_KEY or CLIENT_KEYS)
   # Labelling a pull request `deploy` deploys its branch, and every push to it redeploys while the label stays.
+  # Same paths as push: a pull request that doesn't touch the server never deploys.
   pull_request:
     types: [labeled, synchronize]
+    paths:
+      - "core/**"
+      - "mission-control/server/**"
+      - "buildSrc/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/deploy.yml"
 
 permissions:
   contents: read
@@ -57,21 +66,7 @@ jobs:
   build-and-deploy:
     needs: test
     runs-on: ubuntu-latest
-    env:
-      NOTIFY: ${{ secrets.TELEGRAM_NOTIFY_TOKEN != '' }}  # the Telegram steps are skipped without a bot token
     steps:
-      - name: Notify me (commit)
-        if: env.NOTIFY == 'true'
-        uses: appleboy/telegram-action@390cf7345777cd821dba28c72f436a78bce19cc5 # master
-        with:
-          to: ${{ secrets.TELEGRAM_NOTIFY_CHAT }}
-          token: ${{ secrets.TELEGRAM_NOTIFY_TOKEN }}
-          message: |
-            #notifications
-            🧟 ${{ github.actor }} created commit:
-            ✒ Commit message: ${{ github.event.commits[0].message }}
-            🗃 Repository: ${{ github.repository }}
-            📊 See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}
       - id: checkout
         name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -119,20 +114,6 @@ jobs:
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
-      - name: Notify me (image update)
-        if: env.NOTIFY == 'true'
-        uses: appleboy/telegram-action@390cf7345777cd821dba28c72f436a78bce19cc5 # master
-        with:
-          to: ${{ secrets.TELEGRAM_NOTIFY_CHAT }}
-          token: ${{ secrets.TELEGRAM_NOTIFY_TOKEN }}
-          message: |
-            #notifications
-            🐳 New image tag published!
-
-             - Image: ${{ env.IMAGE }}:${{ github.sha }}
-             - Image digest: ${{ steps.build.outputs.digest }}
-
-            🐋 https://hub.docker.com/r/${{ env.IMAGE }}/tags
       - name: Copy compose file and Caddyfile to remote machine
         uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1
         with:
@@ -164,14 +145,3 @@ jobs:
             # --wait fails the deploy if the container doesn't turn healthy (the start replays 2 h of history).
             docker compose up -d --wait --wait-timeout 180
             docker system prune -f
-      - name: Notify me
-        if: env.NOTIFY == 'true'
-        uses: appleboy/telegram-action@390cf7345777cd821dba28c72f436a78bce19cc5 # master
-        with:
-          to: ${{ secrets.TELEGRAM_NOTIFY_CHAT }}
-          token: ${{ secrets.TELEGRAM_NOTIFY_TOKEN }}
-          message: |
-            #notifications
-            🚀 Deployed!
-
-            📡 radarnebo-server has been re-deployed with `${{ env.IMAGE }}:${{ github.sha }}` at https://${{ env.DOMAIN }}

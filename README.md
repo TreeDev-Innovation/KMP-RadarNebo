@@ -262,15 +262,15 @@ loads it, and variables already set in the environment win.
 
 `.github/workflows/ci.yml` runs the JVM tests on every push and pull request. `.github/workflows/deploy.yml` runs on
 pushes to `main` that touch the server, by hand from the Actions tab, or for a pull request labelled `deploy`
-(redeployed on every push while the label stays). It tests the server, builds the fat jar,
+(redeployed on every push while the label stays). Pull requests and pushes deploy only when they change the server or
+what it's built from: `core`, `mission-control/server`, `buildSrc`, `gradle`, the root build files or the workflow. It tests the server, builds the fat jar,
 builds an image from `mission-control/server/Dockerfile`, scans it with Trivy (fails on fixable HIGH/CRITICAL), pushes
 `<DOCKERHUB_USERNAME>/radarnebo-server:<commit sha>` and `:latest` for amd64 and arm64, copies
 `mission-control/server/docker-compose.yaml` to `~/docker-deployments/apps/radarnebo/radarnebo-server` on the VM over
 SSH, and runs `docker compose up -d --wait`, so a container that doesn't turn healthy fails the deploy.
 
 Secrets it needs: `DOCKERHUB_USERNAME`, `DOCKERHUB_PASSWORD`, `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY`, `SSH_PORT`,
-`ALERTS_IN_UA_API_KEY` (the server's `ALERTS_API_TOKEN`; empty runs the simulation), `CLIENT_KEYS`, and optionally
-`TELEGRAM_NOTIFY_CHAT` / `TELEGRAM_NOTIFY_TOKEN` for status messages.
+`ALERTS_IN_UA_API_KEY` (the server's `ALERTS_API_TOKEN`; empty runs the simulation) and `CLIENT_KEYS`.
 
 Caddy (`mission-control/server/Caddyfile`) sits in front of the server and is the only thing with published ports. On
 first start it gets a Let's Encrypt certificate for `DOMAIN` (`radar-nebo.worxbend.com`; a repository variable `DOMAIN`
