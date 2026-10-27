@@ -258,6 +258,31 @@ ALERTS_API_TOKEN=... CLIENT_KEYS=key1,key2 ./gradlew :mission-control:server:run
 For local runs, put the variables in `mission-control/server/.env` (git-ignored; start from `mission-control/server/.env.example`). `:mission-control:server:run`
 loads it, and variables already set in the environment win.
 
+### Deployment (Oracle Cloud)
+
+`.github/workflows/ci.yml` runs the JVM tests on every push and pull request. `.github/workflows/deploy.yml` runs on
+pushes to `main` that touch the server (or by hand from the Actions tab). It tests the server, builds the fat jar,
+builds an image from `mission-control/server/Dockerfile`, scans it with Trivy (fails on fixable HIGH/CRITICAL), pushes
+`<DOCKERHUB_USERNAME>/radarnebo-server:<commit sha>` and `:latest` for amd64 and arm64, copies
+`mission-control/server/docker-compose.yaml` to `~/docker-deployments/apps/radarnebo/radarnebo-server` on the VM over
+SSH, and runs `docker compose up -d --wait`, so a container that doesn't turn healthy fails the deploy.
+
+Secrets it needs: `DOCKERHUB_USERNAME`, `DOCKERHUB_PASSWORD`, `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY`, `SSH_PORT`,
+`ALERTS_API_TOKEN` (empty runs the simulation), `CLIENT_KEYS`, and `TELEGRAM_NOTIFY_CHAT` / `TELEGRAM_NOTIFY_TOKEN` for
+the status messages.
+
+The VM needs Docker with Compose v2.17 or later, and port 8080 open in the subnet's security list and the host
+firewall. The archive and lock live in the `radarnebo-data` volume. The server speaks plain HTTP: put a TLS proxy
+(e.g. Caddy) in front before sending client keys over the internet.
+
+To run the same image locally:
+
+```
+./gradlew :mission-control:server:buildFatJar
+docker build -t radarnebo-server:local mission-control/server
+RADARNEBO_SERVER_IMAGE=radarnebo-server:local docker compose -f mission-control/server/docker-compose.yaml up
+```
+
 ### Map background
 
 The map can show a real map under the oblasts: a dark or light map that follows the theme, or satellite imagery

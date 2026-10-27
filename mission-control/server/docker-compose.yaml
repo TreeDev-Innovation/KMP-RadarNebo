@@ -1,0 +1,21 @@
+services:
+  radarnebo-server:
+    image: ${RADARNEBO_SERVER_IMAGE:?set RADARNEBO_SERVER_IMAGE}
+    restart: unless-stopped
+    read_only: true            # only /data (and /tmp) need to be writable
+    tmpfs:
+      - /tmp:exec              # sqlite-jdbc extracts and loads its native library from /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - ALERTS_API_TOKEN       # empty runs the simulation
+      - CLIENT_KEYS
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    volumes:
+      - radarnebo-data:/data
+
+volumes:
+  radarnebo-data:
