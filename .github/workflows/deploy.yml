@@ -34,11 +34,6 @@ on:
 permissions:
   contents: read
 
-# Two pushes in a row deploy one after the other, never side by side.
-concurrency:
-  group: deploy-oci
-  cancel-in-progress: false
-
 env:
   IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/radarnebo-server
   APP_DIR: docker-deployments/apps/radarnebo/radarnebo-server
@@ -79,6 +74,11 @@ jobs:
       !cancelled() && (
         needs.test.result == 'success' ||
         (needs.test.result == 'skipped' && inputs.image_tag != ''))
+    # Deploys run one after the other, never side by side. On the job, not the workflow: a run that skips it
+    # (a pull request closing) never joins the group, so it can't replace a pending deploy.
+    concurrency:
+      group: deploy-oci
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     env:
       TAG: ${{ inputs.image_tag || github.sha }}
