@@ -19,6 +19,9 @@ import com.gusak.lab.radarnebo.server.config.ServerConfig
 import com.gusak.lab.radarnebo.server.config.UpstreamConfig
 import com.gusak.lab.radarnebo.server.domain.alert.AirAlert
 import com.gusak.lab.radarnebo.server.domain.alert.AirRaidStatusMap
+import com.gusak.lab.radarnebo.server.domain.alert.AlertArchive
+import com.gusak.lab.radarnebo.server.infrastructure.persistence.InMemoryAlertArchive
+import com.gusak.lab.radarnebo.server.infrastructure.persistence.InMemoryTrackArchive
 import com.gusak.lab.radarnebo.server.radarServer
 import com.gusak.lab.radarnebo.tracking.DronePositionsResponse
 import com.gusak.lab.radarnebo.tracking.DroneTracksResponse
@@ -30,6 +33,8 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -42,6 +47,7 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Instant
 
 /** A data source that reports whatever the test sets, like alerts.in.ua would; [failure], when set, instead. */
 private class ScriptedSource(var clock: () -> Long) : AlertsDataSource {
@@ -66,8 +72,9 @@ class RadarApiTest {
     private fun ApplicationTestBuilder.server(
         clients: ClientApiConfig = ClientApiConfig(requestsPerMinute = 10_000, historyRequestsPerMinute = 100),
         traffic: TrafficRecorder? = null,
+        archives: Archives = Archives.inMemory(),
     ): ServerComponents {
-        val components = ServerComponents.create(ServerConfig(clients = clients), clock = { now }, traffic = traffic, source = source, archives = Archives.inMemory())
+        val components = ServerComponents.create(ServerConfig(clients = clients), clock = { now }, traffic = traffic, source = source, archives = archives)
         application { radarServer(components, startPoller = false) }
         return components
     }
@@ -95,6 +102,25 @@ class RadarApiTest {
         assertEquals(HttpStatusCode.OK, client.get("/v1/alerts/active.json?token=app-key").status, "the key also works as ?token=")
         assertEquals("ok", health().status, "health needs no key")
         assertEquals("""{"message":"Not found"}""", client.get("/v1/nope?token=app-key").bodyAsText())
+    }
+
+    @Test
+    fun aMalformedQueryTokenIsTheClientsMistakeNotAServerError() = testApplication {
+        val server = server(ClientApiConfig(keys = setOf("app-key"), requestsPerMinute = 10_000))
+        server.poll()
+        for (path in listOf("/v1/alerts/active.json?token=", "/v1/alerts/active.json?token=bad!key")) {
+            val response = client.get(path)
+            assertEquals(HttpStatusCode.BadRequest, response.status, path)
+            assertTrue(json.parseToJsonElement(response.bodyAsText()).jsonObject["message"] != null, "a JSON error for $path")
+        }
+        assertEquals(HttpStatusCode.OK, client.get("/v1/alerts/active.json?token=app-key").status)
+    }
+
+    @Test
+    fun callersWithoutAValidKeyAreRateLimitedToo() = testApplication {
+        server(ClientApiConfig(keys = setOf("app-key"), requestsPerMinute = 2))
+        val statuses = List(3) { client.get("/v1/alerts/active.json?token=wrong").status }
+        assertEquals(listOf(HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized, HttpStatusCode.TooManyRequests), statuses)
     }
 
     @Test
@@ -135,6 +161,14 @@ class RadarApiTest {
         server.poll()
         val changed = client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfNoneMatch, etag) }
         assertEquals(HttpStatusCode.OK, changed.status)
+        assertEquals(
+            HttpStatusCode.OK,
+            client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) {
+                header(HttpHeaders.IfNoneMatch, etag)
+                header(HttpHeaders.IfModifiedSince, changed.headers[HttpHeaders.LastModified]!!)
+            }.status,
+            "If-None-Match takes precedence over If-Modified-Since (RFC 9110 13.2.2)",
+        )
         // Like alerts.in.ua: the alerts and when they last changed (now, in the test's clock).
         assertEquals("""{"alerts":[],"meta":{"last_updated_at":"2026/10/19 10:01:00 +0000","type":"full"}}""", changed.bodyAsText())
     }
@@ -240,7 +274,8 @@ class RadarApiTest {
         server.poll()
 
         client.get(RadarNeboApi.ACTIVE_ALERTS_PATH + "?token=app-key") { header(HttpHeaders.AcceptEncoding, "gzip") }
-        val exchange = log.exchanges.value.single()
+        // The capture may record the call just after the client has its response.
+        val exchange = withTimeout(5_000) { log.exchanges.first { it.isNotEmpty() } }.single()
         assertEquals(HttpExchange.Direction.Incoming, exchange.direction)
         assertEquals(RadarNeboApi.ACTIVE_ALERTS_PATH + "?token=***", exchange.url)
         assertEquals(200, exchange.status)
@@ -261,6 +296,32 @@ class RadarApiTest {
         assertEquals("boom", health.lastError)
         assertEquals(DataSourceKind.AlertsInUa.key, health.source)
         assertEquals(UpstreamConfig().effectivePerMinute, health.upstreamBudgetPerMinute, "the source in use is alerts.in.ua")
+    }
+
+    @Test
+    fun anUnexpectedFailureIsAGenericJsonErrorThatRevealsNothing() = testApplication {
+        val failingArchive = object : AlertArchive by InMemoryAlertArchive() {
+            override suspend fun history(uid: String, since: Instant, limit: Int): List<AirAlert> = throw IllegalStateException("db path /secret")
+        }
+        val server = server(archives = Archives(failingArchive, InMemoryTrackArchive()))
+        server.poll()
+        val response = client.get("/v1/regions/14/alerts/day_ago.json")
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val body = response.bodyAsText()
+        assertEquals("""{"message":"API error"}""", body)
+        assertFalse("secret" in body)
+    }
+
+    @Test
+    fun theStatusPageEscapesTheSourcesError() = testApplication {
+        val server = server()
+        server.poll() // a board first: without one the page reports warming up, not the failure
+        source.failure = FetchResult.Failed("<script>x</script>", minWaitMs = 1_000)
+        server.poll()
+        val page = text("/").second
+        assertTrue("its data source is failing" in page)
+        assertTrue("&lt;script&gt;" in page)
+        assertFalse("<script>x" in page)
     }
 
     @Test

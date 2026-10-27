@@ -12,6 +12,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermissions
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
@@ -100,17 +101,23 @@ class SingleInstance private constructor(
                 throw e
             }
             val requested = AtomicBoolean(false)
+            // Exactly what askToShutDown sends.
+            val expected = "$token\n".encodeToByteArray()
             thread(isDaemon = true, name = "single-instance") {
                 while (!control.isClosed) {
                     val accepted = runCatching { control.accept() }.getOrNull() ?: continue
-                    val line = accepted.use { socket ->
-                        // A local peer that connects and sends nothing must not block the listener.
+                    val received = accepted.use { socket ->
+                        // A local peer must not block the listener: the read is bounded in size (the expected message)
+                        // and each read in time, whatever the peer sends or doesn't.
                         runCatching {
                             socket.soTimeout = CONTROL_READ_TIMEOUT_MS
-                            socket.getInputStream().bufferedReader().readLine()
+                            socket.getInputStream().readNBytes(expected.size)
                         }.getOrNull()
                     }
-                    if (line == token && requested.compareAndSet(false, true)) {
+                    // Constant-time, so a local peer can't learn the token from how long a guess takes to reject.
+                    if (received != null && MessageDigest.isEqual(received, expected) &&
+                        requested.compareAndSet(false, true)
+                    ) {
                         log.info("A newer RadarNebo server asked this one to shut down")
                         onShutdownRequest()
                     }
@@ -124,7 +131,7 @@ class SingleInstance private constructor(
                 ?.takeIf { it.size == 2 } ?: return
             runCatching {
                 Socket(InetAddress.getLoopbackAddress(), port.toInt()).use { socket ->
-                    socket.getOutputStream().write("$token\n".toByteArray())
+                    socket.getOutputStream().write("$token\n".encodeToByteArray())
                 }
             }.onFailure { log.warn("Couldn't reach the running server to ask it to shut down: {}", it.message) }
         }

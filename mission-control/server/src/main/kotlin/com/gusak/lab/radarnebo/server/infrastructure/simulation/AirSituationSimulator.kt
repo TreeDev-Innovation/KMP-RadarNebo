@@ -1,6 +1,6 @@
 package com.gusak.lab.radarnebo.server.infrastructure.simulation
 
-import com.gusak.lab.radarnebo.data.ThreatType
+import com.gusak.lab.radarnebo.domain.ThreatMapper
 import com.gusak.lab.radarnebo.geo.GeoMath
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import com.gusak.lab.radarnebo.server.application.SituationReport
@@ -54,11 +54,8 @@ internal class AirSituationSimulator(config: SimulationConfig, firstAlertId: Lon
     private fun markerIdsByTarget(demands: Map<AlertLocation, List<ThreatDemand>>): Map<String, List<String>> =
         demands.flatMap { (location, locationDemands) ->
             val alertId = registry.alertId(location.uid) ?: return@flatMap emptyList<Pair<String, String>>()
-            locationDemands.mapNotNull { demand -> demand.targetId?.let { it to markerId(alertId, demand.type) } }
+            locationDemands.mapNotNull { demand -> demand.targetId?.let { it to ThreatMapper.markerId(alertId, demand.type.apiValue) } }
         }.groupBy({ it.first }, { it.second }).mapValues { it.value.distinct() }
-
-    /** Must match the marker ids core's ThreatMapper gives each alert threat (`"${alert.id}:${threat.threatType}"`). */
-    private fun markerId(alertId: Long, type: ThreatType) = "$alertId:${type.apiValue}"
 
     /** The current and recent strikes and front-line slots, planned once and kept while they matter. */
     private fun plansAround(t: Long): List<AttackPlan> {

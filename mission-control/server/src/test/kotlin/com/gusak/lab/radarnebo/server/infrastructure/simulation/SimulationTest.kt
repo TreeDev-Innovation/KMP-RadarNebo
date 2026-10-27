@@ -191,4 +191,13 @@ class SimulationTest {
             assertTrue(kab.path.durationMs in 2 * minute..10 * minute)
         }
     }
+
+    /** Alert ids follow the order locations are demanded in, so that order must not depend on hash codes. */
+    @Test
+    fun demandsKeepTheOrderTheyAreMadeIn() {
+        val uids = Regions.oblasts.map { it.uid }.reversed()
+        val area = AreaThreat(ThreatType.BallisticMissiles, uids, from = 0, until = minute, message = "test")
+        val demanded = WarningSystem().demands(0, emptyList(), listOf(area)).keys.map { it.oblastUid }
+        assertEquals(uids, demanded)
+    }
 }

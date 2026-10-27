@@ -3,7 +3,7 @@
 <img src="docs/screenshots/desktop-slide.png" width="100%" alt="The mission-control console with the client app embedded, next to the desktop app">
 
 A Kotlin Multiplatform (Android + iOS, Compose Multiplatform) drone threat monitor for Ukraine. The app talks only to
-the RadarNebo server (`:server`). The server reads the [alerts.in.ua open API](https://devs.alerts.in.ua/), or simulates
+the RadarNebo server (`:mission-control:server`). The server reads the [alerts.in.ua open API](https://devs.alerts.in.ua/), or simulates
 combined drone and missile strikes when it has no token. It tracks targets, keeps the archive, and serves its own API
 in the alerts.in.ua format.
 
@@ -135,7 +135,8 @@ platform module to `initKoin`. Previews and tests use `isolatedKoin()` with in-m
 | `core` | Pure Kotlin (Android, iOS, JVM): the server's client, the alerts.in.ua JSON models, geography, threat mapping, tracking and interpolation |
 | `shared` | Compose Multiplatform UI (Android, iOS, desktop JVM), repositories, use cases and Koin modules |
 | `app/android` (`:app:android`), `app/desktop` (`:app:desktop`), `app/ios` (Xcode project) | Platform entry points |
-| `server` | Ktor server: alerts.in.ua or the strike simulation, server-side tracking, SQLite archive, alerts.in.ua-compatible API |
+| `mission-control/server` (`:mission-control:server`) | Ktor server: alerts.in.ua or the strike simulation, server-side tracking, SQLite archive, alerts.in.ua-compatible API |
+| `mission-control/ui` (`:mission-control:ui`) | The Compose Desktop console that hosts the server |
 
 ## Desktop app
 
@@ -151,7 +152,7 @@ Map controls on desktop:
   which the Gradle run and packaging config already pass.
 - **Ctrl/⌘ + wheel**: zoom (mouse). **Drag**: pan. **Double-click**: reset. **Long-press**: add a favorite.
 
-## Server (`:server`)
+## Server (`:mission-control:server`)
 
 The app's only data source. The server decides where the data comes from, tracks targets and archives everything;
 apps only read. It is a Ktor (CIO) application in DDD layers, under `mission-control/server/src/main/kotlin/.../server/`:
@@ -209,8 +210,14 @@ of every target in the air.
 ### API
 
 Clients authenticate like alerts.in.ua (`Authorization: Bearer <key>` or `?token=<key>`) when `CLIENT_KEYS` is set.
-Errors are `{"message": "..."}`. All alert endpoints support `ETag`/`If-None-Match` and
-`Last-Modified`/`If-Modified-Since`. Responses over 1 KB are gzipped.
+A `?token=` that is not a valid bearer token is a 400. Rate limits apply before the key check, so requests with a wrong
+key count too. Errors are `{"message": "..."}`. The active-alert and IoT status endpoints (`/v1/alerts/active.json`
+and `/v{1,2}/iot/...`) support `ETag`/`If-None-Match` and `Last-Modified`/`If-Modified-Since` and report the data's age
+in `X-Data-Age-Seconds`. Responses over 1 KB are gzipped.
+
+Limits are per client IP (`CLIENT_REQUESTS_PER_MINUTE`, 120/min; history `HISTORY_REQUESTS_PER_MINUTE`, 2/min).
+Behind a TLS reverse proxy every client shares the proxy's IP, so the limits become global: raise both, or rate-limit
+at the proxy. Forwarded headers are deliberately not trusted, since any client could set them.
 
 **alerts.in.ua API** ([documentation](https://devs.alerts.in.ua/)): same paths and JSON, so any alerts.in.ua client works
 against the server:
@@ -238,7 +245,7 @@ against the server:
 Every alert is saved as it opens, changes and finishes, and every track as it ends, in SQLite via Exposed
 (`ARCHIVE_JDBC_URL`, default `data/radarnebo-archive.db`; `memory` keeps it in memory). Records are partitioned by
 data source, so simulated and real ids never mix. After a restart, alerts the archive still has open but that are gone
-are finished. Records older than `ARCHIVE_RETENTION_DAYS` are pruned hourly.
+are finished. Records older than `ARCHIVE_RETENTION_DAYS` are pruned hourly while polls succeed.
 
 ### Running
 
@@ -299,12 +306,15 @@ console they run in; access keys and tokens are masked.
 | `SIM_WARM_UP_MINUTES` | 120 | History replayed on start |
 | `SIM_SEED` | 20220224 | Change it for different attacks |
 | `ARCHIVE_JDBC_URL` | `jdbc:sqlite:data/radarnebo-archive.db` | `memory` for no persistence |
-| `ARCHIVE_RETENTION_DAYS` | 45 | |
+| `ARCHIVE_RETENTION_DAYS` | 45 | At least 1; 0 would prune the whole archive |
 | `CLIENT_KEYS` | – | Comma-separated client keys (`PROXY_CLIENT_KEYS` still works) |
-| `CLIENT_REQUESTS_PER_MINUTE` | 120 | Per-IP limit for clients |
-| `HISTORY_REQUESTS_PER_MINUTE` | 2 | Per-IP limit for the history endpoint |
-| `PORT` | 8080 | |
+| `CLIENT_REQUESTS_PER_MINUTE` | 120 | Per-IP limit for clients, at least 1 |
+| `HISTORY_REQUESTS_PER_MINUTE` | 2 | Per-IP limit for the history endpoint, at least 1 |
+| `PORT` | 8080 | 0–65535; 0 picks a free port |
 | `LOG_HTTP` | – | `true` logs each alerts.in.ua request and response with its JSON body (token masked) |
+
+A value that isn't a number falls back to the default. A number outside the range above stops the server at startup
+with a message naming the variable (the console shows it in a dialog), since falling back would hide the mistake.
 
 ## Connecting the app
 

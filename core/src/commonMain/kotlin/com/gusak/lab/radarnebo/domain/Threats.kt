@@ -44,7 +44,7 @@ object ThreatMapper {
                 .filter { !dronesOnly || it.threatType == ThreatType.Drones.apiValue }
                 .map { threat ->
                     ThreatMarker(
-                        id = "${alert.id}:${threat.threatType}",
+                        id = markerId(alert.id, threat.threatType),
                         type = ThreatType.from(threat.threatType),
                         level = ThreatLevel.from(threat.level ?: alert.alertLevel),
                         title = alert.locationTitleEn?.takeIf { it.isNotBlank() } ?: alert.locationTitle,
@@ -58,6 +58,9 @@ object ThreatMapper {
                 }
         }
         .sortedWith(compareBy<ThreatMarker> { it.level }.thenByDescending { it.startedAt })
+
+    /** The id of the marker for one threat of an alert; the server's simulator uses it to hide markers its targets stand in for. */
+    fun markerId(alertId: Long, threatType: String): String = "$alertId:$threatType"
 
     /** Limits how many markers the map renders. Input is priority sorted, so red and newest threats win. */
     fun capForMap(markers: List<ThreatMarker>, max: Int): List<ThreatMarker> = markers.take(max)

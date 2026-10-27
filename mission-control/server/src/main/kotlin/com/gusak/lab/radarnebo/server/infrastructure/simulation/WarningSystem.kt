@@ -31,7 +31,10 @@ internal data class ThreatDemand(
 internal class WarningSystem(private val settlements: List<Settlement> = SimulatedLocations.settlements) {
 
     fun demands(t: Long, flights: List<Flight>, areas: List<AreaThreat>): Map<AlertLocation, List<ThreatDemand>> {
-        val demands = HashMap<AlertLocation, MutableList<ThreatDemand>>()
+        // Insertion order, which follows the deterministic flights, decides which location the registry gives which
+        // alert id. A HashMap would not do: AlertLocation's hash includes an enum, whose identity hash changes
+        // every JVM run, so the same seed would number and order alerts differently.
+        val demands = LinkedHashMap<AlertLocation, MutableList<ThreatDemand>>()
         fun demand(location: AlertLocation, demand: ThreatDemand) = demands.getOrPut(location) { mutableListOf() }.add(demand)
 
         flights.filter { it.isTracked(t) }.forEach { flight ->

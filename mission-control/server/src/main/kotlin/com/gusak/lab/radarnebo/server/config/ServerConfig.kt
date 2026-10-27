@@ -30,6 +30,11 @@ data class ServerConfig(
     /** Logs every alerts.in.ua request and response, body included, with the token masked. */
     val logHttp: Boolean = false,
 ) {
+    init {
+        // 0 asks for any free port, as the tests do.
+        require(port in 0..65_535) { "PORT must be between 0 and 65535" }
+    }
+
     val dataSource: DataSourceKind
         get() = dataSourceOverride ?: if (upstream.token.isNullOrBlank()) DataSourceKind.Simulation else DataSourceKind.AlertsInUa
 
@@ -128,6 +133,11 @@ data class ArchiveConfig(
     val jdbcUrl: String = DEFAULT_JDBC_URL,
     val retention: Duration = 45.days,
 ) {
+    init {
+        // Pruning keeps only what finished within the retention, so zero or less would empty the archive.
+        require(retention.isPositive()) { "ARCHIVE_RETENTION_DAYS must be positive" }
+    }
+
     /** True for ARCHIVE_JDBC_URL=memory: the archive is kept in memory, not in a database. */
     val inMemory: Boolean get() = jdbcUrl == IN_MEMORY
 
@@ -144,4 +154,9 @@ data class ClientApiConfig(
     val requestsPerMinute: Int = 120,
     /** alerts.in.ua allows 2 history requests per minute; the server keeps the same contract. */
     val historyRequestsPerMinute: Int = 2,
-)
+) {
+    init {
+        require(requestsPerMinute > 0) { "CLIENT_REQUESTS_PER_MINUTE must be positive" }
+        require(historyRequestsPerMinute > 0) { "HISTORY_REQUESTS_PER_MINUTE must be positive" }
+    }
+}

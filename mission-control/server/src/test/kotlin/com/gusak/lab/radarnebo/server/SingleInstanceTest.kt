@@ -18,7 +18,6 @@ import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
 
 class SingleInstanceTest {
     private val dir = Files.createTempDirectory("single-instance").toFile()
@@ -54,6 +53,10 @@ class SingleInstanceTest {
         assertEquals(1, requests.get())
     }
 
+    /**
+     * Best-effort: System.gc() is only a hint, and the instance stays reachable by design, so nothing can assert that a
+     * collection ran; a regression shows up only when one happens to.
+     */
     @Test
     fun theLockOutlivesADroppedInstance() {
         val requests = AtomicInteger()
@@ -79,13 +82,16 @@ class SingleInstanceTest {
     }
 
     @Test
-    fun aStaleControlFileFromACrashedInstanceDoesNotDelayTheNextOne() {
-        // A crashed instance leaves its control file behind; the OS has released its lock, and its port is dead.
+    fun aStaleOrGarbledControlFileOnlyCostsTheWaitForTheLock() {
+        val holder = acquire()
+        // As a crashed instance leaves it (its port dead), then unreadable: asking fails quietly and the wait times out.
         val deadPort = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
-        dir.resolve("server.control").writeText("$deadPort stale-token")
-        val started = TimeSource.Monotonic.markNow()
-        acquire(timeout = 2.seconds)
-        assertTrue(started.elapsedNow() < 1.seconds, "took ${started.elapsedNow()}")
+        for (contents in listOf("$deadPort stale-token", "garbage")) {
+            dir.resolve("server.control").writeText(contents)
+            assertFailsWith<IllegalStateException> { acquire(timeout = 300.milliseconds) }
+        }
+        holder.close()
+        acquire().close()
     }
 
     @Test

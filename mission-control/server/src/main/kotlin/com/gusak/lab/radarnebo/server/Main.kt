@@ -77,8 +77,9 @@ class ServerComponents(
             clock: () -> Long = System::currentTimeMillis,
             traffic: TrafficRecorder? = null,
             upstreamLimiter: UpstreamRateLimiter = UpstreamRateLimiter(config.upstream.effectivePerMinute),
-            source: AlertsDataSource = defaultSource(config, clock, traffic, upstreamLimiter),
+            // Defaults are evaluated in order: the archive opens first, so a failure there can't leak the source's HttpClient.
             archives: Archives = Archives.create(config),
+            source: AlertsDataSource = defaultSource(config, clock, traffic, upstreamLimiter),
         ): ServerComponents {
             // A source with air surveillance gives real flight paths; otherwise tracks are inferred from alerts.
             val tracking = if (source.providesObservations) ObservationTracking() else AlertDerivedTracking(runId = (clock() / 1000).toString(36))

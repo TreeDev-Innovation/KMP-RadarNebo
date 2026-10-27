@@ -3,6 +3,7 @@ package com.gusak.lab.radarnebo.server.application
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration
@@ -86,6 +87,8 @@ class SituationPoller(
         val started = clock()
         var replayed = 0
         source.history(started).forEach { report ->
+            // A long replay suspends only if the mutex is contended, so check for shutdown explicitly.
+            currentCoroutineContext().ensureActive()
             situation.replay(report)
             replayed++
         }
@@ -95,7 +98,8 @@ class SituationPoller(
     private suspend fun succeeded(now: Long) {
         backoffMs = 0
         status = status.copy(lastError = null)
-        if (now - lastPruneAt >= PRUNE_EVERY.inWholeMilliseconds) {
+        // Not `now - lastPruneAt`: from Long.MIN_VALUE that overflows to a negative, and pruning would never run.
+        if (now >= lastPruneAt + PRUNE_EVERY.inWholeMilliseconds) {
             lastPruneAt = now
             try {
                 val pruned = situation.pruneArchive(Instant.fromEpochMilliseconds(now) - retention)

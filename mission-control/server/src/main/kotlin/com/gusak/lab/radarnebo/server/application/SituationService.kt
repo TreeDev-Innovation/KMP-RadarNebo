@@ -10,8 +10,10 @@ import com.gusak.lab.radarnebo.server.domain.tracking.TargetTracking
 import com.gusak.lab.radarnebo.server.domain.tracking.TrackArchive
 import com.gusak.lab.radarnebo.server.domain.tracking.TrackQuery
 import com.gusak.lab.radarnebo.tracking.DroneTrack
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.slf4j.LoggerFactory
 import kotlin.time.Instant
 
 /**
@@ -36,8 +38,21 @@ class SituationService(
     var tracks: List<DroneTrack> = emptyList()
         private set
 
+    private val log = LoggerFactory.getLogger(SituationService::class.java)
     private val mutex = Mutex()
     private var reconciled = false
+
+    /**
+     * Ended tracks not yet in the archive. A failed write keeps them here to be retried on the next
+     * publish or confirm, instead of losing them: tracking reports a track as ended only once.
+     */
+    private val unsavedTracks = mutableListOf<DroneTrack>()
+
+    /**
+     * How many of [unsavedTracks], from the front, a write has already failed for. They get one retry, then
+     * are dropped: a batch the archive always refuses would otherwise fail every later poll, and keep growing.
+     */
+    private var failedTracks = 0
 
     /** Applies a fresh report and archives what changed. */
     suspend fun publish(report: SituationReport) = mutex.withLock { apply(report, archive = true) }
@@ -49,8 +64,8 @@ class SituationService(
     suspend fun confirm(atMs: Long) = mutex.withLock {
         val current = board ?: return@withLock
         board = current.confirmed(Instant.fromEpochMilliseconds(atMs))
-        val ended = advanceTracks(current.alerts, emptyList(), atMs)
-        if (ended.isNotEmpty()) trackArchive.save(ended)
+        unsavedTracks += advanceTracks(current.alerts, emptyList(), atMs)
+        saveUnsavedTracks()
     }
 
     fun activeAlerts(): List<AirAlert> = board?.alerts.orEmpty()
@@ -86,6 +101,7 @@ class SituationService(
         board = change.board
         val ended = advanceTracks(change.board.alerts, report.observations, report.observedAt)
         if (!archive) return
+        unsavedTracks += ended
 
         if (!reconciled) {
             reconcile(change.board, change.finished, at)
@@ -99,7 +115,25 @@ class SituationService(
                 throw e
             }
         }
-        if (ended.isNotEmpty()) trackArchive.save(ended)
+        saveUnsavedTracks()
+    }
+
+    private suspend fun saveUnsavedTracks() {
+        if (unsavedTracks.isEmpty()) return
+        try {
+            trackArchive.save(unsavedTracks.toList())
+            unsavedTracks.clear()
+            failedTracks = 0
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (failedTracks > 0) {
+                log.error("Dropping {} ended tracks the archive refused twice", failedTracks)
+                unsavedTracks.subList(0, failedTracks).clear()
+            }
+            failedTracks = unsavedTracks.size
+            throw e
+        }
     }
 
     /** Feeds the report into tracking, serves the new tracks and returns those that ended, for the archive. */

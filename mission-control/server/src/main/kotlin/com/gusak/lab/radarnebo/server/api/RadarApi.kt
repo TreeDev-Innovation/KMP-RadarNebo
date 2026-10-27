@@ -18,7 +18,6 @@ import io.ktor.server.auth.authenticate
 import io.ktor.server.auth.bearer
 import io.ktor.server.auth.parseAuthorizationHeader
 import io.ktor.server.plugins.BadRequestException
-import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.compression.Compression
 import io.ktor.server.plugins.compression.deflate
 import io.ktor.server.plugins.compression.gzip
@@ -31,6 +30,7 @@ import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.RateLimitProviderConfig
 import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.request.path
 import io.ktor.server.response.header
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -64,7 +64,6 @@ fun Application.radarApi(
 ) {
     if (traffic != null) install(ServerTrafficCapture) { recorder = traffic }
     install(ContentNegotiation) { json(AlertsInUaContract.json) }
-    install(CallLogging)
     install(Compression) {
         gzip { minimumSize(1_024) }
         deflate { minimumSize(1_024) }
@@ -86,12 +85,15 @@ fun Application.radarApi(
     val pollInterval = { poller.source.pollInterval }
     routing {
         healthRoutes(situation, poller, upstreamBudgetPerMinute)
-        clientRoute(authRequired) {
-            rateLimit(CLIENTS) {
+        // The limits wrap authentication, so callers guessing keys are throttled too.
+        rateLimit(CLIENTS) {
+            clientRoute(authRequired) {
                 alertsInUaRoutes(situation, pollInterval, clock)
                 trackingRoutes(situation, pollInterval, clock)
             }
-            rateLimit(HISTORY) {
+        }
+        rateLimit(HISTORY) {
+            clientRoute(authRequired) {
                 alertHistoryRoutes(situation, clock)
             }
         }
@@ -111,7 +113,8 @@ private fun Application.installErrorPages(log: Logger) {
         exception<Throwable> { call, e ->
             // A cancelled call isn't a failure to report; let the engine see the cancellation.
             if (e is CancellationException) throw e
-            log.error("Request failed: {}", call.request.local.uri, e)
+            // The path only: the query may hold a client key (`?token=`).
+            log.error("Request failed: {}", call.request.path(), e)
             call.respond(HttpStatusCode.InternalServerError, ErrorBody("API error"))
         }
         status(HttpStatusCode.Unauthorized) { call, status -> call.respond(status, ErrorBody("Missing or invalid client key")) }
@@ -138,8 +141,11 @@ private fun Application.installClientAuth(clients: ClientApiConfig) {
     install(Authentication) {
         bearer(CLIENT_AUTH) {
             // alerts.in.ua accepts the token as a query parameter as well as a header.
+            // Ktor rejects a token that isn't token68; that is the client's mistake (400), as for the header.
             authHeader { call ->
-                call.request.queryParameters["token"]?.let { HttpAuthHeader.Single("Bearer", it) } ?: call.request.parseAuthorizationHeader()
+                call.request.queryParameters["token"]?.let { token ->
+                    runCatching { HttpAuthHeader.Single("Bearer", token) }.getOrElse { throw BadRequestException("Invalid client key") }
+                } ?: call.request.parseAuthorizationHeader()
             }
             authenticate { credential -> if (credential.token in clients.keys) UserIdPrincipal("client") else null }
         }

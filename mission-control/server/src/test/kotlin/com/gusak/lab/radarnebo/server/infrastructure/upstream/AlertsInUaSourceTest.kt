@@ -10,12 +10,14 @@ import com.gusak.lab.radarnebo.debug.TrafficLog
 import com.gusak.lab.radarnebo.debug.httpTrafficCapture
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.MockRequestHandler
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -50,8 +52,12 @@ class AlertsInUaSourceTest {
         while (now < 30 * 60_000L) now += server.poller.pollOnce()
 
         hits.forEach { start -> assertTrue(hits.count { it in start until start + 60_000 } <= 8) }
-        assertTrue(hits.size in 5..10, "failures back off exponentially up to 10 minutes, got ${hits.size} requests in 30 min")
-        assertTrue(hits.zipWithNext { a, b -> b - a }.zipWithNext().all { (a, b) -> b >= a }, "waits only grow")
+        // From the 7.5 s poll interval (the clamped budget), doubling on every failure up to the 10-minute cap.
+        assertEquals(
+            listOf(7_500L, 15_000L, 30_000L, 60_000L, 120_000L, 240_000L, 480_000L, 600_000L),
+            hits.zipWithNext { a, b -> b - a },
+            "failures back off exponentially up to 10 minutes",
+        )
         assertTrue(server.poller.status.lastError!!.contains("500"))
     }
 
@@ -69,7 +75,13 @@ class AlertsInUaSourceTest {
                     headersOf(HttpHeaders.LastModified to listOf("Mon, 19 Oct 2026 10:00:00 GMT"), HttpHeaders.ContentType to listOf("application/json")),
                 )
                 1 -> respond("", HttpStatusCode.NotModified)
-                else -> respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "120"))
+                2 -> respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "120"))
+                3 -> respond(
+                    alertsJson("1100", "Броварська територіальна громада", 14, "2026-10-19T10:00:00Z"),
+                    HttpStatusCode.OK,
+                    headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+                else -> respond("", HttpStatusCode.NotModified)
             }
         }
         val upstream = UpstreamConfig(token = "secret")
@@ -91,6 +103,50 @@ class AlertsInUaSourceTest {
         assertTrue(server.poller.status.lastError!!.contains("429"))
         assertEquals(1, situation.tracks.size, "tracked from the alerts")
         assertTrue(situation.tracks.single().id.startsWith("trk-"), situation.tracks.single().id)
+
+        // A 200 without Last-Modified keeps the earlier validator for the next request.
+        assertEquals(15_000, server.poller.pollOnce())
+        assertEquals(15_000, server.poller.pollOnce())
+        assertEquals("Mon, 19 Oct 2026 10:00:00 GMT", sentIfModifiedSince.last())
+    }
+
+    private class FailureCase(val name: String, val reply: MockRequestHandler, val expect: (FetchResult.Failed) -> Unit)
+
+    @Test
+    fun everyUpstreamFailureIsReportedWithItsWait() = runBlocking {
+        val cases = listOf(
+            FailureCase("401", { respond("", HttpStatusCode.Unauthorized) }) {
+                assertEquals(300_000, it.minWaitMs)
+                assertTrue("401" in it.message, it.message)
+            },
+            FailureCase("403", { respond("", HttpStatusCode.Forbidden) }) {
+                assertEquals(300_000, it.minWaitMs)
+                assertTrue("403" in it.message, it.message)
+            },
+            FailureCase("unparseable body", { respond("not json", HttpStatusCode.OK) }) {
+                assertTrue(it.message.startsWith("Upstream request failed"), it.message)
+            },
+            FailureCase("connection error", { throw IOException("connection reset") }) {
+                assertTrue(it.message.startsWith("Upstream request failed"), it.message)
+            },
+            // Only delay-seconds is understood; an HTTP-date falls back to the 1-minute minimum.
+            FailureCase("429 with an HTTP-date", { respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "Wed, 21 Oct 2026 07:28:00 GMT")) }) {
+                assertEquals(null, it.retryAfterMs)
+                assertEquals(60_000, it.minWaitMs)
+            },
+        )
+        var served = 0
+        val engine = MockEngine { request -> cases[served++].reply(this, request) }
+        // Virtual time, so the limiter's spacing between the calls costs nothing.
+        var now = 0L
+        val upstream = UpstreamConfig(token = "t")
+        val source = AlertsInUaSource(
+            upstream, HttpClient(engine) { expectSuccess = false },
+            UpstreamRateLimiter(upstream.effectivePerMinute, clock = { now }, sleep = { now += it }),
+            clock = { now },
+        )
+        cases.forEach { case -> case.expect(assertIs<FetchResult.Failed>(source.fetch(null), case.name)) }
+        assertEquals(cases.size.toLong(), source.requestsTotal)
     }
 
     @Test
