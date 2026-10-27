@@ -11,7 +11,10 @@ on:
       - "*.gradle.kts"
       - "gradle.properties"
       - ".github/workflows/deploy.yml"
-  workflow_dispatch:  # manual redeploy from the Actions tab (e.g. after rotating ALERTS_API_TOKEN or CLIENT_KEYS)
+  workflow_dispatch:  # manual redeploy from the Actions tab (e.g. after rotating ALERTS_IN_UA_API_KEY or CLIENT_KEYS)
+  # Labelling a pull request `deploy` deploys its branch, and every push to it redeploys while the label stays.
+  pull_request:
+    types: [labeled, synchronize]
 
 permissions:
   contents: read
@@ -29,6 +32,12 @@ env:
 
 jobs:
   test:
+    # Pull requests only with the `deploy` label, and only from this repository: forks get no secrets.
+    if: >-
+      github.event_name != 'pull_request' || (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(github.event.pull_request.labels.*.name, 'deploy') &&
+        (github.event.action != 'labeled' || github.event.label.name == 'deploy'))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -48,8 +57,11 @@ jobs:
   build-and-deploy:
     needs: test
     runs-on: ubuntu-latest
+    env:
+      NOTIFY: ${{ secrets.TELEGRAM_NOTIFY_TOKEN != '' }}  # the Telegram steps are skipped without a bot token
     steps:
       - name: Notify me (commit)
+        if: env.NOTIFY == 'true'
         uses: appleboy/telegram-action@390cf7345777cd821dba28c72f436a78bce19cc5 # master
         with:
           to: ${{ secrets.TELEGRAM_NOTIFY_CHAT }}
@@ -108,6 +120,7 @@ jobs:
             ${{ env.IMAGE }}:${{ github.sha }}
           cache-from: type=gha
       - name: Notify me (image update)
+        if: env.NOTIFY == 'true'
         uses: appleboy/telegram-action@390cf7345777cd821dba28c72f436a78bce19cc5 # master
         with:
           to: ${{ secrets.TELEGRAM_NOTIFY_CHAT }}
@@ -134,7 +147,7 @@ jobs:
         name: Connect to remote machine and deploy
         env:
           # Passed via envs:, never pasted into the script. Empty ALERTS_API_TOKEN runs the simulation.
-          ALERTS_API_TOKEN: ${{ secrets.ALERTS_API_TOKEN }}
+          ALERTS_API_TOKEN: ${{ secrets.ALERTS_IN_UA_API_KEY }}
           CLIENT_KEYS: ${{ secrets.CLIENT_KEYS }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
@@ -152,6 +165,7 @@ jobs:
             docker compose up -d --wait --wait-timeout 180
             docker system prune -f
       - name: Notify me
+        if: env.NOTIFY == 'true'
         uses: appleboy/telegram-action@390cf7345777cd821dba28c72f436a78bce19cc5 # master
         with:
           to: ${{ secrets.TELEGRAM_NOTIFY_CHAT }}
