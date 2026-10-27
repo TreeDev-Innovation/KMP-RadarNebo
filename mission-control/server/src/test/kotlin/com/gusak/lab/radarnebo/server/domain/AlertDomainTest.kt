@@ -123,4 +123,12 @@ class TrackQueryTest {
         assertFailsWith<IllegalArgumentException> { TrackQuery(fromMs = 0, toMs = 1, limit = TrackQuery.MAX_LIMIT + 1) }
         TrackQuery(fromMs = 1, toMs = 1, limit = TrackQuery.MAX_LIMIT)
     }
+
+    @Test
+    fun aQueryCoversAtMostAWeek() {
+        val week = TrackQuery.MAX_WINDOW.inWholeMilliseconds
+        TrackQuery(fromMs = 0, toMs = week)
+        assertFailsWith<IllegalArgumentException> { TrackQuery(fromMs = 0, toMs = week + 1) }
+        assertFailsWith<IllegalArgumentException>("an overflowing window") { TrackQuery(fromMs = Long.MIN_VALUE, toMs = Long.MAX_VALUE) }
+    }
 }

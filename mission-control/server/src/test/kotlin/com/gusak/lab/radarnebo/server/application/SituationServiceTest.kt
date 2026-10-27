@@ -23,6 +23,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -90,7 +91,7 @@ class SituationServiceTest {
 
     private fun report(at: Instant, vararg alerts: AirAlert) = SituationReport(at.toEpochMilliseconds(), alerts.toList())
 
-    private suspend fun archivedTrackIds() = trackArchive.history(TrackQuery(0, Long.MAX_VALUE)).map { it.id }
+    private suspend fun archivedTrackIds() = trackArchive.history(TrackQuery((t0 - 3.days).toEpochMilliseconds(), (t0 + 4.days).toEpochMilliseconds())).map { it.id }
 
     @Test
     fun aFailedArchiveWriteIsRepairedByTheNextPublish() = runTest {

@@ -49,6 +49,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -308,6 +309,20 @@ class RadarApiTest {
         assertEquals(listOf(track.id), archive.tracks.map { it.id })
         assertEquals(HttpStatusCode.BadRequest, client.get("${RadarNeboApi.TRACK_ARCHIVE_PATH}?type=balloons").status)
         assertEquals(HttpStatusCode.BadRequest, client.get("${RadarNeboApi.TRACK_ARCHIVE_PATH}?from=2&to=1").status)
+    }
+
+    @Test
+    fun theTrackArchiveIsBoundedAndHasItsOwnLimit() = testApplication {
+        val server = server(ClientApiConfig(requestsPerMinute = 10_000, archiveRequestsPerMinute = 3))
+        server.poll()
+        val archive = RadarNeboApi.TRACK_ARCHIVE_PATH
+        assertEquals(HttpStatusCode.BadRequest, client.get("$archive?limit=201").status)
+        val (status, body) = text("$archive?from=${now - 8.days.inWholeMilliseconds}&to=$now")
+        assertEquals(HttpStatusCode.BadRequest, status)
+        assertTrue("at most 7 days" in body, body)
+        assertEquals(HttpStatusCode.OK, client.get("$archive?limit=200").status)
+        assertEquals(HttpStatusCode.TooManyRequests, client.get(archive).status, "the archive has its own limit")
+        assertEquals(HttpStatusCode.OK, client.get(RadarNeboApi.TRACKS_PATH).status, "which leaves the other endpoints alone")
     }
 
     @Test

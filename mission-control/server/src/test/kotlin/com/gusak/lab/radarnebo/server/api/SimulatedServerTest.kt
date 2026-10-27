@@ -11,6 +11,7 @@ import com.gusak.lab.radarnebo.server.config.DataSourceKind
 import com.gusak.lab.radarnebo.server.config.ServerConfig
 import com.gusak.lab.radarnebo.server.config.SimulationConfig
 import com.gusak.lab.radarnebo.server.infrastructure.simulation.SimulatedAlertsSource
+import com.gusak.lab.radarnebo.server.domain.tracking.TrackQuery
 import com.gusak.lab.radarnebo.server.radarServer
 import com.gusak.lab.radarnebo.tracking.DroneTracksResponse
 import com.gusak.lab.radarnebo.tracking.TrackOutcome
@@ -54,7 +55,7 @@ class SimulatedServerTest {
         assertTrue(mostTracks >= 20, "at the height of the strike $mostTracks targets are tracked")
 
         // Finished flights are in the archive, with how they ended.
-        val archive = RadarNeboApi.json.decodeFromString(TrackHistoryResponse.serializer(), client.get("${RadarNeboApi.TRACK_ARCHIVE_PATH}?limit=1000").bodyAsText())
+        val archive = RadarNeboApi.json.decodeFromString(TrackHistoryResponse.serializer(), client.get("${RadarNeboApi.TRACK_ARCHIVE_PATH}?limit=${TrackQuery.MAX_LIMIT}").bodyAsText())
         assertTrue(archive.simulated)
         val outcomes = archive.tracks.filter { !it.active }.mapNotNull { it.outcome }.toSet()
         assertEquals(TrackOutcome.entries.toSet(), outcomes)

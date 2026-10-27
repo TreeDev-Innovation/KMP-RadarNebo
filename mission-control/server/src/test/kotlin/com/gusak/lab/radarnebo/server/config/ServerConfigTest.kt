@@ -43,6 +43,13 @@ class ServerConfigTest {
     }
 
     @Test
+    fun theArchiveHasItsOwnClientLimit() {
+        assertEquals(10, ServerConfig.fromEnv(emptyMap()).clients.archiveRequestsPerMinute)
+        assertEquals(30, ServerConfig.fromEnv(mapOf("ARCHIVE_REQUESTS_PER_MINUTE" to "30")).clients.archiveRequestsPerMinute)
+        assertFailsWith<IllegalArgumentException> { ServerConfig.fromEnv(mapOf("ARCHIVE_REQUESTS_PER_MINUTE" to "ten")) }
+    }
+
+    @Test
     fun booleansIgnoreCase() {
         assertTrue(ServerConfig.fromEnv(mapOf("TRUST_PROXY_HEADERS" to "TRUE")).clients.trustProxyHeaders)
         assertFalse(ServerConfig.fromEnv(mapOf("TRUST_PROXY_HEADERS" to "False")).clients.trustProxyHeaders)
@@ -70,6 +77,7 @@ class ServerConfigTest {
             "ARCHIVE_RETENTION_DAYS" to "0",
             "CLIENT_REQUESTS_PER_MINUTE" to "0",
             "HISTORY_REQUESTS_PER_MINUTE" to "-1",
+            "ARCHIVE_REQUESTS_PER_MINUTE" to "0",
             "PORT" to "70000",
         ).forEach { (name, value) ->
             val error = assertFailsWith<IllegalArgumentException>("$name=$value") { ServerConfig.fromEnv(mapOf(name to value)) }

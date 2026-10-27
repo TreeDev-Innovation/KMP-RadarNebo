@@ -370,7 +370,7 @@ internal object ApiTranscripts {
         GET /v1/drones/archive.json?limit=0
         400
         Content-Type: application/json
-        {"message":"'limit' must be between 1 and 1000"}
+        {"message":"'limit' must be between 1 and 200"}
 
         GET /v1/drones/archive.json?to=soon
         400
