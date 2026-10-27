@@ -131,6 +131,7 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          # The ECDSA host key's fingerprint: these actions' Go client negotiates ECDSA first, never ed25519.
           fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           source: mission-control/server/docker-compose.yaml,mission-control/server/Caddyfile
           target: ${{ env.APP_DIR }}

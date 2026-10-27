@@ -273,9 +273,10 @@ SSH, and runs `docker compose up -d --wait`, so a container that doesn't turn he
 
 Secrets it needs: `DOCKERHUB_USERNAME`, `DOCKERHUB_PASSWORD`, `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY`, `SSH_PORT`,
 `SSH_HOST_FINGERPRINT`, `ALERTS_IN_UA_API_KEY` (the server's `ALERTS_API_TOKEN`; empty runs the simulation) and
-`CLIENT_KEYS`. `SSH_HOST_FINGERPRINT` is the `SHA256:...` value of the VM's ed25519 host key, from
-`ssh-keyscan -t ed25519 -p <port> <host> | ssh-keygen -lf -`; the SSH steps refuse any other host key, so the deploy
-fails until it is set.
+`CLIENT_KEYS`. `SSH_HOST_FINGERPRINT` is the `SHA256:...` value of the VM's ECDSA host key, from
+`ssh-keyscan -t ecdsa -p <port> <host> | ssh-keygen -lf -`. It has to be the ECDSA key: the SSH actions' Go client
+prefers ECDSA over RSA and ed25519 and can't be told otherwise, so an ed25519 fingerprint never matches. The SSH steps
+refuse any other host key, so the deploy fails until it is set.
 
 `.github/dependabot.yml` opens one weekly pull request per ecosystem: the workflow actions, the Gradle dependencies,
 the server's base image (pinned by digest in the Dockerfile) and the compose file's images.
