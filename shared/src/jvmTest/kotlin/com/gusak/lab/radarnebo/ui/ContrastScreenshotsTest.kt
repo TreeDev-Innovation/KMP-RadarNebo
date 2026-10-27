@@ -97,7 +97,7 @@ class ContrastScreenshotsTest {
         val threatened = PreviewData.state(theme).let { s -> s.favorites.firstOrNull { f -> s.proximity.any { it.favorite.id == f.id } } ?: s.favorites.first() }
         scene = Scene(start = MapScreenStart(selection = MapSelection.Favorite(threatened))); save("favorite-card")
         scene = Scene(); settle()
-        onNodeWithText("localhost", substring = true).performClick(); save("server-card")
+        onNodeWithText("radar-nebo.worxbend.com", substring = true).performClick(); save("server-card")
         scene = Scene(mapMode = MapMode.Cinematic); save("cinematic")
         scene = Scene(dialog = Dialog.Favorites); save("favorites")
         onNodeWithText("Add by coordinates").performClick(); save("coordinates")

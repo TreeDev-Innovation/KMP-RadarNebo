@@ -100,8 +100,8 @@ class RadarNeboApi(
     }
 
     companion object {
-        /** A server on the same machine; the Android emulator reaches the host as 10.0.2.2 instead. */
-        const val DEFAULT_SERVER_URL = "http://localhost:8080"
+        /** The deployed RadarNebo server. */
+        const val DEFAULT_SERVER_URL = "https://radar-nebo.worxbend.com"
 
         const val ACTIVE_ALERTS_PATH = "/v1/alerts/active.json"
         const val TRACKS_PATH = "/v1/drones/tracks.json"

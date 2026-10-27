@@ -55,7 +55,7 @@ data class AppSettings(
     }
 }
 
-/** Where the app looks for its server until the user sets one; the Android emulator reaches the host as 10.0.2.2. */
+/** Where the app looks for its server until the user sets one: the deployed server, unless a platform overrides it. */
 data class ServerDefaults(val url: String = RadarNeboApi.DEFAULT_SERVER_URL)
 
 /** App settings, persisted in [KeyValueStorage] and observable as [settings]. */

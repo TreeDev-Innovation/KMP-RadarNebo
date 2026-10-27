@@ -125,7 +125,7 @@ The shared app is wired with [Koin](https://insert-koin.io/) (`shared/.../di/App
 | Layer | What | Scope |
 |---|---|---|
 | Platform | `KeyValueStorage`: SharedPreferences (`androidModule`), a properties file (`desktopModule`), NSUserDefaults (`iosModule`) | single |
-| Platform | `ServerDefaults`: where the server is until the user sets one (`http://10.0.2.2:8080` on the Android emulator, `http://localhost:8080` elsewhere) | single |
+| Platform | `ServerDefaults`: where the server is until the user sets one (`https://radar-nebo.worxbend.com`) | single |
 | Data | `RadarNeboApi` (the server's client); `SettingsRepository` and `FavoritesRepository` (observable `StateFlow`s); `AlertsRepository` (alerts and tracks from the server) | single |
 | Domain | `RefreshAlertsUseCase`, `BuildThreatPictureUseCase`, `UpdateSettingsUseCase`, `AddFavoriteUseCase`, `RemoveFavoriteUseCase` | factory |
 | UI | `AppViewModel`, obtained with `koinViewModel()` in `App()` | viewModel |
@@ -321,8 +321,9 @@ console they run in; access keys and tokens are masked.
 
 The app needs only the server's address (Settings → Server) and, if the server requires one, an access key. It never
 sees an alerts.in.ua token: that lives on the server. Earlier versions kept the token on the device; it is removed on
-the first settings save. By default the app looks for a server on the same machine (the Android emulator reaches it as
-`10.0.2.2`; cleartext HTTP is allowed only to that and `localhost`). Polling defaults to 30 s. Every poll gets the
+the first settings save. By default the app uses the deployed server, `https://radar-nebo.worxbend.com`. To use a
+server on your machine, set its address in Settings: the Android emulator reaches it as `10.0.2.2`, and cleartext HTTP
+is allowed only to that and `localhost`. Polling defaults to 30 s. Every poll gets the
 full data, and the app interpolates target positions every frame between polls.
 
 The alerts.in.ua API gives no coordinates for raions or hromadas. Known cities are placed exactly, oblast-wide alerts
