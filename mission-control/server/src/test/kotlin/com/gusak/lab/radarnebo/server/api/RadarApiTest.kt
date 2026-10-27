@@ -105,6 +105,14 @@ class RadarApiTest {
     }
 
     @Test
+    fun withoutConfiguredKeysTheApiStaysOpen() = testApplication {
+        val server = server(ClientApiConfig(requestsPerMinute = 10_000))
+        server.poll()
+        assertEquals(HttpStatusCode.OK, client.get("/v1/alerts/active.json").status)
+        assertEquals(HttpStatusCode.OK, client.get("/v1/alerts/active.json?token=anything").status, "a stray key is ignored")
+    }
+
+    @Test
     fun aMalformedQueryTokenIsTheClientsMistakeNotAServerError() = testApplication {
         val server = server(ClientApiConfig(keys = setOf("app-key"), requestsPerMinute = 10_000))
         server.poll()

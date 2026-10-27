@@ -287,6 +287,12 @@ overrides it) and renews it on its own, proving the domain over port 443 (TLS-AL
 `DOMAIN`'s DNS A record must point at the VM. The server isn't published, so it trusts Caddy's `X-Forwarded-For`
 (`TRUST_PROXY_HEADERS=true`) to rate-limit each client by its own IP. Apps use `https://<DOMAIN>` as the server URL.
 
+The compose file requires `CLIENT_KEYS`: an empty or missing secret fails the deploy instead of serving an open
+API (the server itself still runs open without keys, for local use, and logs a warning). Caddy adds HSTS,
+`nosniff`, `Referrer-Policy`, a CSP and drops the `Server` header, and rejects request bodies over 1 KB. The server
+container is limited to 512 MB (the JVM heap is 75% of that, and an `OutOfMemoryError` restarts it); raise
+`mem_limit` in the compose file if `docker stats` shows pressure. Container logs rotate at 3 × 10 MB.
+
 The VM needs Docker with Compose v2.17 or later, and port 443 (TCP, plus UDP for HTTP/3) open in the subnet's
 security list and the host firewall. The archive and lock live in the `radarnebo-data` volume, the
 certificates in `caddy-data`.
@@ -296,8 +302,9 @@ To run the same image locally:
 ```
 ./gradlew :mission-control:server:buildFatJar
 docker build -t radarnebo-server:local mission-control/server
-# DOMAIN=localhost: Caddy uses its own local CA instead of Let's Encrypt (curl -k https://localhost/health)
-RADARNEBO_SERVER_IMAGE=radarnebo-server:local DOMAIN=localhost docker compose -f mission-control/server/docker-compose.yaml up
+# DOMAIN=localhost: Caddy uses its own local CA instead of Let's Encrypt (curl -k https://localhost/health).
+# CLIENT_KEYS is required by the compose file; any dummy key works locally.
+RADARNEBO_SERVER_IMAGE=radarnebo-server:local DOMAIN=localhost CLIENT_KEYS=local-key docker compose -f mission-control/server/docker-compose.yaml up
 ```
 
 ### Map background

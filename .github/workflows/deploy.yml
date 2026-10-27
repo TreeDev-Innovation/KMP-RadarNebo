@@ -139,7 +139,8 @@ jobs:
       - id: deploy
         name: Connect to remote machine and deploy
         env:
-          # Passed via envs:, never pasted into the script. Empty ALERTS_API_TOKEN runs the simulation.
+          # Passed via envs:, never pasted into the script. Empty ALERTS_API_TOKEN runs the simulation; an empty
+          # CLIENT_KEYS fails the deploy (the compose file requires it) instead of exposing an open API.
           ALERTS_API_TOKEN: ${{ secrets.ALERTS_IN_UA_API_KEY }}
           CLIENT_KEYS: ${{ secrets.CLIENT_KEYS }}
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5

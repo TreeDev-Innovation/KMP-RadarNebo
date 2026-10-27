@@ -79,10 +79,11 @@ fun Application.radarApi(
         exposeHeader(HttpHeaders.ETag)
         exposeHeader(DATA_AGE_HEADER)
     }
-    installErrorPages(LoggerFactory.getLogger("RadarApi"))
+    val log = LoggerFactory.getLogger("RadarApi")
+    installErrorPages(log)
     installRateLimits(clients)
     val authRequired = clients.keys.isNotEmpty()
-    if (authRequired) installClientAuth(clients)
+    if (authRequired) installClientAuth(clients) else log.warn("Client API is open: CLIENT_KEYS is not set")
 
     val pollInterval = { poller.source.pollInterval }
     routing {

@@ -1,9 +1,27 @@
+x-logging: &logging            # rotate: the default json-file log grows without bound on the disk SQLite shares
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   caddy:
-    image: docker.io/caddy:2-alpine
+    image: docker.io/caddy:2.11.7-alpine@sha256:eb4d35b7452d1ab6171fbdbe8d9275b2301dad6dad92115d91e19fb9b24d510f
     restart: unless-stopped
     depends_on:
       - radarnebo-server
+    read_only: true            # state lives in the /data and /config volumes
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE       # the image runs Caddy as root, and binding 443 still needs this
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
+    pids_limit: 128
+    logging: *logging
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN}
     ports:                     # no port 80: it belongs to another service on the VM, and HTTPS doesn't need it
@@ -19,14 +37,17 @@ services:
     restart: unless-stopped
     read_only: true            # only /data (and /tmp) need to be writable
     tmpfs:
-      - /tmp:exec              # sqlite-jdbc extracts and loads its native library from /tmp
+      - /tmp:exec,size=64m     # sqlite-jdbc extracts and loads its native library from /tmp
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
+    mem_limit: 512m            # the JVM sizes its heap from this (MaxRAMPercentage in the Dockerfile)
+    pids_limit: 256
+    logging: *logging
     environment:
       - ALERTS_API_TOKEN       # empty runs the simulation
-      - CLIENT_KEYS
+      - CLIENT_KEYS=${CLIENT_KEYS:?CLIENT_KEYS must be set for the public deployment}
       - TRUST_PROXY_HEADERS=true   # safe only because no port is published: every call comes through Caddy
     volumes:
       - radarnebo-data:/data
