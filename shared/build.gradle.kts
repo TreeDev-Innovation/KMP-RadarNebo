@@ -82,6 +82,9 @@ kotlin {
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
+        jvmTest.dependencies {
+            implementation(compose.desktop.uiTestJUnit4)
+        }
     }
 }
 
@@ -95,4 +98,16 @@ tasks.withType<JavaCompile>().configureEach {
     sourceCompatibility = "11"
     targetCompatibility = "11"
     options.compilerArgs.addAll(listOf("--add-exports", "java.desktop/com.apple.eawt.event=ALL-UNNAMED"))
+}
+
+// ./gradlew :shared:jvmTest --tests '*ContrastScreenshotsTest*' -PcontrastScreenshots[=Radar,Nord,…] renders every overlay
+// and dialog per map background and theme (downloading satellite tiles) into build/contrast.
+tasks.named<Test>("jvmTest") {
+    providers.gradleProperty("contrastScreenshots").orNull?.let { palettes ->
+        systemProperty("contrast.screenshots.dir", layout.buildDirectory.dir("contrast").get().asFile.absolutePath)
+        if (palettes.isNotBlank()) systemProperty("contrast.palettes", palettes)
+        // Each combination takes over a minute, longer than runTest allows by default.
+        systemProperty("kotlinx.coroutines.test.default_timeout", "20m")
+        outputs.upToDateWhen { false }
+    }
 }

@@ -53,6 +53,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gusak.lab.radarnebo.debug.HttpExchange
+import com.gusak.lab.radarnebo.ui.STATUS_TINT
 import com.gusak.lab.radarnebo.ui.formatClock
 import com.gusak.lab.radarnebo.ui.radarColors
 import kotlinx.coroutines.delay
@@ -195,15 +196,15 @@ private fun StatusBadge(exchange: HttpExchange) {
     val colors = radarColors
     val status = exchange.status
     val color = when {
-        status == null -> colors.danger
-        status >= 500 -> colors.danger
-        status >= 400 -> colors.warning
+        status == null -> colors.dangerText
+        status >= 500 -> colors.dangerText
+        status >= 400 -> colors.warningText
         status == 304 -> MaterialTheme.colorScheme.onSurfaceVariant
-        else -> colors.ok
+        else -> colors.okText
     }
     Text(
         status?.toString() ?: "ERR",
-        Modifier.background(color.copy(alpha = 0.18f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+        Modifier.background(color.copy(alpha = STATUS_TINT), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
         color = color,
         fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
@@ -236,7 +237,7 @@ private fun ExchangeDetail(exchange: HttpExchange, onBack: (() -> Unit)?) {
                 exchange.userAgent?.let { Fact("User agent", it) }
                 exchange.contentType?.let { Fact("Content type", it) }
                 bodySize(exchange)?.let { Fact("Body", it) }
-                exchange.error?.let { Fact("Error", it, radarColors.danger) }
+                exchange.error?.let { Fact("Error", it, radarColors.dangerText) }
                 Section("Request headers")
                 Headers(exchange.requestHeaders)
                 Section("Response headers")
@@ -325,8 +326,8 @@ private class JsonColors(val key: Color, val string: Color, val literal: Color)
 @Composable
 private fun jsonHighlightColors() = JsonColors(
     key = MaterialTheme.colorScheme.primary,
-    string = radarColors.ok,
-    literal = radarColors.warning,
+    string = radarColors.okText,
+    literal = radarColors.warningText,
 )
 
 private val jsonToken = Regex("\"(?:\\\\.|[^\"\\\\])*\"(\\s*:)?|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?|\\btrue\\b|\\bfalse\\b|\\bnull\\b")

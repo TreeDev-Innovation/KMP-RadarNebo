@@ -134,13 +134,13 @@ fun FavoritesScreen(
         }
         items(state.favorites, key = { it.id }) { favorite ->
             val hit = hits[favorite.id]
-            val statusColor = if (hit == null) radarColors.ok else radarColors.danger
+            val statusColor = if (hit == null) radarColors.okText else radarColors.dangerText
             Row(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(20.dp))
                     .background(
-                        if (hit != null) radarColors.danger.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f),
+                        if (hit != null) radarColors.danger.copy(alpha = STATUS_TINT) else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f),
                     )
                     .padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,

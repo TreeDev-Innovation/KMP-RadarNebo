@@ -302,7 +302,7 @@ private fun TargetRow(
                 "→ ${it.place.name} in ~${it.etaMinutes} min (${it.distanceKm.toInt()} km)",
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.SemiBold,
-                color = colors.warning,
+                color = colors.warningText,
             )
         }
     }
@@ -580,10 +580,10 @@ private fun Stat(label: String, value: String, modifier: Modifier) {
 
 @Composable
 private fun StatusTag(active: Boolean) {
-    val color = if (active) radarColors.danger else MaterialTheme.colorScheme.onSurfaceVariant
+    val color = if (active) radarColors.dangerText else MaterialTheme.colorScheme.onSurfaceVariant
     Text(
         if (active) "ACTIVE" else "CLEARED",
-        Modifier.background(color.copy(alpha = 0.15f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+        Modifier.background(color.copy(alpha = STATUS_TINT), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
         color = color,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
@@ -619,9 +619,9 @@ private fun ProfileCard(profile: TargetProfile, level: ThreatLevel, headingDeg: 
                 Text(
                     if (reported) "REPORTED" else "PROBABLE",
                     Modifier
-                        .background((if (reported) radarColors.ok else radarColors.warning).copy(alpha = 0.18f), RoundedCornerShape(4.dp))
+                        .background((if (reported) radarColors.ok else radarColors.warning).copy(alpha = STATUS_TINT), RoundedCornerShape(4.dp))
                         .padding(horizontal = 6.dp, vertical = 1.dp),
-                    color = if (reported) radarColors.ok else radarColors.warning,
+                    color = if (reported) radarColors.okText else radarColors.warningText,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
                 )
@@ -661,7 +661,7 @@ private fun RouteStopRow(index: Int, stop: ArrivalPrediction, now: Long) {
             Modifier.size(22.dp).background(radarColors.warning, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Text("${index + 1}", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("${index + 1}", color = radarColors.onWarning, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
@@ -673,7 +673,7 @@ private fun RouteStopRow(index: Int, stop: ArrivalPrediction, now: Long) {
             Text("${stop.distanceKm.toInt()} km ahead", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text("~${stop.etaMinutes} min", fontWeight = FontWeight.Bold, color = radarColors.warning)
+            Text("~${stop.etaMinutes} min", fontWeight = FontWeight.Bold, color = radarColors.warningText)
             Text(
                 "at " + formatTime(Instant.fromEpochMilliseconds(now + stop.etaMinutes * 60_000L)),
                 style = MaterialTheme.typography.labelSmall,

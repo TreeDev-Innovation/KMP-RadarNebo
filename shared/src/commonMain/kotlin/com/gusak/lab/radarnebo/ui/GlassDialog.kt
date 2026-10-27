@@ -25,9 +25,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -83,27 +85,36 @@ fun GlassDialog(
                 Modifier
                     .widthIn(max = 560.dp)
                     .fillMaxWidth()
-                    .liquidGlass(backdrop, shape, blurRadius = 28.dp, magnification = 1.02f, tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
+                    .liquidGlass(backdrop, shape, blurRadius = 28.dp, magnification = 1.02f, tint = MaterialTheme.colorScheme.surface.copy(alpha = GlassDialogTint))
                     .clip(shape)
                     // Taps inside the panel must not reach the scrim.
                     .clickable(remember { MutableInteractionSource() }, indication = null, onClick = {}),
             ) {
-                Row(Modifier.fillMaxWidth().padding(start = 24.dp, top = 20.dp, end = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.Top) {
-                    Column(Modifier.weight(1f).padding(top = 4.dp)) {
-                        Text(title, style = MaterialTheme.typography.headlineSmall)
-                        if (subtitle != null) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                // The panel is no Surface, so text in it would otherwise default to black, unreadable in dark themes.
+                CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+                    Row(Modifier.fillMaxWidth().padding(start = 24.dp, top = 20.dp, end = 12.dp, bottom = 12.dp), verticalAlignment = Alignment.Top) {
+                        Column(Modifier.weight(1f).padding(top = 4.dp)) {
+                            Text(title, style = MaterialTheme.typography.headlineSmall)
+                            if (subtitle != null) {
+                                Spacer(Modifier.height(4.dp))
+                                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
+                        CloseButton(onDismiss)
                     }
-                    CloseButton(onDismiss)
+                    HorizontalDivider(color = colors.glassRimShade)
+                    Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.Top, content = content)
                 }
-                HorizontalDivider(color = colors.glassRimShade)
-                Column(Modifier.weight(1f, fill = false), verticalArrangement = Arrangement.Top, content = content)
             }
         }
     }
 }
+
+/**
+ * Opacity of the surface colour over the dialog's glass: with the glass tint it keeps text at WCAG AA contrast
+ * whatever map, imagery or alert is behind the dialog.
+ */
+internal const val GlassDialogTint = 0.7f
 
 @Composable
 private fun CloseButton(onClick: () -> Unit) {

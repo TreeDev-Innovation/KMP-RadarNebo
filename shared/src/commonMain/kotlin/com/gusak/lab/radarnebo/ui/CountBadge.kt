@@ -23,9 +23,11 @@ import kotlin.math.roundToInt
 @Composable
 fun CountBadge(count: Int, color: Color, modifier: Modifier = Modifier, size: Dp = 16.dp) {
     val fontSize = 10.sp
+    // Bright reds (dark themes) are darkened until the white count on them is readable.
+    val fill = color.readableOn(listOf(Color.White), dark = false)
     Layout(
         content = { Text(count.toString(), color = Color.White, fontSize = fontSize, fontWeight = FontWeight.Bold, softWrap = false) },
-        modifier = modifier.background(color, CircleShape),
+        modifier = modifier.background(fill, CircleShape),
     ) { measurables, _ ->
         val text = measurables.single().measure(Constraints())
         val height = size.roundToPx()

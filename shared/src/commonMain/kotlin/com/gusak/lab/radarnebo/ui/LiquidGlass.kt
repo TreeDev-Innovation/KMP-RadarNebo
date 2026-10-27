@@ -221,8 +221,10 @@ fun GlassNavigationBar(
         Row(Modifier.selectableGroup(), horizontalArrangement = Arrangement.Start) {
             items.forEachIndexed { index, item ->
                 val selected = index == selectedIndex
+                // The lens marks the selected tab; its glyph takes the accent, while labels stay in the text
+                // colour, which the glass tint keeps readable over any backdrop.
                 val tint by animateColorAsState(
-                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                 )
                 Column(
                     Modifier
@@ -248,7 +250,12 @@ fun GlassNavigationBar(
                             )
                         }
                     }
-                    Text(item.label, color = tint, fontSize = 11.sp, fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal)
+                    Text(
+                        item.label,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 11.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    )
                 }
             }
         }

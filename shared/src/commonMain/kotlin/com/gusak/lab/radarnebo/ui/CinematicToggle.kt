@@ -177,11 +177,11 @@ fun RadiusButton(open: Boolean, radiusKm: Int, onClick: () -> Unit, modifier: Mo
                 .align(Alignment.BottomCenter)
                 // Hangs just below the button so the ring icon stays clear.
                 .offset(y = 11.dp)
-                .background(radarColors.favorite, CircleShape)
+                .background(primary, CircleShape)
                 .padding(horizontal = 5.dp, vertical = 1.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text("$radiusKm km", color = radarColors.mapBackground, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text("$radiusKm km", color = onPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

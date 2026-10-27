@@ -70,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -194,13 +195,15 @@ fun MapScreen(
         val density = LocalDensity.current
         val wide = maxWidth >= 720.dp
         val panelHeight = minOf(maxHeight * 0.5f, 460.dp)
+        // The map credit sits below bottom panels and cards, clear of both the panel's content and the map's labels.
+        val creditSpace = if (tileSource(state) != null && !cinematic) CreditHeight else 0.dp
         val viewport = with(density) { Size(maxWidth.toPx(), maxHeight.toPx()) }
         // Part of the map the targets panel leaves visible, where a selected target should be framed.
         val visibleArea = with(density) {
             if (wide) {
                 Rect(0f, 120.dp.toPx(), (maxWidth - PanelWidth - 24.dp).toPx(), (maxHeight - bottomInset).toPx())
             } else {
-                Rect(0f, 120.dp.toPx(), maxWidth.toPx(), (maxHeight - bottomInset - panelHeight - 12.dp).toPx())
+                Rect(0f, 120.dp.toPx(), maxWidth.toPx(), (maxHeight - bottomInset - creditSpace - panelHeight - 12.dp).toPx())
             }
         }
 
@@ -387,7 +390,7 @@ fun MapScreen(
             } else {
                 Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(start = 12.dp, end = 12.dp, bottom = bottomInset + 12.dp)
+                    .padding(start = 12.dp, end = 12.dp, bottom = bottomInset + creditSpace + 12.dp)
                     .fillMaxWidth()
                     .height(panelHeight)
             },
@@ -419,7 +422,7 @@ fun MapScreen(
             visible = selection != null && !panelVisible,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset + creditSpace),
         ) {
             selection?.let { SelectionCard(it, state, onDismiss = { selection = null }) }
         }
@@ -429,7 +432,7 @@ fun MapScreen(
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier.align(Alignment.BottomCenter)
-                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset).widthIn(max = 480.dp),
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset + creditSpace).widthIn(max = 480.dp),
         ) {
             RadiusCard(
                 radiusKm = radiusKm,
@@ -448,7 +451,7 @@ fun MapScreen(
                     .padding(start = 8.dp, bottom = bottomInset + 4.dp)
                     .background(radarColors.overlay, RoundedCornerShape(4.dp))
                     .padding(horizontal = 5.dp, vertical = 1.dp),
-                color = radarColors.onOverlay.copy(alpha = 0.8f),
+                color = radarColors.onOverlayMuted,
                 fontSize = 9.sp,
             )
         }
@@ -461,7 +464,7 @@ fun MapScreen(
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier.align(Alignment.BottomCenter).imePadding()
-                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset).widthIn(max = 480.dp),
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset + creditSpace).widthIn(max = 480.dp),
         ) {
             lastPendingFavorite.point?.let { point ->
                 AddFavoriteCard(
@@ -479,6 +482,9 @@ fun MapScreen(
 }
 
 private val PanelWidth = 380.dp
+
+/** Room kept under a bottom panel for the map credit. */
+private val CreditHeight = 18.dp
 
 /** The tiles the map draws under the oblasts, when the platform provides them and the settings ask for a map. */
 @Composable
@@ -538,7 +544,7 @@ private fun CinematicMap(
             ) {
                 Text(
                     shot.title,
-                    color = if (danger) radarColors.danger else radarColors.ok,
+                    color = if (danger) radarColors.dangerText else radarColors.okText,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
@@ -577,7 +583,7 @@ private fun StatusStrip(state: UiState, onClick: () -> Unit = {}, onReconnect: (
         Column {
             Text(text, color = radarColors.onOverlay, fontSize = 12.sp)
             Text("${serverHost(state.settings.serverUrl)} · ${server.label}", color = server.color(), fontSize = 11.sp)
-            state.error?.let { Text(it, color = radarColors.danger, fontSize = 12.sp) }
+            state.error?.let { Text(it, color = radarColors.dangerText, fontSize = 12.sp) }
             if (server == ServerState.Offline) ReconnectRow(state, onReconnect)
         }
     }
@@ -632,10 +638,10 @@ private enum class ServerState(val label: String) {
 
     @Composable
     fun color() = when (this) {
-        Connecting -> radarColors.onOverlay.copy(alpha = 0.6f)
-        Live -> radarColors.ok
-        Degraded -> radarColors.warning
-        Offline -> radarColors.danger
+        Connecting -> radarColors.onOverlayMuted
+        Live -> radarColors.okText
+        Degraded -> radarColors.warningText
+        Offline -> radarColors.dangerText
     }
 
     companion object {
@@ -679,9 +685,9 @@ private fun ServerStatusCard(state: UiState, onOpenRequests: (() -> Unit)?, modi
                 }
                 if (health.pollIntervalSeconds > 0) StatusLine("Polled", "every ${health.pollIntervalSeconds} s")
                 health.lastAttemptAt?.let { StatusLine("Last poll", formatClock(it)) }
-                health.lastError?.let { StatusLine("Source error", it, radarColors.danger) }
+                health.lastError?.let { StatusLine("Source error", it, radarColors.dangerText) }
             }
-            state.error?.let { StatusLine("Error", it, radarColors.danger) }
+            state.error?.let { StatusLine("Error", it, radarColors.dangerText) }
             if (server == ServerState.Offline) {
                 Text(
                     "Is the server running? Start it with ./gradlew :mission-control:server:run, or change its address in Settings.",
@@ -704,7 +710,8 @@ private fun StatusLine(label: String, value: String, valueColor: Color = Materia
 
 @Composable
 private fun ProximityBanner(state: UiState) {
-    Card(colors = CardDefaults.cardColors(containerColor = radarColors.danger.copy(alpha = 0.92f))) {
+    // Darker than the alert red, so white text on it stays readable in every palette.
+    Card(colors = CardDefaults.cardColors(containerColor = lerp(radarColors.danger, Color.Black, 0.35f))) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text("Threats near your locations", fontWeight = FontWeight.Bold, color = Color.White)
             state.proximity.take(3).forEach { hit ->
@@ -733,7 +740,7 @@ private fun SelectionCard(selection: MapSelection, state: UiState, onDismiss: ()
                     Text(
                         if (hit == null) "Clear within ${state.settings.proximityRadiusKm} km"
                         else "${hit.threat.type.label} – ${if (hit.insideRegion) "region-wide" else "${hit.distanceKm.toInt()} km away"}",
-                        color = if (hit == null) radarColors.ok else radarColors.danger,
+                        color = if (hit == null) radarColors.okText else radarColors.dangerText,
                     )
                 }
             }
@@ -772,7 +779,7 @@ private fun RadiusCard(radiusKm: Int, favoriteCount: Int, onPreview: (Int) -> Un
         Column(Modifier.padding(start = 16.dp, top = 6.dp, end = 8.dp, bottom = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Warning radius", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Text("$radiusKm km", style = MaterialTheme.typography.titleMedium, color = radarColors.favorite)
+                Text("$radiusKm km", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 TextButton(onClick = onClose) { Text("Done") }
             }
             Column(Modifier.padding(end = 8.dp)) {

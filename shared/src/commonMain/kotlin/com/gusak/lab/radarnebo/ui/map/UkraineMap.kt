@@ -48,7 +48,6 @@ import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
@@ -374,6 +373,7 @@ fun UkraineMap(
             }
     ) {
         drawRect(colors.mapBackground)
+        val ink = MapInk.over(tileSource, colors)
         val scale = camera.scale(size)
         if (mapTiles != null && tileSource != null) {
             // Reading it makes the canvas redraw as tiles arrive.
@@ -421,7 +421,7 @@ fun UkraineMap(
             val glyph = 10.dp.toPx()
             Rect(p.x - glyph - 40.dp.toPx(), p.y - glyph, p.x + glyph + 40.dp.toPx(), p.y + 26.dp.toPx())
         }
-        drawCities(camera, colors, favoriteAreas, cityFader, nowMs(clockOffsetMs), instantLabels = inspectionMode) { city ->
+        drawCities(camera, ink, favoriteAreas, cityFader, nowMs(clockOffsetMs), instantLabels = inspectionMode) { city ->
             cityLabels.getOrPut(city) {
                 val style = when {
                     city in UkraineCities.oblastCentres -> OblastCentreLabel
@@ -446,8 +446,8 @@ fun UkraineMap(
                 style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))),
             )
             drawFavoriteGlyph(p, 9.dp.toPx(), if (alerted) colors.danger else colors.favorite, colors.glyphOutline)
-            val label = textMeasurer.measure(favorite.name, TextStyle(color = colors.mapLabel, fontSize = 11.sp))
-            drawText(label, topLeft = Offset(p.x - label.size.width / 2, p.y + 11.dp.toPx()))
+            val label = textMeasurer.measure(favorite.name, FavoriteLabel)
+            drawHaloText(label, ink.label, ink.halo, Offset(p.x - label.size.width / 2, p.y + 11.dp.toPx()))
         }
 
         pendingFavorite?.let { point ->
@@ -723,7 +723,7 @@ private fun DrawScope.drawPredictedRoute(
         lastLabelled = stop.place.point
         val label = textMeasurer.measure(
             "${index + 1}. ${stop.place.name} · ~${stop.etaMinutes} min",
-            TextStyle(color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold),
+            TextStyle(color = colors.onWarning, fontSize = 11.sp, fontWeight = FontWeight.Bold),
         )
         // Alternate above/below the course line so neighbouring labels don't collide.
         val dy = if (index % 2 == 0) -label.size.height - 6.dp.toPx() else 6.dp.toPx()
@@ -773,7 +773,7 @@ private fun DrawScope.drawPrediction(
     drawCircle(color, ring, to, style = Stroke(2.dp.toPx()))
     drawCircle(color, 2.5.dp.toPx(), to)
     val text = "${prediction.place.name} · ~${prediction.etaMinutes} min"
-    val label = textMeasurer.measure(text, TextStyle(color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold))
+    val label = textMeasurer.measure(text, TextStyle(color = colors.onWarning, fontSize = 11.sp, fontWeight = FontWeight.Bold))
     val topLeft = Offset(to.x - label.size.width / 2, to.y + 10.dp.toPx())
     drawRoundRect(
         colors.warning,
@@ -787,6 +787,7 @@ private fun DrawScope.drawPrediction(
 /** Zoom from which city names are shown; below it cities are dots only. */
 private const val CITY_LABEL_ZOOM = 2.5f
 private const val MAJOR_CITY = 200_000
+private val FavoriteLabel = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium)
 private val CityLabel = TextStyle(fontSize = 10.sp)
 private val MajorCityLabel = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium)
 private val OblastCentreLabel = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -803,7 +804,7 @@ private val CentresByPopulation = UkraineCities.oblastCentres.sortedByDescending
  */
 private fun DrawScope.drawCities(
     camera: MapCamera,
-    colors: RadarColors,
+    ink: MapInk,
     reserved: List<Rect>,
     fader: CityLabelFader,
     nowMs: Long,
@@ -833,7 +834,7 @@ private fun DrawScope.drawCities(
         if (city in UkraineCities.oblastCentres) return@forEach
         val p = cityOnScreen(city, camera)
         if (!onScreen(p)) return@forEach
-        drawCircle(colors.cityDot, cityDotRadius(city), p)
+        drawCityDot(ink, cityDotRadius(city), p)
         if (!showLabels) return@forEach
         val box = labelBox(city, p)
         if (placed.any { it.overlaps(box) }) return@forEach
@@ -849,20 +850,51 @@ private fun DrawScope.drawCities(
         if (!onScreen(p)) return@forEach
         val named = eased(city)
         val r = collapsedRadius + (cityDotRadius(city) - collapsedRadius) * named
-        drawCircle(colors.mapBackground.copy(alpha = 0.6f * (1f - named)), r + 1.5.dp.toPx(), p)
-        drawCircle(androidx.compose.ui.graphics.lerp(colors.cityLabel, colors.cityDot, named), r, p)
+        drawCircle(ink.halo.copy(alpha = ink.halo.alpha * (1f - named)), r + 1.5.dp.toPx(), p)
+        drawCircle(androidx.compose.ui.graphics.lerp(ink.cityLabel, ink.cityDot, named), r, p)
     }
     val rise = 4.dp.toPx()
-    // A soft halo in the map's own colour keeps names legible over busy tiles and imagery.
-    val halo = Shadow(colors.mapBackground, blurRadius = 3.dp.toPx())
     labels.keys.forEach { city ->
         val p = cityOnScreen(city, camera)
         val text = label(city)
         val shown = eased(city)
         val topLeft = Offset(p.x + cityDotRadius(city) + gap, p.y - text.size.height / 2f + (1f - shown) * rise)
-        drawText(text, color = colors.cityLabel, topLeft = topLeft, alpha = shown, shadow = halo)
+        drawHaloText(text, ink.cityLabel, ink.halo, topLeft, alpha = shown)
     }
 }
+
+/**
+ * Colours of what is drawn straight onto the map: names, city dots and the halo around them. Over satellite
+ * imagery, which is dark and busy in either theme, names are light on a dark halo; over the drawn map they
+ * take the theme's colours, haloed in the map's background.
+ */
+private class MapInk(val label: Color, val cityLabel: Color, val cityDot: Color, val halo: Color) {
+    companion object {
+        private val Imagery = MapInk(
+            label = Color.White,
+            cityLabel = Color(0xFFF4F7FA),
+            cityDot = Color(0xFFE4EAF0),
+            halo = Color(0xD9000000),
+        )
+
+        fun over(tileSource: TileSource?, colors: RadarColors) =
+            if (tileSource?.isImagery == true) Imagery else MapInk(colors.mapLabel, colors.cityLabel, colors.cityDot, colors.mapBackground.copy(alpha = 0.85f))
+    }
+}
+
+/** [text] with a solid outline in [halo], so it stays legible over tiles, imagery, oblast fills and borders. */
+private fun DrawScope.drawHaloText(text: TextLayoutResult, color: Color, halo: Color, topLeft: Offset, alpha: Float = 1f) {
+    drawText(text, color = halo, topLeft = topLeft, alpha = alpha, drawStyle = Stroke(HaloWidth.toPx(), join = StrokeJoin.Round))
+    drawText(text, color = color, topLeft = topLeft, alpha = alpha)
+}
+
+/** A city dot ringed in the halo colour, so it shows on any background. */
+private fun DrawScope.drawCityDot(ink: MapInk, radius: Float, center: Offset) {
+    drawCircle(ink.halo, radius + 1.dp.toPx(), center)
+    drawCircle(ink.cityDot, radius, center)
+}
+
+private val HaloWidth = 3.dp
 
 private fun DrawScope.cityOnScreen(city: MapCity, camera: MapCamera) =
     camera.toScreen(MapProjection.toWorld(GeoPoint(city.lat.toDouble(), city.lon.toDouble())), size)
