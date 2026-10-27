@@ -7,8 +7,16 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-/** Where the server's alerts come from. Clients never see this: they only talk to the server. */
-enum class DataSourceKind { AlertsInUa, Simulation }
+/**
+ * Where the server's alerts come from. Clients never see this: they only talk to the server.
+ *
+ * [key] is stored as the archive partition and served as `/health`'s `source`, so it must never change,
+ * even if an entry is renamed.
+ */
+enum class DataSourceKind(val key: String) {
+    AlertsInUa("AlertsInUa"),
+    Simulation("Simulation"),
+}
 
 /** Everything the server is configured with; built from the environment by [fromEnv]. */
 data class ServerConfig(
@@ -29,29 +37,31 @@ data class ServerConfig(
         fun fromEnv(env: Map<String, String> = System.getenv()): ServerConfig {
             fun int(name: String) = env[name]?.trim()?.toIntOrNull()
             fun text(name: String) = env[name]?.trim()?.takeIf { it.isNotEmpty() }
+            // Unset or malformed values fall back to the data-class defaults, the only place defaults are written.
+            val defaults = ServerConfig()
             return ServerConfig(
-                port = int("PORT") ?: 8080,
+                port = int("PORT") ?: defaults.port,
                 upstream = UpstreamConfig(
                     token = text("ALERTS_API_TOKEN"),
-                    baseUrl = text("UPSTREAM_BASE_URL") ?: UpstreamConfig.DEFAULT_BASE_URL,
-                    maxPerMinute = int("UPSTREAM_MAX_PER_MINUTE") ?: UpstreamConfig.DEFAULT_PER_MINUTE,
-                    pollInterval = (int("POLL_INTERVAL_SECONDS") ?: 15).seconds,
+                    baseUrl = text("UPSTREAM_BASE_URL") ?: defaults.upstream.baseUrl,
+                    maxPerMinute = int("UPSTREAM_MAX_PER_MINUTE") ?: defaults.upstream.maxPerMinute,
+                    pollInterval = int("POLL_INTERVAL_SECONDS")?.seconds ?: defaults.upstream.pollInterval,
                 ),
                 simulation = SimulationConfig(
-                    seed = text("SIM_SEED")?.toLongOrNull() ?: SimulationConfig.DEFAULT_SEED,
-                    strikePeriod = (int("SIM_STRIKE_PERIOD_MINUTES") ?: 360).minutes,
-                    tick = (int("SIM_TICK_SECONDS") ?: 10).seconds,
-                    warmUp = (int("SIM_WARM_UP_MINUTES") ?: 120).minutes,
+                    seed = text("SIM_SEED")?.toLongOrNull() ?: defaults.simulation.seed,
+                    strikePeriod = int("SIM_STRIKE_PERIOD_MINUTES")?.minutes ?: defaults.simulation.strikePeriod,
+                    tick = int("SIM_TICK_SECONDS")?.seconds ?: defaults.simulation.tick,
+                    warmUp = int("SIM_WARM_UP_MINUTES")?.minutes ?: defaults.simulation.warmUp,
                 ),
                 archive = ArchiveConfig(
-                    jdbcUrl = text("ARCHIVE_JDBC_URL") ?: ArchiveConfig.DEFAULT_JDBC_URL,
-                    retention = (int("ARCHIVE_RETENTION_DAYS") ?: 45).days,
+                    jdbcUrl = text("ARCHIVE_JDBC_URL") ?: defaults.archive.jdbcUrl,
+                    retention = int("ARCHIVE_RETENTION_DAYS")?.days ?: defaults.archive.retention,
                 ),
                 clients = ClientApiConfig(
                     keys = (text("CLIENT_KEYS") ?: text("PROXY_CLIENT_KEYS")).orEmpty()
                         .split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
-                    requestsPerMinute = int("CLIENT_REQUESTS_PER_MINUTE") ?: 120,
-                    historyRequestsPerMinute = int("HISTORY_REQUESTS_PER_MINUTE") ?: 2,
+                    requestsPerMinute = int("CLIENT_REQUESTS_PER_MINUTE") ?: defaults.clients.requestsPerMinute,
+                    historyRequestsPerMinute = int("HISTORY_REQUESTS_PER_MINUTE") ?: defaults.clients.historyRequestsPerMinute,
                 ),
                 dataSourceOverride = when (text("DATA_SOURCE")?.lowercase()) {
                     "simulation" -> DataSourceKind.Simulation
@@ -118,8 +128,12 @@ data class ArchiveConfig(
     val jdbcUrl: String = DEFAULT_JDBC_URL,
     val retention: Duration = 45.days,
 ) {
+    /** True for ARCHIVE_JDBC_URL=memory: the archive is kept in memory, not in a database. */
+    val inMemory: Boolean get() = jdbcUrl == IN_MEMORY
+
     companion object {
         const val DEFAULT_JDBC_URL = "jdbc:sqlite:data/radarnebo-archive.db"
+        const val IN_MEMORY = "memory"
     }
 }
 

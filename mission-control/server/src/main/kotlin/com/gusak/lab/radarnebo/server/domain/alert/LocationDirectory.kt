@@ -34,5 +34,10 @@ class LocationDirectory(known: Collection<AlertLocation> = emptyList()) {
                 oblastTitle = oblast.nameUk,
             )
         }
+
+        private val regionUids: Set<String> = oblasts.mapTo(HashSet()) { it.uid }
+
+        /** Oblasts, Kyiv and Sevastopol: the UIDs whose history includes the places inside them. */
+        fun isRegionUid(uid: String): Boolean = uid in regionUids
     }
 }

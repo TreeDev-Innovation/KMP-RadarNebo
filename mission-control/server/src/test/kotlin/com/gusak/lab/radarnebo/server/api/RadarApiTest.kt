@@ -8,6 +8,7 @@ import com.gusak.lab.radarnebo.server.Fixtures
 import com.gusak.lab.radarnebo.server.Fixtures.alert
 import com.gusak.lab.radarnebo.debug.HttpExchange
 import com.gusak.lab.radarnebo.debug.TrafficLog
+import com.gusak.lab.radarnebo.debug.TrafficRecorder
 import com.gusak.lab.radarnebo.server.ServerComponents
 import com.gusak.lab.radarnebo.server.application.AlertsDataSource
 import com.gusak.lab.radarnebo.server.application.FetchResult
@@ -15,6 +16,7 @@ import com.gusak.lab.radarnebo.server.application.SituationReport
 import com.gusak.lab.radarnebo.server.config.ClientApiConfig
 import com.gusak.lab.radarnebo.server.config.DataSourceKind
 import com.gusak.lab.radarnebo.server.config.ServerConfig
+import com.gusak.lab.radarnebo.server.config.UpstreamConfig
 import com.gusak.lab.radarnebo.server.domain.alert.AirAlert
 import com.gusak.lab.radarnebo.server.domain.alert.AirRaidStatusMap
 import com.gusak.lab.radarnebo.server.radarServer
@@ -28,7 +30,6 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
-import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -36,19 +37,25 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-/** A data source that reports whatever the test sets, like alerts.in.ua would. */
+/** A data source that reports whatever the test sets, like alerts.in.ua would; [failure], when set, instead. */
 private class ScriptedSource(var clock: () -> Long) : AlertsDataSource {
     var alerts: List<AirAlert> = emptyList()
+    var failure: FetchResult.Failed? = null
+    var closed = false
     override val kind = DataSourceKind.AlertsInUa
     override val description = "scripted"
     override val pollInterval: Duration = 15.seconds
     override val providesObservations = false
-    override suspend fun fetch(lastModified: String?) = FetchResult.Fresh(SituationReport(clock(), alerts))
+    override suspend fun fetch(lastModified: String?): FetchResult = failure ?: FetchResult.Fresh(SituationReport(clock(), alerts))
+    override fun close() {
+        closed = true
+    }
 }
 
 class RadarApiTest {
@@ -56,13 +63,19 @@ class RadarApiTest {
     private val source = ScriptedSource { now }
     private val json = Json { ignoreUnknownKeys = true }
 
-    private fun ApplicationTestBuilder.server(clients: ClientApiConfig = ClientApiConfig(requestsPerMinute = 10_000, historyRequestsPerMinute = 100)): ServerComponents {
-        val components = ServerComponents.create(ServerConfig(clients = clients), clock = { now }, source = source, archives = Archives.inMemory())
+    private fun ApplicationTestBuilder.server(
+        clients: ClientApiConfig = ClientApiConfig(requestsPerMinute = 10_000, historyRequestsPerMinute = 100),
+        traffic: TrafficRecorder? = null,
+    ): ServerComponents {
+        val components = ServerComponents.create(ServerConfig(clients = clients), clock = { now }, traffic = traffic, source = source, archives = Archives.inMemory())
         application { radarServer(components, startPoller = false) }
         return components
     }
 
-    private fun ServerComponents.poll() = runBlocking { poller.pollOnce() }
+    private suspend fun ServerComponents.poll() = poller.pollOnce()
+
+    private suspend fun ApplicationTestBuilder.health() =
+        RadarNeboApi.json.decodeFromString(Health.serializer(), client.get("/health").bodyAsText())
 
     private suspend fun ApplicationTestBuilder.text(path: String) = client.get(path).let { it.status to it.bodyAsText() }
 
@@ -80,7 +93,7 @@ class RadarApiTest {
 
         server.poll()
         assertEquals(HttpStatusCode.OK, client.get("/v1/alerts/active.json?token=app-key").status, "the key also works as ?token=")
-        assertEquals(HttpStatusCode.OK, client.get("/health").status, "health needs no key")
+        assertEquals("ok", health().status, "health needs no key")
         assertEquals("""{"message":"Not found"}""", client.get("/v1/nope?token=app-key").bodyAsText())
     }
 
@@ -104,10 +117,18 @@ class RadarApiTest {
 
         val etag = response.headers[HttpHeaders.ETag]!!
         assertEquals(HttpStatusCode.NotModified, client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfNoneMatch, etag) }.status)
+        assertEquals(
+            HttpStatusCode.NotModified,
+            client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfNoneMatch, "\"v0\", $etag") }.status,
+            "any ETag in the list matches",
+        )
         val lastModified = response.headers[HttpHeaders.LastModified]!!
         assertEquals(HttpStatusCode.NotModified, client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfModifiedSince, lastModified) }.status)
 
-        now += 1.minutes.inWholeMilliseconds
+        now += 30.seconds.inWholeMilliseconds
+        assertEquals("30", client.get(RadarNeboApi.ACTIVE_ALERTS_PATH).headers[DATA_AGE_HEADER], "seconds since the source confirmed the data")
+
+        now += 30.seconds.inWholeMilliseconds
         server.poll()
         assertEquals(HttpStatusCode.NotModified, client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfNoneMatch, etag) }.status, "same content, same version")
         source.alerts = emptyList()
@@ -214,13 +235,9 @@ class RadarApiTest {
     @Test
     fun theConsoleSeesEachCallWithItsUncompressedBodyAndMaskedKey() = testApplication {
         val log = TrafficLog()
-        val components = ServerComponents.create(
-            ServerConfig(clients = ClientApiConfig(keys = setOf("app-key"), requestsPerMinute = 10_000)),
-            clock = { now }, traffic = log, source = source, archives = Archives.inMemory(),
-        )
-        application { radarServer(components, startPoller = false) }
+        val server = server(ClientApiConfig(keys = setOf("app-key"), requestsPerMinute = 10_000), traffic = log)
         source.alerts = (1L..40).map { alert(it, Fixtures.brovary) }
-        components.poll()
+        server.poll()
 
         client.get(RadarNeboApi.ACTIVE_ALERTS_PATH + "?token=app-key") { header(HttpHeaders.AcceptEncoding, "gzip") }
         val exchange = log.exchanges.value.single()
@@ -228,5 +245,31 @@ class RadarApiTest {
         assertEquals(RadarNeboApi.ACTIVE_ALERTS_PATH + "?token=***", exchange.url)
         assertEquals(200, exchange.status)
         assertTrue(exchange.responseBody!!.startsWith("{\"alerts\""), "recorded before compression")
+    }
+
+    @Test
+    fun healthTurnsDegradedWhenTheSourceStartsFailing() = testApplication {
+        val server = server()
+        assertEquals("warming_up", health().status)
+        server.poll()
+        assertEquals("ok", health().status)
+
+        source.failure = FetchResult.Failed(message = "boom", retryAfterMs = null, minWaitMs = 1_000)
+        server.poll()
+        val health = health()
+        assertEquals("degraded", health.status)
+        assertEquals("boom", health.lastError)
+        assertEquals(DataSourceKind.AlertsInUa.key, health.source)
+        assertEquals(UpstreamConfig().effectivePerMinute, health.upstreamBudgetPerMinute, "the source in use is alerts.in.ua")
+    }
+
+    @Test
+    fun stoppingTheServerClosesItsSource() {
+        testApplication {
+            server()
+            startApplication()
+            assertFalse(source.closed)
+        }
+        assertTrue(source.closed, "the HTTP client of a real source would be released")
     }
 }

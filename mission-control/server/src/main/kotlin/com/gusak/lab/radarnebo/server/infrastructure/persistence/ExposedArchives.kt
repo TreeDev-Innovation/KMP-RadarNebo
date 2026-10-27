@@ -6,6 +6,7 @@ import com.gusak.lab.radarnebo.server.contract.AlertsInUaContract.toDomain
 import com.gusak.lab.radarnebo.server.contract.AlertsInUaContract.toDto
 import com.gusak.lab.radarnebo.server.domain.alert.AirAlert
 import com.gusak.lab.radarnebo.server.domain.alert.AlertArchive
+import com.gusak.lab.radarnebo.server.domain.alert.LocationDirectory
 import com.gusak.lab.radarnebo.server.domain.tracking.TrackArchive
 import com.gusak.lab.radarnebo.server.domain.tracking.TrackQuery
 import com.gusak.lab.radarnebo.tracking.DroneTrack
@@ -48,7 +49,7 @@ class ExposedAlertArchive(private val db: ArchiveDatabase, private val partition
     }
 
     override suspend fun history(uid: String, since: Instant, limit: Int): List<AirAlert> = db.query {
-        val region = uid.toIntOrNull()?.takeIf { AirAlert.isRegionUid(uid) }
+        val region = uid.takeIf { LocationDirectory.isRegionUid(it) }?.toInt()
         val location = if (region != null) (AlertsTable.locationUid eq uid) or (AlertsTable.oblastUid eq region) else AlertsTable.locationUid eq uid
         AlertsTable.selectAll()
             .where {
@@ -90,10 +91,9 @@ class ExposedTrackArchive(private val db: ArchiveDatabase, private val partition
     override suspend fun history(query: TrackQuery): List<DroneTrack> = db.query {
         TracksTable.selectAll()
             .where {
-                var condition = (TracksTable.partition eq partitionKey) and
+                val window = (TracksTable.partition eq partitionKey) and
                     (TracksTable.firstSeen lessEq query.toMs) and (TracksTable.lastSeen greaterEq query.fromMs)
-                query.type?.let { condition = condition and (TracksTable.type eq it.apiValue) }
-                condition
+                query.type?.let { window and (TracksTable.type eq it.apiValue) } ?: window
             }
             .orderBy(TracksTable.lastSeen, SortOrder.DESC)
             .limit(query.limit)

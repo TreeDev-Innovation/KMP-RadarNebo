@@ -6,16 +6,12 @@ import com.gusak.lab.radarnebo.geo.GeoMath
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import kotlin.random.Random
 
-private const val MINUTE = 60_000L
-
-private fun Long.plusMinutes(minutes: Double) = this + (minutes * MINUTE).toLong()
+private fun Long.plusMinutes(minutes: Double) = this + (minutes * MINUTE_MS).toLong()
 
 private fun <T> List<T>.weighted(random: Random, weight: (T) -> Int): T {
     var roll = random.nextInt(sumOf(weight))
     return first { roll -= weight(it); roll < 0 }
 }
-
-private fun settlementOblast(name: String) = SimulatedLocations.settlement(name).city.oblastUid
 
 /** The [n] sites nearest [target] within [maxKm], or the nearest one if none is that close. */
 private fun nearestSites(sites: List<LaunchSite>, target: GeoPoint, maxKm: Double, n: Int): List<LaunchSite> {
@@ -59,11 +55,10 @@ internal class CombinedStrikePlanner(private val seed: Long) {
             flights += factory.flight(
                 id = id("D", i),
                 munition = munition,
-                waypoints = factory.droneRoute(factory.jitter(site.point, 15.0), factory.gate(StrikeGeography.droneGates, site.point, target, 15.0), target),
+                waypoints = factory.droneRouteFrom(site, target),
                 departAt = startsAt.plusMinutes(if (jet) random.nextDouble(90.0, 130.0) else random.nextDouble(0.0, 120.0)),
                 origin = site,
                 target = objective.settlement,
-                targetOblastUid = settlementOblast(objective.settlement),
                 count = if (jet) 1 + random.nextInt(2) else 1 + random.nextInt(5),
             )
         }
@@ -82,15 +77,17 @@ internal class CombinedStrikePlanner(private val seed: Long) {
                 departAt = launchAt,
                 origin = bomberLine,
                 target = objective.settlement,
-                targetOblastUid = settlementOblast(objective.settlement),
             )
             launchAt = launchAt.plusMinutes(random.nextDouble(0.2, 0.9))
         }
         // The whole country stays alerted from the bombers' approach until the missiles cross into Ukraine.
         val kh101Seen = flights.filter { it.munition == Munition.Kh101 }.maxOf { it.detectedAt }
         areas += AreaThreat(
-            ThreatType.StrategicAviation, SimulatedLocations.freeRegionUids, kh101Start - 20 * MINUTE, maxOf(launchAt, kh101Seen) + 10 * MINUTE,
-            "Активність стратегічної авіації: Ту-95МС на рубежах пуску крилатих ракет Х-101",
+            type = ThreatType.StrategicAviation,
+            oblastUids = SimulatedLocations.freeRegionUids,
+            from = kh101Start - 20 * MINUTE_MS,
+            until = maxOf(launchAt, kh101Seen) + 10 * MINUTE_MS,
+            message = "Активність стратегічної авіації: Ту-95МС на рубежах пуску крилатих ракет Х-101",
         )
 
         // Kalibr from the Black Sea.
@@ -107,13 +104,16 @@ internal class CombinedStrikePlanner(private val seed: Long) {
                 departAt = launchAt,
                 origin = carrier,
                 target = objective.settlement,
-                targetOblastUid = settlementOblast(objective.settlement),
             )
             launchAt = launchAt.plusMinutes(random.nextDouble(0.3, 1.2))
         }
         areas += AreaThreat(
-            ThreatType.UnspecifiedMissiles, listOf(18, 17, 23, 12), kalibrStart - 25 * MINUTE, launchAt + 3 * MINUTE,
-            "Загроза ракетного удару: у Чорному морі носії крилатих ракет «Калібр»", ThreatLevel.Yellow,
+            type = ThreatType.UnspecifiedMissiles,
+            oblastUids = SimulatedLocations.BLACK_SEA_COAST_UIDS,
+            from = kalibrStart - 25 * MINUTE_MS,
+            until = launchAt + 3 * MINUTE_MS,
+            message = "Загроза ракетного удару: у Чорному морі носії крилатих ракет «Калібр»",
+            level = ThreatLevel.Yellow,
         )
 
         // MiG-31K take-off; most of the time it launches Kinzhals, sometimes it is only a threat.
@@ -131,13 +131,15 @@ internal class CombinedStrikePlanner(private val seed: Long) {
                 departAt = kinzhalLaunch.plusMinutes(i * random.nextDouble(0.1, 0.5)),
                 origin = area,
                 target = targetName,
-                targetOblastUid = settlementOblast(targetName),
             )
         }
         val kinzhalsDown = flights.filter { it.munition == Munition.Kinzhal }.maxOfOrNull { it.endAt } ?: takeOff.plusMinutes(40.0)
         areas += AreaThreat(
-            ThreatType.Mig31k, SimulatedLocations.freeRegionUids, takeOff, kinzhalsDown + 2 * MINUTE,
-            "Зліт МіГ-31К — загроза застосування ракет «Кинджал» по всій території України",
+            type = ThreatType.Mig31k,
+            oblastUids = SimulatedLocations.freeRegionUids,
+            from = takeOff,
+            until = kinzhalsDown + 2 * MINUTE_MS,
+            message = "Зліт МіГ-31К — загроза застосування ракет «Кинджал» по всій території України",
         )
 
         // Ballistic missiles at the objectives in range, or at the cities near the front.
@@ -157,12 +159,10 @@ internal class CombinedStrikePlanner(private val seed: Long) {
                 departAt = startsAt.plusMinutes(200.0 + random.nextDouble(0.0, 15.0)),
                 origin = site,
                 target = targetName,
-                targetOblastUid = settlementOblast(targetName),
             )
         }
         return AttackPlan(flights, areas)
     }
-
 
     private companion object {
         val BALLISTIC_FALLBACK_TARGETS = listOf("Kharkiv", "Dnipro", "Odesa", "Zaporizhzhia", "Sumy", "Poltava", "Kyiv")
@@ -175,13 +175,13 @@ internal class CombinedStrikePlanner(private val seed: Long) {
  * reconnaissance drones over the towns behind the front, small Shahed groups at cities near the border,
  * and the occasional ballistic missile.
  */
-internal class FrontlinePlanner(private val seed: Long, val slotMs: Long = 10 * MINUTE) {
+internal class FrontlinePlanner(private val seed: Long, val slotMs: Long = 10 * MINUTE_MS) {
 
     fun plan(slot: Long): AttackPlan {
         val random = Random(seed * 7_368_787L + slot)
         val factory = FlightFactory(random)
         val startsAt = slot * slotMs
-        val slotMinutes = slotMs / MINUTE.toDouble()
+        val slotMinutes = slotMs / MINUTE_MS.toDouble()
         val flights = mutableListOf<Flight>()
         var n = 0
         fun id(kind: String) = "F$slot-$kind${++n}"
@@ -213,14 +213,15 @@ internal class FrontlinePlanner(private val seed: Long, val slotMs: Long = 10 * 
                 departAt = releaseAt,
                 origin = target.launchArea,
                 target = target.settlement,
-                targetOblastUid = settlementOblast(target.settlement),
             )
         }
-        val areas = flights.groupBy { it.targetOblastUid!! }.map { (oblast, oblastBombs) ->
+        val areas = flights.groupBy { it.targetOblastUid }.map { (oblast, oblastBombs) ->
             AreaThreat(
-                ThreatType.TacticalAviation, listOf(oblast),
-                oblastBombs.minOf { it.departAt } - 5 * MINUTE, oblastBombs.maxOf { it.departAt } + 2 * MINUTE,
-                "Активність тактичної авіації (Су-34/Су-35), пуски КАБ",
+                type = ThreatType.TacticalAviation,
+                oblastUids = listOf(oblast),
+                from = oblastBombs.minOf { it.departAt } - 5 * MINUTE_MS,
+                until = oblastBombs.maxOf { it.departAt } + 2 * MINUTE_MS,
+                message = "Активність тактичної авіації (Су-34/Су-35), пуски КАБ",
             )
         }
 
@@ -235,7 +236,6 @@ internal class FrontlinePlanner(private val seed: Long, val slotMs: Long = 10 * 
                 departAt = startsAt.plusMinutes(random.nextDouble(0.0, slotMinutes)),
                 origin = null,
                 target = sector.settlements.first(),
-                targetOblastUid = settlementOblast(sector.settlements.first()),
                 level = ThreatLevel.Yellow,
             )
         }
@@ -248,11 +248,10 @@ internal class FrontlinePlanner(private val seed: Long, val slotMs: Long = 10 * 
             flights += factory.flight(
                 id = id("D"),
                 munition = if (random.nextDouble() < 0.2) Munition.Gerbera else Munition.Shahed,
-                waypoints = factory.droneRoute(factory.jitter(site.point, 15.0), factory.gate(StrikeGeography.droneGates, site.point, target, 15.0), target),
+                waypoints = factory.droneRouteFrom(site, target),
                 departAt = startsAt.plusMinutes(random.nextDouble(0.0, slotMinutes)),
                 origin = site,
                 target = targetName,
-                targetOblastUid = settlementOblast(targetName),
                 count = 1 + random.nextInt(3),
             )
         }
@@ -269,7 +268,6 @@ internal class FrontlinePlanner(private val seed: Long, val slotMs: Long = 10 * 
                 departAt = startsAt.plusMinutes(random.nextDouble(0.0, slotMinutes)),
                 origin = site,
                 target = targetName,
-                targetOblastUid = settlementOblast(targetName),
             )
         }
         return AttackPlan(flights, areas)

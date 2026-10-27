@@ -36,9 +36,9 @@ class AirRaidStatusMap(alerts: Collection<AirAlert>, private val locations: Loca
 
     /** Status of any location: its own alert, or the alert over its whole oblast. */
     fun location(uid: String): AirRaidStatus {
-        val location = locations.find(uid)
-        val oblastUid = location?.oblastUid ?: uid.toIntOrNull()?.takeIf { LocationDirectory.oblasts.any { it.uid == uid } }
-        if (location == null || location.isRegion) return oblastUid?.let(::oblast) ?: AirRaidStatus.None
+        val location = locations.find(uid) ?: return AirRaidStatus.None
+        val oblastUid = location.oblastUid
+        if (location.isRegion && oblastUid != null) return oblast(oblastUid)
         return wholeStatus(uid) ?: oblastUid?.let { wholeStatus(it.toString()) } ?: AirRaidStatus.None
     }
 

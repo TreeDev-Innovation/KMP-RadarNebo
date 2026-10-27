@@ -22,14 +22,14 @@ sealed interface FetchResult {
     data object NotModified : FetchResult
 
     /** Wait at least [minWaitMs] (or the source's [retryAfterMs]) before trying again. */
-    data class Failed(val message: String, val retryAfterMs: Long?, val minWaitMs: Long) : FetchResult
+    data class Failed(val message: String, val minWaitMs: Long, val retryAfterMs: Long? = null) : FetchResult
 }
 
 /**
  * Where the server's alerts come from: alerts.in.ua or the simulation. Only the server knows; clients get
  * the same API either way.
  */
-interface AlertsDataSource {
+interface AlertsDataSource : AutoCloseable {
     val kind: DataSourceKind
 
     /** For the startup log line. */
@@ -55,4 +55,7 @@ interface AlertsDataSource {
      * have a past from the first request. Empty for sources without history.
      */
     fun history(nowMs: Long): Sequence<SituationReport> = emptySequence()
+
+    /** Releases what the source holds, e.g. its HTTP client. Sources that hold nothing need not override it. */
+    override fun close() {}
 }

@@ -64,12 +64,8 @@ internal class AlertRegistry(firstId: Long) {
     fun alertId(locationUid: String): Long? = open[locationUid]?.id
 
     private fun clearDelayMs(type: ThreatType): Long = when (type) {
-        ThreatType.Drones, ThreatType.GuidedBombs -> 3 * MINUTE
-        ThreatType.CruiseMissiles, ThreatType.BallisticMissiles, ThreatType.Mig31k -> 2 * MINUTE
-        else -> MINUTE
-    }
-
-    private companion object {
-        const val MINUTE = 60_000L
+        ThreatType.Drones, ThreatType.GuidedBombs -> 3 * MINUTE_MS
+        ThreatType.CruiseMissiles, ThreatType.BallisticMissiles, ThreatType.Mig31k -> 2 * MINUTE_MS
+        else -> MINUTE_MS
     }
 }

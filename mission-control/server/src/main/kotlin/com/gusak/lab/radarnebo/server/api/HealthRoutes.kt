@@ -2,6 +2,7 @@ package com.gusak.lab.radarnebo.server.api
 
 import com.gusak.lab.radarnebo.server.application.SituationPoller
 import com.gusak.lab.radarnebo.server.application.SituationService
+import com.gusak.lab.radarnebo.server.config.DataSourceKind
 import io.ktor.http.ContentType
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
@@ -53,7 +54,7 @@ fun health(situation: SituationService, poller: SituationPoller, upstreamBudgetP
             status.lastError != null -> "degraded"
             else -> "ok"
         },
-        source = source.kind.name,
+        source = source.kind.key,
         simulated = situation.simulated,
         upstreamBudgetPerMinute = upstreamBudgetPerMinute,
         upstreamRequestsLastMinute = source.requestsInLastMinute,
@@ -80,7 +81,7 @@ private fun statusPage(h: Health): String {
         else -> "#d08a1f" to "Running · its data source is failing"
     }
     val rows = listOfNotNull(
-        "Source" to if (h.simulated) "Simulation (not the real situation)" else if (h.source == "AlertsInUa") "alerts.in.ua" else h.source,
+        "Source" to if (h.simulated) "Simulation (not the real situation)" else if (h.source == DataSourceKind.AlertsInUa.key) "alerts.in.ua" else h.source,
         h.upstreamBudgetPerMinute?.let { "Upstream" to "${h.upstreamRequestsLastMinute} of $it requests in the last minute · ${h.upstreamRequestsTotal} in total" },
         "Polled" to "every ${h.pollIntervalSeconds} s · last ${at(h.lastAttemptAt)} · next ${at(h.nextPollAt)}",
         "Data confirmed" to at(h.dataConfirmedAt),

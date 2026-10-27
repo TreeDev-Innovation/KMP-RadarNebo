@@ -15,15 +15,15 @@ data class AlertBoard(
     private val byId: Map<Long, AirAlert> by lazy { alerts.associateBy { it.id } }
 
     /**
-     * The board after the source reported [next] at [at]. Alerts that disappeared are finished at [at]
+     * The board after the source reported [reported] at [at]. Alerts that disappeared are finished at [at]
      * unless the source already finished them. Alerts keep the source's order, so clients get the list as
      * alerts.in.ua sent it.
      */
-    fun next(next: List<AirAlert>, at: Instant): BoardChange {
-        val active = next.filter { it.isActive }
-        if (active == alerts) return BoardChange(copy(confirmedAt = at))
+    fun next(reported: List<AirAlert>, at: Instant): BoardChange {
+        val active = reported.filter { it.isActive }
+        if (active == alerts) return BoardChange(confirmed(at))
         val nextIds = active.mapTo(HashSet()) { it.id }
-        val finishedBySource = next.filterNot { it.isActive }.associateBy { it.id }
+        val finishedBySource = reported.filterNot { it.isActive }.associateBy { it.id }
         return BoardChange(
             board = AlertBoard(active, version + 1, at, at),
             opened = active.filter { it.id !in byId },

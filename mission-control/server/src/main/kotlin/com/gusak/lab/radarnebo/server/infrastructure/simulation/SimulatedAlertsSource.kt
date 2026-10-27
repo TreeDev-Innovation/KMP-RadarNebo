@@ -30,9 +30,6 @@ class SimulatedAlertsSource(
     override val providesObservations = true
     override val locations: Collection<AlertLocation> get() = simulator.locations
 
-    /** The simulation at [nowMs], for tests that step through it. */
-    fun reportAt(nowMs: Long): SituationReport = simulator.reportAt(nowMs)
-
     override suspend fun fetch(lastModified: String?): FetchResult = FetchResult.Fresh(simulator.reportAt(clock()))
 
     override fun history(nowMs: Long): Sequence<SituationReport> = sequence {

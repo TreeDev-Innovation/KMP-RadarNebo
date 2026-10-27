@@ -46,13 +46,25 @@ internal object SimulatedLocations {
         "Kovel" to "Ковель", "Volodymyr" to "Володимир",
     )
 
+    const val ZAPORIZHZHIA_UID = 12
+    const val KYIV_OBLAST_UID = 14
+    const val LUHANSK_UID = 16
+    const val MYKOLAIV_UID = 17
+    const val ODESA_UID = 18
+    const val KHERSON_UID = 23
+    const val DONETSK_UID = 28
+    const val CRIMEA_UID = 29
+
+    /** The regions on the Black Sea coast, which Kalibr carriers at sea threaten. */
+    val BLACK_SEA_COAST_UIDS = listOf(ODESA_UID, MYKOLAIV_UID, KHERSON_UID, ZAPORIZHZHIA_UID)
+
     /** Occupied since 2014 or 2022: on alert permanently, never targeted by the simulated warnings. */
-    val OCCUPIED_REGIONS = setOf(16, 29, Regions.SEVASTOPOL_UID)
+    val OCCUPIED_REGIONS = setOf(LUHANSK_UID, CRIMEA_UID, Regions.SEVASTOPOL_UID)
 
     /** Regions whose alerts change: all but the occupied ones. */
     val freeRegionUids: List<Int> = LocationDirectory.oblasts.mapNotNull { it.oblastUid }.filter { it !in OCCUPIED_REGIONS }
 
-    private val regionsByUid = LocationDirectory.oblasts.associateBy { it.oblastUid!! }
+    private val regionsByUid = LocationDirectory.oblasts.associateBy { checkNotNull(it.oblastUid) { "Oblast ${it.uid} has no oblastUid" } }
 
     fun region(uid: Int): AlertLocation = regionsByUid.getValue(uid)
 
@@ -86,9 +98,16 @@ internal object SimulatedLocations {
      * (the Luhansk record is the one in its documentation).
      */
     val permanentAlerts: List<AirAlert> = listOf(
-        AirAlert(id = 10, location = region(16), startedAt = Instant.parse("2022-04-04T16:45:39Z"), notes = "Тимчасово окупована територія"),
-        AirAlert(id = 11, location = region(29), startedAt = Instant.parse("2022-12-11T00:22:00Z"), notes = "Тимчасово окупована територія"),
+        AirAlert(id = 10, location = region(LUHANSK_UID), startedAt = Instant.parse("2022-04-04T16:45:39Z"), notes = "Тимчасово окупована територія"),
+        AirAlert(id = 11, location = region(CRIMEA_UID), startedAt = Instant.parse("2022-12-11T00:22:00Z"), notes = "Тимчасово окупована територія"),
     ).map { it.copy(level = ThreatLevel.Red, updatedAt = it.startedAt) }
+
+    /** Ids below it are the standing alerts'; the alerts the simulation opens and closes are numbered from it up. */
+    const val FIRST_DYNAMIC_ALERT_ID = 1_000L
+
+    init {
+        check(permanentAlerts.all { it.id < FIRST_DYNAMIC_ALERT_ID }) { "Standing alert ids must stay below $FIRST_DYNAMIC_ALERT_ID" }
+    }
 
     private const val FIRST_SETTLEMENT_UID = 1_000
 

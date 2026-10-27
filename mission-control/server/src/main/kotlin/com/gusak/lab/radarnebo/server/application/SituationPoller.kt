@@ -58,8 +58,9 @@ class SituationPoller(
     /** Performs one fetch and returns how long to wait before the next one. */
     suspend fun pollOnce(): Long {
         if (!primed) {
-            prime()
+            // History is best effort and attempted once, so a failed replay can't stop live fetches.
             primed = true
+            prime()
         }
         val result = source.fetch(lastModified)
         val now = clock()
@@ -96,9 +97,14 @@ class SituationPoller(
         status = status.copy(lastError = null)
         if (now - lastPruneAt >= PRUNE_EVERY.inWholeMilliseconds) {
             lastPruneAt = now
-            runCatching { situation.pruneArchive(Instant.fromEpochMilliseconds(now) - retention) }
-                .onSuccess { if (it > 0) log.info("Pruned {} archived records older than {}", it, retention) }
-                .onFailure { log.warn("Archive pruning failed", it) }
+            try {
+                val pruned = situation.pruneArchive(Instant.fromEpochMilliseconds(now) - retention)
+                if (pruned > 0) log.info("Pruned {} archived records older than {}", pruned, retention)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.warn("Archive pruning failed", e)
+            }
         }
     }
 

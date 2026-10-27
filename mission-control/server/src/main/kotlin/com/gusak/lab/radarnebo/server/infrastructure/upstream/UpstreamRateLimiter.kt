@@ -15,6 +15,11 @@ class UpstreamRateLimiter(
     private val clock: () -> Long = System::currentTimeMillis,
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) {
+    init {
+        require(maxPerWindow > 0) { "maxPerWindow must be positive: $maxPerWindow" }
+        require(windowMs > 0) { "windowMs must be positive: $windowMs" }
+    }
+
     private val minSpacingMs = windowMs / maxPerWindow
     private val history = ArrayDeque<Long>()
     private val mutex = Mutex()

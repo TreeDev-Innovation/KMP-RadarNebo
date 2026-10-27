@@ -5,6 +5,7 @@ import com.gusak.lab.radarnebo.server.domain.alert.AirRaidStatusMap
 import com.gusak.lab.radarnebo.server.domain.alert.AlertArchive
 import com.gusak.lab.radarnebo.server.domain.alert.AlertBoard
 import com.gusak.lab.radarnebo.server.domain.alert.LocationDirectory
+import com.gusak.lab.radarnebo.server.domain.tracking.TargetObservation
 import com.gusak.lab.radarnebo.server.domain.tracking.TargetTracking
 import com.gusak.lab.radarnebo.server.domain.tracking.TrackArchive
 import com.gusak.lab.radarnebo.server.domain.tracking.TrackQuery
@@ -22,7 +23,7 @@ class SituationService(
     private val tracking: TargetTracking,
     private val alertArchive: AlertArchive,
     private val trackArchive: TrackArchive,
-    val locations: LocationDirectory,
+    private val locations: LocationDirectory,
     /** True when the data is simulated; served to clients so they can label it. */
     val simulated: Boolean,
 ) {
@@ -36,7 +37,6 @@ class SituationService(
         private set
 
     private val mutex = Mutex()
-    private var lastReport: SituationReport? = null
     private var reconciled = false
 
     /** Applies a fresh report and archives what changed. */
@@ -47,16 +47,15 @@ class SituationService(
 
     /** The source confirmed at [atMs] that nothing changed; tracks still age. */
     suspend fun confirm(atMs: Long) = mutex.withLock {
-        val report = lastReport ?: return@withLock
-        board = board?.confirmed(Instant.fromEpochMilliseconds(atMs))
-        val update = tracking.update(report.alerts, emptyList(), atMs)
-        tracks = update.tracks
-        if (update.ended.isNotEmpty()) trackArchive.save(update.ended)
+        val current = board ?: return@withLock
+        board = current.confirmed(Instant.fromEpochMilliseconds(atMs))
+        val ended = advanceTracks(current.alerts, emptyList(), atMs)
+        if (ended.isNotEmpty()) trackArchive.save(ended)
     }
 
     fun activeAlerts(): List<AirAlert> = board?.alerts.orEmpty()
 
-    fun airRaidStatus(): AirRaidStatusMap = AirRaidStatusMap(activeAlerts(), locations)
+    fun airRaidStatus(board: AlertBoard): AirRaidStatusMap = AirRaidStatusMap(board.alerts, locations)
 
     /** Alerts for [uid] active at some point since [since], archived and current, newest first. */
     suspend fun alertHistory(uid: String, since: Instant, limit: Int): List<AirAlert> {
@@ -85,18 +84,29 @@ class SituationService(
         locations.learn(report.alerts)
         val change = (board ?: AlertBoard.empty(at)).next(report.alerts, at)
         board = change.board
-        val update = tracking.update(change.board.alerts, report.observations, report.observedAt)
-        tracks = update.tracks
-        lastReport = report
+        val ended = advanceTracks(change.board.alerts, report.observations, report.observedAt)
         if (!archive) return
 
         if (!reconciled) {
             reconcile(change.board, change.finished, at)
             reconciled = true
         } else if (change.changed) {
-            alertArchive.save(change.opened + change.updated + change.finished)
+            try {
+                alertArchive.save(change.opened + change.updated + change.finished)
+            } catch (e: Exception) {
+                // The next publish then re-runs reconcile(), bringing the archive back in line with the board.
+                reconciled = false
+                throw e
+            }
         }
-        if (update.ended.isNotEmpty()) trackArchive.save(update.ended)
+        if (ended.isNotEmpty()) trackArchive.save(ended)
+    }
+
+    /** Feeds the report into tracking, serves the new tracks and returns those that ended, for the archive. */
+    private fun advanceTracks(alerts: List<AirAlert>, observations: List<TargetObservation>, atMs: Long): List<DroneTrack> {
+        val update = tracking.update(alerts, observations, atMs)
+        tracks = update.tracks
+        return update.ended
     }
 
     /**

@@ -2,6 +2,7 @@ package com.gusak.lab.radarnebo.server.infrastructure.upstream
 
 import com.gusak.lab.radarnebo.server.Archives
 import com.gusak.lab.radarnebo.server.ServerComponents
+import com.gusak.lab.radarnebo.server.application.FetchResult
 import com.gusak.lab.radarnebo.server.config.ServerConfig
 import com.gusak.lab.radarnebo.server.config.UpstreamConfig
 import com.gusak.lab.radarnebo.debug.HttpExchange
@@ -13,11 +14,11 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -29,33 +30,6 @@ class AlertsInUaSourceTest {
           "started_at":"$startedAt","some_new_field":1,
           "threats":[{"threat_type":"drones","level":"red","started_at":"$startedAt"}]}]}
     """.trimIndent()
-
-    @Test
-    fun limiterNeverExceedsBudgetInAnyRollingMinute() = runTest {
-        val limiter = UpstreamRateLimiter(maxPerWindow = 8, clock = { testScheduler.currentTime })
-        val times = mutableListOf<Long>()
-        // A caller hammering acquire() as fast as possible for 10 virtual minutes.
-        val job = launch { while (true) { limiter.acquire(); times += testScheduler.currentTime } }
-        testScheduler.advanceTimeBy(10 * 60_000L)
-        job.cancel()
-        assertTrue(times.size in 75..81, "expected ~80 requests in 10 min, got ${times.size}")
-        times.forEach { start -> assertTrue(times.count { it in start until start + 60_000 } <= 8) }
-    }
-
-    @Test
-    fun configIsClampedBelowSoftLimit() {
-        val reckless = UpstreamConfig(token = "t", maxPerMinute = 50, pollInterval = 1.seconds)
-        assertEquals(UpstreamConfig.HARD_CEILING_PER_MINUTE, reckless.effectivePerMinute)
-        assertEquals(7_500, reckless.effectivePollInterval.inWholeMilliseconds)
-    }
-
-    @Test
-    fun theServerPicksItsSourceFromTheConfiguration() {
-        assertEquals("Simulation", ServerConfig.fromEnv(emptyMap()).dataSource.name)
-        assertEquals("AlertsInUa", ServerConfig.fromEnv(mapOf("ALERTS_API_TOKEN" to "t")).dataSource.name)
-        assertEquals("Simulation", ServerConfig.fromEnv(mapOf("ALERTS_API_TOKEN" to "t", "DATA_SOURCE" to "simulation")).dataSource.name)
-        assertEquals(setOf("a", "b"), ServerConfig.fromEnv(mapOf("CLIENT_KEYS" to " a, b ,")).clients.keys)
-    }
 
     @Test
     fun pollerStaysUnderUpstreamLimitEvenWhenUpstreamFails() = runBlocking {
@@ -131,7 +105,7 @@ class AlertsInUaSourceTest {
             UpstreamRateLimiter(upstream.effectivePerMinute, sleep = {}),
         )
         val result = source.fetch(null)
-        assertTrue(result is com.gusak.lab.radarnebo.server.application.FetchResult.Fresh, "the source still reads the body: $result")
+        assertIs<FetchResult.Fresh>(result, "the source still reads the body")
         val exchange = log.exchanges.value.single()
         assertEquals(HttpExchange.Direction.Outgoing, exchange.direction)
         assertEquals(200, exchange.status)

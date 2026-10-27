@@ -14,7 +14,6 @@ import com.gusak.lab.radarnebo.ui.RadarTheme
 import com.gusak.lab.radarnebo.ui.applyAppIdentity
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.runBlocking
-import java.io.File
 import kotlin.system.exitProcess
 
 /** `./gradlew :mission-control:ui:run`: the server in a window, started right away. */
@@ -27,7 +26,7 @@ fun main() {
     // the desktop app was last set to.
     val clientSettings = initKoin(
         desktopModule(
-            settingsFile = File(System.getProperty("user.home"), ".radarnebo/mission-control-client.properties"),
+            settingsFile = SingleInstance.defaultDir.resolve("mission-control-client.properties"),
             serverDefaults = ServerDefaults("http://localhost:${server.defaultPort}"),
         ),
     ).koin.get<SettingsRepository>()

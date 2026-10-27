@@ -47,6 +47,7 @@ class SingleInstance private constructor(
         private val log = LoggerFactory.getLogger(SingleInstance::class.java)
         private const val LOCK_FILE = "server.lock"
         private const val CONTROL_FILE = "server.control"
+        private const val CONTROL_READ_TIMEOUT_MS = 1_000
 
         val defaultDir get() = File(System.getProperty("user.home"), ".radarnebo")
 
@@ -61,22 +62,25 @@ class SingleInstance private constructor(
         fun acquire(dir: File = defaultDir, timeout: Duration = 15.seconds, onShutdownRequest: () -> Unit): SingleInstance {
             dir.mkdirs()
             val channel = FileChannel.open(dir.resolve(LOCK_FILE).toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
-            val controlFile = dir.resolve(CONTROL_FILE)
-            val started = TimeSource.Monotonic.markNow()
-            var asked = false
-            while (true) {
-                val lock = tryLock(channel)
-                if (lock != null) return hold(channel, lock, controlFile, onShutdownRequest)
-                if (!asked) {
-                    log.info("Another RadarNebo server is running; asking it to shut down")
-                    askToShutDown(controlFile)
-                    asked = true
+            // Whatever goes wrong from here closes the channel, which also releases a lock taken before the failure.
+            try {
+                val controlFile = dir.resolve(CONTROL_FILE)
+                val started = TimeSource.Monotonic.markNow()
+                var asked = false
+                while (true) {
+                    val lock = tryLock(channel)
+                    if (lock != null) return hold(channel, lock, controlFile, onShutdownRequest)
+                    if (!asked) {
+                        log.info("Another RadarNebo server is running; asking it to shut down")
+                        askToShutDown(controlFile)
+                        asked = true
+                    }
+                    if (started.elapsedNow() > timeout) error("Another RadarNebo server is running and didn't shut down within $timeout")
+                    Thread.sleep(100)
                 }
-                if (started.elapsedNow() > timeout) {
-                    channel.close()
-                    error("Another RadarNebo server is running and didn't shut down within $timeout")
-                }
-                Thread.sleep(100)
+            } catch (e: Throwable) {
+                runCatching { channel.close() }
+                throw e
             }
         }
 
@@ -89,12 +93,23 @@ class SingleInstance private constructor(
         private fun hold(channel: FileChannel, lock: FileLock, controlFile: File, onShutdownRequest: () -> Unit): SingleInstance {
             val token = UUID.randomUUID().toString()
             val control = ServerSocket(0, 4, InetAddress.getLoopbackAddress())
-            writePrivately(controlFile, "${control.localPort} $token")
+            try {
+                writePrivately(controlFile, "${control.localPort} $token")
+            } catch (e: Exception) {
+                runCatching { control.close() }
+                throw e
+            }
             val requested = AtomicBoolean(false)
             thread(isDaemon = true, name = "single-instance") {
                 while (!control.isClosed) {
                     val accepted = runCatching { control.accept() }.getOrNull() ?: continue
-                    val line = accepted.use { socket -> runCatching { socket.getInputStream().bufferedReader().readLine() }.getOrNull() }
+                    val line = accepted.use { socket ->
+                        // A local peer that connects and sends nothing must not block the listener.
+                        runCatching {
+                            socket.soTimeout = CONTROL_READ_TIMEOUT_MS
+                            socket.getInputStream().bufferedReader().readLine()
+                        }.getOrNull()
+                    }
                     if (line == token && requested.compareAndSet(false, true)) {
                         log.info("A newer RadarNebo server asked this one to shut down")
                         onShutdownRequest()

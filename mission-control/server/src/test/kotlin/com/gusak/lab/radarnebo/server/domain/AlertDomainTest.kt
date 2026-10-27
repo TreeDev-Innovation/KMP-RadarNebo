@@ -8,10 +8,14 @@ import com.gusak.lab.radarnebo.server.domain.alert.AirRaidStatusMap
 import com.gusak.lab.radarnebo.server.domain.alert.AlertBoard
 import com.gusak.lab.radarnebo.server.domain.alert.IotVersion
 import com.gusak.lab.radarnebo.server.domain.alert.LocationDirectory
+import com.gusak.lab.radarnebo.server.domain.tracking.TrackQuery
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 
 class AlertBoardTest {
@@ -82,5 +86,41 @@ class AirRaidStatusTest {
         assertEquals('P', byUid[22])
         assertEquals(' ', byUid[500], "no location has UID 500")
         assertTrue(LocationDirectory.oblasts.all { byUid[it.uid.toInt()] != ' ' }, "every region has its place")
+    }
+}
+
+class AirAlertTest {
+    private val t0 = Fixtures.t0
+
+    @Test
+    fun aRegionCoversThePlacesInItAndAnyOtherLocationOnlyItself() {
+        val brovary = alert(1, Fixtures.brovary)
+        assertTrue(brovary.concerns(Fixtures.brovary.uid))
+        assertTrue(brovary.concerns("14"), "Brovary lies in Kyiv oblast")
+        assertFalse(brovary.concerns("22"), "not in Kharkiv oblast")
+
+        val kyivOblast = alert(2, Fixtures.region(14))
+        assertTrue(kyivOblast.concerns("14"))
+        assertFalse(kyivOblast.concerns(Fixtures.brovary.uid), "a hromada's history does not include its oblast's alerts")
+        assertFalse(alert(3, Fixtures.kharkiv).concerns("1100"))
+    }
+
+    @Test
+    fun anAlertIsActiveSinceAnyTimeUntilItFinishes() {
+        val active = alert(1, Fixtures.brovary)
+        assertTrue(active.activeSince(t0 + 1.days), "still active")
+        val finished = active.finish(t0 + 1.hours)
+        assertTrue(finished.activeSince(t0 + 1.hours), "finished at the very moment")
+        assertFalse(finished.activeSince(t0 + 2.hours))
+    }
+}
+
+class TrackQueryTest {
+    @Test
+    fun aQueryNeedsAnOrderedWindowAndABoundedLimit() {
+        assertFailsWith<IllegalArgumentException> { TrackQuery(fromMs = 2, toMs = 1) }
+        assertFailsWith<IllegalArgumentException> { TrackQuery(fromMs = 0, toMs = 1, limit = 0) }
+        assertFailsWith<IllegalArgumentException> { TrackQuery(fromMs = 0, toMs = 1, limit = TrackQuery.MAX_LIMIT + 1) }
+        TrackQuery(fromMs = 1, toMs = 1, limit = TrackQuery.MAX_LIMIT)
     }
 }

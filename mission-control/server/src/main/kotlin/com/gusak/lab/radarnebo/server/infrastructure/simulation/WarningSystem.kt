@@ -79,7 +79,8 @@ internal class WarningSystem(private val settlements: List<Settlement> = Simulat
         val overflown = (0..BALLISTIC_SAMPLES).mapNotNull { i ->
             Regions.oblastAt(path.positionAtFraction(fromFraction + (1.0 - fromFraction) * i / BALLISTIC_SAMPLES))
         }
-        val target = listOfNotNull(flight.targetOblastUid) + if (flight.targetOblastUid == Regions.KYIV_CITY_UID) listOf(14) else emptyList()
+        val target = listOf(flight.targetOblastUid) +
+            if (flight.targetOblastUid == Regions.KYIV_CITY_UID) listOf(SimulatedLocations.KYIV_OBLAST_UID) else emptyList()
         return (target + overflown).filterTo(LinkedHashSet()) { it !in SimulatedLocations.OCCUPIED_REGIONS }
     }
 
@@ -103,8 +104,8 @@ internal class WarningSystem(private val settlements: List<Settlement> = Simulat
         const val BALLISTIC_WARNED_KM = 300.0
         const val BALLISTIC_SAMPLES = 15
         const val AIR_DEFENSE_RADIUS_KM = 35.0
-        const val AIR_DEFENSE_BEFORE_MS = 2 * 60_000L
-        const val AIR_DEFENSE_AFTER_MS = 3 * 60_000L
+        const val AIR_DEFENSE_BEFORE_MS = 2 * MINUTE_MS
+        const val AIR_DEFENSE_AFTER_MS = 3 * MINUTE_MS
         const val AIR_DEFENSE_MESSAGE = "Працює ППО"
     }
 }
