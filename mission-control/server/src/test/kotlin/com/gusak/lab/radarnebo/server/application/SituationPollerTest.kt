@@ -15,6 +15,7 @@ import java.io.IOException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
@@ -93,8 +94,26 @@ class SituationPollerTest {
     }
 
     @Test
-    fun theBackoffDoublesUpToTenMinutesAndOutlastsAShorterRetryAfter() = runTest {
-        val failure = FetchResult.Failed("Upstream returned 500", minWaitMs = 60_000)
+    fun transientFailuresNeverBackOffPastAMinute() = runTest {
+        val failure = FetchResult.Failed("Upstream returned 503", minWaitMs = 15_000)
+        val poller = poller(ScriptedSource(ArrayDeque(List(10) { failure })))
+
+        val waits = List(10) { poller.pollOnce() }
+        assertEquals(listOf(15_000L, 30_000L, 60_000L), waits.take(3))
+        assertTrue(waits.all { it <= 60_000 }, "was $waits")
+    }
+
+    @Test
+    fun aRetryAfterLongerThanTheBackoffIsHonoured() = runTest {
+        val rateLimited = FetchResult.Failed("Upstream rate limit hit (429)", minWaitMs = 60_000, retryAfterMs = 300_000, maxWaitMs = 600_000)
+        val poller = poller(ScriptedSource(ArrayDeque(listOf(rateLimited))))
+
+        assertEquals(300_000, poller.pollOnce())
+    }
+
+    @Test
+    fun rejectionsBackOffUpToTenMinutesAndOutlastAShorterRetryAfter() = runTest {
+        val failure = FetchResult.Failed("Upstream rejected credentials or IP (401)", minWaitMs = 60_000, maxWaitMs = 600_000)
         val source = ScriptedSource(ArrayDeque(List(6) { failure } + failure.copy(retryAfterMs = 1_000)))
         val poller = poller(source)
 
@@ -140,6 +159,22 @@ class SituationPollerTest {
 
         assertTrue(poller.status.lastError.orEmpty().startsWith("Internal error"), "was ${poller.status.lastError}")
         assertEquals(now + 15_000, poller.status.nextPollAt)
+        job.cancel()
+    }
+
+    @Test
+    fun anInternalErrorIsReportedByClassOnly() = runTest {
+        val source = object : AlertsDataSource by ScriptedSource(ArrayDeque()) {
+            override suspend fun fetch(lastModified: String?): FetchResult =
+                throw IllegalStateException("SELECT * FROM secret_table /data/x.db")
+        }
+        val poller = poller(source)
+        val job = launch { poller.run() }
+        advanceTimeBy(1)
+
+        val error = poller.status.lastError.orEmpty()
+        assertTrue("IllegalStateException" in error, error)
+        assertFalse("SELECT" in error || "/data" in error, "the message stays in the server log: $error")
         job.cancel()
     }
 }

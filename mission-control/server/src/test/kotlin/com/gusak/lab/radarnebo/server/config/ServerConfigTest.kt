@@ -15,8 +15,37 @@ class ServerConfigTest {
     }
 
     @Test
-    fun malformedValuesFallBackToTheDefaults() {
-        assertEquals(ServerConfig(), ServerConfig.fromEnv(mapOf("PORT" to "eighty", "SIM_SEED" to "x", "ARCHIVE_RETENTION_DAYS" to " ")))
+    fun blankValuesGiveTheDefaults() {
+        assertEquals(ServerConfig(), ServerConfig.fromEnv(mapOf("PORT" to " ", "SIM_SEED" to "", "TRUST_PROXY_HEADERS" to " ")))
+    }
+
+    @Test
+    fun malformedValuesStopTheServer() {
+        listOf(
+            "PORT" to "abc",
+            "POLL_INTERVAL_SECONDS" to "15s",
+            "SIM_SEED" to "x",
+            "DATA_SOURCE" to "sim",
+            "TRUST_PROXY_HEADERS" to "1",
+            "LOG_HTTP" to "yes",
+        ).forEach { (name, value) ->
+            val error = assertFailsWith<IllegalArgumentException>("$name=$value") { ServerConfig.fromEnv(mapOf(name to value)) }
+            assertTrue("$name='$value'" in error.message.orEmpty(), error.message)
+        }
+    }
+
+    @Test
+    fun everyMalformedValueIsReportedAtOnce() {
+        val error = assertFailsWith<IllegalArgumentException> {
+            ServerConfig.fromEnv(mapOf("PORT" to "80a", "ARCHIVE_RETENTION_DAYS" to "30d"))
+        }
+        assertTrue("PORT='80a'" in error.message.orEmpty() && "ARCHIVE_RETENTION_DAYS='30d'" in error.message.orEmpty(), error.message)
+    }
+
+    @Test
+    fun booleansIgnoreCase() {
+        assertTrue(ServerConfig.fromEnv(mapOf("TRUST_PROXY_HEADERS" to "TRUE")).clients.trustProxyHeaders)
+        assertFalse(ServerConfig.fromEnv(mapOf("TRUST_PROXY_HEADERS" to "False")).clients.trustProxyHeaders)
     }
 
     @Test
@@ -34,7 +63,7 @@ class ServerConfigTest {
 
     @Test
     fun wellFormedButUnsafeValuesAreRejected() {
-        // Unlike malformed values, these parse, so falling back would hide the mistake; ARCHIVE_RETENTION_DAYS=0 would empty the archive.
+        // These parse but are unsafe; ARCHIVE_RETENTION_DAYS=0 would empty the archive.
         listOf(
             "SIM_STRIKE_PERIOD_MINUTES" to "60",
             "SIM_TICK_SECONDS" to "0",
@@ -68,7 +97,7 @@ class ServerConfigTest {
         aliases.forEach { (alias, kind) ->
             assertEquals(kind, ServerConfig.fromEnv(mapOf("DATA_SOURCE" to alias)).dataSourceOverride, alias)
         }
-        assertEquals(null, ServerConfig.fromEnv(mapOf("DATA_SOURCE" to "carrier-pigeon")).dataSourceOverride)
+        assertFailsWith<IllegalArgumentException> { ServerConfig.fromEnv(mapOf("DATA_SOURCE" to "carrier-pigeon")) }
     }
 
     @Test

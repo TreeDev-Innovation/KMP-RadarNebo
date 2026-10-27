@@ -52,12 +52,10 @@ class AlertsInUaSourceTest {
         while (now < 30 * 60_000L) now += server.poller.pollOnce()
 
         hits.forEach { start -> assertTrue(hits.count { it in start until start + 60_000 } <= 8) }
-        // From the 7.5 s poll interval (the clamped budget), doubling on every failure up to the 10-minute cap.
-        assertEquals(
-            listOf(7_500L, 15_000L, 30_000L, 60_000L, 120_000L, 240_000L, 480_000L, 600_000L),
-            hits.zipWithNext { a, b -> b - a },
-            "failures back off exponentially up to 10 minutes",
-        )
+        // From the 7.5 s poll interval (the clamped budget), doubling on every failure up to the 1-minute cap for 5xx.
+        val gaps = hits.zipWithNext { a, b -> b - a }
+        assertEquals(listOf(7_500L, 15_000L, 30_000L, 60_000L), gaps.take(4), "failures back off exponentially")
+        assertTrue(gaps.drop(4).all { it == 60_000L }, "a server error never backs off past a minute: $gaps")
         assertTrue(server.poller.status.lastError!!.contains("500"))
     }
 
@@ -117,10 +115,12 @@ class AlertsInUaSourceTest {
         val cases = listOf(
             FailureCase("401", { respond("", HttpStatusCode.Unauthorized) }) {
                 assertEquals(300_000, it.minWaitMs)
+                assertEquals(600_000, it.maxWaitMs)
                 assertTrue("401" in it.message, it.message)
             },
             FailureCase("403", { respond("", HttpStatusCode.Forbidden) }) {
                 assertEquals(300_000, it.minWaitMs)
+                assertEquals(600_000, it.maxWaitMs)
                 assertTrue("403" in it.message, it.message)
             },
             FailureCase("unparseable body", { respond("not json", HttpStatusCode.OK) }) {
@@ -128,11 +128,13 @@ class AlertsInUaSourceTest {
             },
             FailureCase("connection error", { throw IOException("connection reset") }) {
                 assertTrue(it.message.startsWith("Upstream request failed"), it.message)
+                assertEquals(60_000, it.maxWaitMs, "a transient failure is retried within a minute")
             },
             // Only delay-seconds is understood; an HTTP-date falls back to the 1-minute minimum.
             FailureCase("429 with an HTTP-date", { respond("", HttpStatusCode.TooManyRequests, headersOf(HttpHeaders.RetryAfter, "Wed, 21 Oct 2026 07:28:00 GMT")) }) {
                 assertEquals(null, it.retryAfterMs)
                 assertEquals(60_000, it.minWaitMs)
+                assertEquals(600_000, it.maxWaitMs)
             },
         )
         var served = 0

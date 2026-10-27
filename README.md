@@ -172,7 +172,8 @@ apps only read. It is a Ktor (CIO) application in DDD layers, under `mission-con
 - **alerts.in.ua** (`ALERTS_API_TOKEN` set): the only component that talks to alerts.in.ua, so the number of clients
   never affects the upstream rate. alerts.in.ua allows 8–10 requests/min per IP (soft) and 12 (hard). The server polls
   every 15 s; a sliding-window limiter caps it at `UPSTREAM_MAX_PER_MINUTE` (default 6, never above 8) and spaces
-  requests evenly. It sends `If-Modified-Since`, honours `Retry-After` on 429 and backs off exponentially (up to 10 min).
+  requests evenly. It sends `If-Modified-Since`, honours `Retry-After` on 429 and backs off exponentially:
+  up to 60 s on server or network errors, so the board recovers within a minute, and up to 10 min on 429/401/403.
   Alerts carry no positions, so tracks are reconstructed from them: a drone or cruise-missile threat appearing close
   to a recent track of the same kind continues it (`DroneTracker`, `TrackKinematics`).
 - **Simulation** (no token, or `DATA_SOURCE=simulation`): see below. It reports what air surveillance would see, so
@@ -238,7 +239,7 @@ against the server:
 | `GET /v1/drones/tracks.json[?active=true]` | Every tracked target (drones, cruise and ballistic missiles, guided bombs) with its position history, plus `serverTime` and `simulated`. Long tracks are thinned so polls stay small. |
 | `GET /v1/drones/positions.json?at=<ms or ISO-8601>` | Positions interpolated between samples, or dead-reckoned past the last one |
 | `GET /v1/drones/archive.json?from=&to=&type=&limit=` | Finished and current tracks in a time window (default: the last day) |
-| `GET /health` | Data source, freshness, upstream budget, last error (no key needed) |
+| `GET /health` | Data source, freshness, upstream budget, last error (no key needed, but rate limited per IP like the other routes) |
 
 ### Archive
 
@@ -347,8 +348,9 @@ console they run in; access keys and tokens are masked.
 | `PORT` | 8080 | 0–65535; 0 picks a free port |
 | `LOG_HTTP` | – | `true` logs each alerts.in.ua request and response with its JSON body (token masked) |
 
-A value that isn't a number falls back to the default. A number outside the range above stops the server at startup
-with a message naming the variable (the console shows it in a dialog), since falling back would hide the mistake.
+Unset or blank means the default. A malformed value (a number that doesn't parse, a boolean other than `true` or
+`false`, an unknown `DATA_SOURCE`) or a number outside the range above stops the server at startup with a message
+naming the variable (the console shows it in a dialog), since falling back would hide the mistake.
 
 ## Connecting the app
 

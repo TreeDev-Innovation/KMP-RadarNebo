@@ -8,11 +8,14 @@ import kotlinx.coroutines.sync.withLock
  * Sliding-window limiter guarding every request to alerts.in.ua. It enforces both a maximum number
  * of requests per rolling minute and an even spacing between them, so bursts can't happen even if
  * the poll loop misbehaves (e.g. on fast retries).
+ *
+ * The default [clock] is monotonic, so wall-clock steps can't stall polling; a clock that does step back is
+ * handled by shifting the history with it.
  */
 class UpstreamRateLimiter(
     private val maxPerWindow: Int,
     private val windowMs: Long = 60_000L,
-    private val clock: () -> Long = System::currentTimeMillis,
+    private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
     private val sleep: suspend (Long) -> Unit = { delay(it) },
 ) {
     init {
@@ -31,6 +34,8 @@ class UpstreamRateLimiter(
     suspend fun acquire() = mutex.withLock {
         while (true) {
             val now = clock()
+            // Otherwise a step back would make the next wait as long as the step.
+            history.lastOrNull()?.takeIf { now < it }?.let { last -> history.replaceAll { it - (last - now) } }
             prune(now)
             val spacingWait = history.lastOrNull()?.let { it + minSpacingMs - now } ?: 0L
             val windowWait = if (history.size >= maxPerWindow) history.first() + windowMs - now else 0L
