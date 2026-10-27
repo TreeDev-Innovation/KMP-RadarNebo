@@ -300,7 +300,7 @@ move to versioned migrations when the first column is renamed or dropped (deferr
 - Sync HTTP everywhere; the only async boundary is the server's internal poller.
 - Contract-first: the alerts.in.ua JSON is the contract; RadarNebo extensions live under `/v1/drones/*`.
 - Idempotency: all client calls are GETs. Conditional requests (`ETag`, `If-Modified-Since`) keep polls cheap.
-- Backpressure: upstream limiter; per-client limit on history (`HISTORY_REQUESTS_PER_MINUTE`).
+- Backpressure: upstream limiter; per-client limits on history (`HISTORY_REQUESTS_PER_MINUTE`) and the track archive (`ARCHIVE_REQUESTS_PER_MINUTE`, at most 200 tracks over 7 days per call).
 - Versioning: path prefix (`/v1`, `/v2`) as upstream does.
 
 ### Security & privacy
@@ -313,7 +313,7 @@ move to versioned migrations when the first column is renamed or dropped (deferr
 |---|---|---|
 | Client → server | Spoofing (no key), DoS | Bearer keys when exposed; per-IP rate limits, applied before the key check; gzip and 304s |
 | Server → alerts.in.ua | Information disclosure (token in logs) | Token masked when `LOG_HTTP=true` |
-| Server on LAN (`0.0.0.0`) | Tampering/eavesdropping over plain HTTP | Acceptable on a LAN; put a TLS reverse proxy in front before any public exposure (Q1). Behind it every client shares the proxy's IP, so the per-IP limits (120/min, history 2/min) become global: raise `CLIENT_REQUESTS_PER_MINUTE` / `HISTORY_REQUESTS_PER_MINUTE` or rate-limit at the proxy. Forwarded headers are deliberately not trusted. |
+| Internet → Caddy → server | Tampering/eavesdropping; IP spoofing to dodge limits | Public deployment (ADR-6): Caddy terminates TLS on 443 and is the only published port; the server port is unpublished, so `TRUST_PROXY_HEADERS=true` takes each client's IP from the `X-Forwarded-For` entry Caddy adds and the per-IP limits stay per client. `CLIENT_KEYS` is required there. A server run on a LAN without the proxy is plain HTTP and keeps `TRUST_PROXY_HEADERS=false`. |
 | Console's own client | Elevation via a stored key | Key copied from server config in memory, saved to the user's home only |
 
 ### Observability & reliability
@@ -326,8 +326,18 @@ move to versioned migrations when the first column is renamed or dropped (deferr
 ### Deployment & operations
 
 Single JVM: `./gradlew :mission-control:ui:run` (with console) or `:mission-control:server:run` (headless).
-`SingleInstance` keeps one server per machine. Backup = copy the SQLite file. Rollback = redeploy a previous commit's image (deploy workflow, `image_tag` input). CI: n/a
-today — the repository has no CI workflow; adding one is milestone M1.
+`SingleInstance` keeps one server per machine.
+
+Public deployment (ADR-6): `ci.yml` runs the JVM tests on pushes to `main` and on pull requests. `deploy.yml` tests,
+builds the fat jar, pushes a multi-arch image to Docker Hub tagged with the commit sha, scans it with Trivy, and runs
+`docker compose up --wait` on an OCI VM, then checks `https://<DOMAIN>/health` from outside. Caddy in the same compose
+project terminates TLS (Let's Encrypt over TLS-ALPN on 443). Rollback = rerun the deploy workflow with `image_tag` set to
+a previous commit's sha.
+
+Backups: the archive is derived history (45 days of alerts and tracks), not live data. SQLite runs in WAL mode, so
+committed rows can sit in the `-wal` file: take a consistent snapshot with SQLite's online backup (`sqlite3 .backup`),
+never a plain `cp` while the server runs. The README's Deployment section has the weekly VM cron entry and the restore
+steps; the OCI volume backup policy is the alternative.
 
 ### Technology stack
 
@@ -365,13 +375,20 @@ just work; − manual edits to the built-in client's server address are overwrit
 client exists to show this server). *Alternatives:* a separate Koin binding read on every request (more code, no
 gain). *Door:* two-way.
 
+**ADR-6: Public hosting behind Caddy** — Accepted. *Context:* Q1 answered: the server runs publicly on an OCI VM.
+*Decision:* Caddy, in the same compose project, terminates TLS and is the only published port; the server port stays
+unpublished, trusts Caddy's `X-Forwarded-For` (`TRUST_PROXY_HEADERS=true`) for per-IP limits, and requires
+`CLIENT_KEYS`. *Consequences:* + TLS and certificate renewal with no code; per-client rate limits behind the proxy;
+− the forwarded-header trust is safe only while nothing reaches the server around Caddy. *Alternatives:* TLS in Ktor
+(certificate handling in the app); a cloud load balancer (cost). *Door:* two-way. Closes the TLS part of Q1.
+
 **Deferred decisions:**
 
 | Decision | Trigger |
 |---|---|
 | Versioned DB migrations (e.g. Flyway) | First rename/drop of an archive column |
 | Push (SSE/WebSocket, FCM/APNs) | Q2 yes, or background proximity alerts become a Must |
-| TLS and per-client identities | Q1: server exposed beyond a LAN |
+| Per-client identities | Q1 public (TLS is settled by ADR-6): when one shared key list is no longer enough |
 | PostgreSQL | More than one server instance |
 
 ## 11. Risks, pre-mortem, fitness functions
@@ -412,7 +429,7 @@ Walking skeleton: done (server → API → client on three platforms, archive, c
 | M3 | Prediction replay experiment and accuracy display | Hit rate per kind published; predictions gated by it | Riskiest assumption |
 | M4 | Background proximity alerts (local notifications) | Works on Android and iOS with polling | UC3 |
 
-**Not now:** accounts and sync, push infrastructure, microservices, PostgreSQL, public hosting.
+**Not now:** accounts and sync, push infrastructure, microservices, PostgreSQL, multi-instance hosting.
 
 ## 13. Glossary
 
