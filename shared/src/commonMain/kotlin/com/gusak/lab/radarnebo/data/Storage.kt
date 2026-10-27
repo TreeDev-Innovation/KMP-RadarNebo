@@ -55,8 +55,14 @@ data class AppSettings(
     }
 }
 
-/** Where the app looks for its server until the user sets one: the deployed server, unless a platform overrides it. */
-data class ServerDefaults(val url: String = RadarNeboApi.DEFAULT_SERVER_URL)
+/**
+ * Where the app looks for its server, and the key it sends, until the user sets them: client.properties at build time
+ * (see [ClientConfig]), else the deployed server without a key, unless a platform overrides it.
+ */
+data class ServerDefaults(
+    val url: String = ClientConfig.SERVER_URL.ifBlank { RadarNeboApi.DEFAULT_SERVER_URL },
+    val accessKey: String = ClientConfig.ACCESS_KEY,
+)
 
 /** App settings, persisted in [KeyValueStorage] and observable as [settings]. */
 class SettingsRepository(private val storage: KeyValueStorage, private val defaults: ServerDefaults = ServerDefaults()) {
@@ -79,7 +85,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
         val legacyKey = if (legacyProxyUrl != null) storage.getString(K_LEGACY_TOKEN) else null
         return AppSettings(
             serverUrl = storage.getString(K_SERVER_URL)?.takeIf { it.isNotBlank() } ?: legacyProxyUrl ?: defaults.url,
-            accessKey = storage.getString(K_ACCESS_KEY) ?: legacyKey.orEmpty(),
+            accessKey = storage.getString(K_ACCESS_KEY)?.takeIf { it.isNotBlank() } ?: legacyKey ?: defaults.accessKey,
             mapMode = storage.getString(K_MODE)?.let { runCatching { MapMode.valueOf(it) }.getOrNull() } ?: MapMode.Static,
             themeMode = storage.getString(K_THEME)?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.System,
             colorPalette = storage.getString(K_PALETTE)?.let { runCatching { ColorPalette.valueOf(it) }.getOrNull() } ?: ColorPalette.Radar,

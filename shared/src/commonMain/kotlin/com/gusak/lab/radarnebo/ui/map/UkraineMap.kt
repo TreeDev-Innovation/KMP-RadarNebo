@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -885,7 +886,9 @@ private class MapInk(val label: Color, val cityLabel: Color, val cityDot: Color,
 /** [text] with a solid outline in [halo], so it stays legible over tiles, imagery, oblast fills and borders. */
 private fun DrawScope.drawHaloText(text: TextLayoutResult, color: Color, halo: Color, topLeft: Offset, alpha: Float = 1f) {
     drawText(text, color = halo, topLeft = topLeft, alpha = alpha, drawStyle = Stroke(HaloWidth.toPx(), join = StrokeJoin.Round))
-    drawText(text, color = color, topLeft = topLeft, alpha = alpha)
+    // Fill must be explicit: on Android the text paint keeps the last draw style, so without it the stroke above
+    // carries over and the name is drawn as a thick outline too.
+    drawText(text, color = color, topLeft = topLeft, alpha = alpha, drawStyle = Fill)
 }
 
 /** A city dot ringed in the halo colour, so it shows on any background. */

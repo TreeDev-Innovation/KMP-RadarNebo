@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -6,6 +7,35 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlinSerialization)
+}
+
+// client.properties at the repo root (gitignored; see client.properties.example) sets the server address and access key
+// the apps start with. They're generated into ClientConfig.kt; without the file both are blank.
+val clientProperties = providers.fileContents(rootProject.layout.projectDirectory.file("client.properties")).asText
+    .map { text -> Properties().apply { load(text.reader()) } }
+val generateClientConfig by tasks.registering {
+    val serverUrl = clientProperties.map { it.getProperty("server.url").orEmpty().trim() }.orElse("")
+    val accessKey = clientProperties.map { it.getProperty("server.accessKey").orEmpty().trim() }.orElse("")
+    val outputDir = layout.buildDirectory.dir("generated/clientConfig")
+    inputs.property("serverUrl", serverUrl)
+    inputs.property("accessKey", accessKey)
+    outputs.dir(outputDir)
+    doLast {
+        fun literal(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$") + "\""
+        val file = outputDir.get().file("com/gusak/lab/radarnebo/data/ClientConfig.kt").asFile
+        file.parentFile.mkdirs()
+        file.writeText(
+            """
+            |package com.gusak.lab.radarnebo.data
+            |
+            |/** Generated from client.properties by :shared:generateClientConfig. Blank values mean "not set". */
+            |internal object ClientConfig {
+            |    const val SERVER_URL = ${literal(serverUrl.get())}
+            |    const val ACCESS_KEY = ${literal(accessKey.get())}
+            |}
+            |""".trimMargin()
+        )
+    }
 }
 
 kotlin {
@@ -47,6 +77,9 @@ kotlin {
     }
     
     sourceSets {
+        commonMain {
+            kotlin.srcDir(generateClientConfig)
+        }
         all {
             languageSettings.optIn("kotlin.time.ExperimentalTime")
         }
