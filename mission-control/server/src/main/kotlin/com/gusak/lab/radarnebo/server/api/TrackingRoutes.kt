@@ -1,6 +1,5 @@
 package com.gusak.lab.radarnebo.server.api
 
-import com.gusak.lab.radarnebo.data.RadarNeboApi
 import com.gusak.lab.radarnebo.data.ThreatType
 import com.gusak.lab.radarnebo.server.application.SituationService
 import com.gusak.lab.radarnebo.server.domain.tracking.TrackQuery
@@ -28,20 +27,16 @@ data class TrackHistoryResponse(
  * they flew. All times are epoch milliseconds; `at`, `from` and `to` also accept ISO-8601.
  */
 internal fun Route.trackingRoutes(situation: SituationService, pollInterval: () -> Duration, clock: () -> Long) {
-    /**
-     * Every tracked target with its position history; `?active=true` leaves out ended ones, and `?mapping=basic`
-     * serves the tracks linked without smart mapping (the app's settings switch).
-     */
+    /** Every tracked target with its position history; `?active=true` leaves out ended ones. */
     get("/v1/drones/tracks.json") {
         val board = situation.board.orWarmingUp()
         val activeOnly = call.request.queryParameters["active"] == "true"
-        val basic = call.request.queryParameters[RadarNeboApi.MAPPING_PARAM] == RadarNeboApi.BASIC_MAPPING
         call.respond(
             DroneTracksResponse(
                 serverTime = clock(),
                 pollIntervalMs = pollInterval().inWholeMilliseconds,
                 lastUpstreamFetch = board.confirmedAt.toEpochMilliseconds(),
-                tracks = (if (basic) situation.basicTracks else situation.tracks).filter { !activeOnly || it.active },
+                tracks = situation.tracks.filter { !activeOnly || it.active },
                 simulated = situation.simulated,
             )
         )

@@ -92,12 +92,16 @@ class ThreatsTest {
     @Test
     fun apiSendsBearerTokenAndHandlesStatuses() = runTest {
         var authHeader: String? = null
+        var conditional: String? = null
         var call = 0
         val engine = MockEngine { request ->
             authHeader = request.headers[HttpHeaders.Authorization]
+            conditional = request.headers[HttpHeaders.IfModifiedSince]
             when (call++) {
-                0 -> respond(sample, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
-                1 -> respond("", HttpStatusCode.NotModified)
+                0, 1 -> respond(sample, HttpStatusCode.OK, headersOf(
+                    HttpHeaders.ContentType to listOf("application/json"),
+                    HttpHeaders.LastModified to listOf("Mon, 26 Oct 2026 21:57:05 GMT"),
+                ))
                 else -> respond("""{"message":"x"}""", HttpStatusCode.Unauthorized, headersOf(HttpHeaders.ContentType, "application/json"))
             }
         }
@@ -109,7 +113,9 @@ class ThreatsTest {
         assertIs<FetchResult.Fresh>(first)
         assertEquals(3, first.alerts.size)
         assertEquals("Bearer secret", authHeader)
-        assertIs<FetchResult.NotModified>(api.activeAlerts(ServerEndpoint(RadarNeboApi.DEFAULT_SERVER_URL, "secret")))
+        // Every poll asks for the whole list, never a conditional 304.
+        assertIs<FetchResult.Fresh>(api.activeAlerts(ServerEndpoint(RadarNeboApi.DEFAULT_SERVER_URL, "secret")))
+        assertEquals(null, conditional)
         assertIs<FetchResult.Failure>(api.activeAlerts(ServerEndpoint(RadarNeboApi.DEFAULT_SERVER_URL, "secret")))
     }
 }
@@ -129,18 +135,18 @@ class LocateTest {
     }
 
     @Test
-    fun raionsSitAtTheirCentreUnderAnyOfTheirNames() {
+    fun raionsSitAtAStableSpotInTheirOblast() {
         val bashtanka = com.gusak.lab.radarnebo.data.Alert(
             id = 1, locationTitle = "Баштанський район", locationType = "raion", locationUid = "96",
             locationOblast = "Миколаївська область",
         )
         val point = ThreatMapper.locate(bashtanka)!!
-        assertTrue(GeoMath.distanceKm(point, GeoPoint(47.41, 32.44)) < 30, "near Bashtanka, got $point")
         assertEquals(17, Regions.oblastAt(point))
-        // Without smart mapping the raion falls back to a spot somewhere in its oblast.
-        val scattered = ThreatMapper.locate(bashtanka, smartMapping = false)!!
-        assertTrue(scattered != point)
-        assertEquals(17, Regions.oblastAt(scattered))
+        assertEquals(point, ThreatMapper.locate(bashtanka.copy(id = 2)), "the same raion lands on the same spot")
+    }
+
+    @Test
+    fun raionsAreFoundUnderAnyOfTheirNames() {
         // Renamed in 2024 (Новомосковський → Самарівський); alerts may use either name. Apostrophe variants match too.
         assertEquals(Regions.raionForTitle("Самарівський район"), Regions.raionForTitle("Новомосковський район"))
         assertEquals(Regions.raionForTitle("Кам’янець-Подільський район"), Regions.raionForTitle("Кам'янець-Подільський район"))

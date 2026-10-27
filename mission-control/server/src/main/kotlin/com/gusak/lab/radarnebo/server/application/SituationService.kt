@@ -31,13 +31,13 @@ class SituationService(
     var board: AlertBoard? = null
         private set
 
+    /** The latest active-alerts body as the source sent it; null when the source sends none (the simulation). */
     @Volatile
-    var tracks: List<DroneTrack> = emptyList()
+    var rawAlerts: String? = null
         private set
 
-    /** [tracks] linked the basic way, for clients with smart mapping off; the same as [tracks] when tracking has one way. */
     @Volatile
-    var basicTracks: List<DroneTrack> = emptyList()
+    var tracks: List<DroneTrack> = emptyList()
         private set
 
     private val mutex = Mutex()
@@ -56,7 +56,6 @@ class SituationService(
         board = board?.confirmed(Instant.fromEpochMilliseconds(atMs))
         val update = tracking.update(report.alerts, emptyList(), atMs)
         tracks = update.tracks
-        basicTracks = update.basicTracks ?: update.tracks
         if (update.ended.isNotEmpty()) trackArchive.save(update.ended)
     }
 
@@ -91,9 +90,9 @@ class SituationService(
         locations.learn(report.alerts)
         val change = (board ?: AlertBoard.empty(at)).next(report.alerts, at)
         board = change.board
+        rawAlerts = report.rawAlerts
         val update = tracking.update(change.board.alerts, report.observations, report.observedAt)
         tracks = update.tracks
-        basicTracks = update.basicTracks ?: update.tracks
         lastReport = report
         if (!archive) return
 

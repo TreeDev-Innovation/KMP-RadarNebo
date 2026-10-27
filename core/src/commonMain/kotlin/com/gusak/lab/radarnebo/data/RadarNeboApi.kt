@@ -23,7 +23,6 @@ import kotlinx.serialization.json.Json
 
 sealed interface FetchResult {
     data class Fresh(val alerts: List<Alert>) : FetchResult
-    data object NotModified : FetchResult
     /** [backOff]: the server asked the app to slow down (rate limit) or refused it (auth), so retrying soon won't help. */
     data class Failure(val message: String, val backOff: Boolean = false) : FetchResult
 }
@@ -53,30 +52,16 @@ data class ServerHealth(
  * Client for the RadarNebo server (`:server`), the app's only data source. The server decides where its
  * data comes from (alerts.in.ua or its simulation), tracks targets and archives history; the app only reads.
  *
- * Alerts are served in the alerts.in.ua format at the same path. The server caches them and answers
- * `If-Modified-Since` with a cheap 304 when nothing changed.
+ * Alerts are served in the alerts.in.ua format at the same path, as alerts.in.ua sent them; every poll gets
+ * the whole list.
  */
 class RadarNeboApi(
     private val client: HttpClient = defaultClient(),
 ) {
-    private var lastModified: String? = null
-    private var lastEndpoint: ServerEndpoint? = null
-
     suspend fun activeAlerts(endpoint: ServerEndpoint): FetchResult = try {
-        if (endpoint != lastEndpoint) {
-            lastModified = null
-            lastEndpoint = endpoint
-        }
-        val response = client.get(endpoint.resolve(ACTIVE_ALERTS_PATH)) {
-            authorize(endpoint)
-            lastModified?.let { header(HttpHeaders.IfModifiedSince, it) }
-        }
+        val response = client.get(endpoint.resolve(ACTIVE_ALERTS_PATH)) { authorize(endpoint) }
         when (response.status) {
-            HttpStatusCode.OK -> {
-                lastModified = response.headers[HttpHeaders.LastModified]
-                FetchResult.Fresh(response.body<ActiveAlertsResponse>().alerts)
-            }
-            HttpStatusCode.NotModified -> FetchResult.NotModified
+            HttpStatusCode.OK -> FetchResult.Fresh(response.body<ActiveAlertsResponse>().alerts)
             HttpStatusCode.Unauthorized -> FetchResult.Failure("The server needs a valid access key (401)", backOff = true)
             HttpStatusCode.TooManyRequests -> FetchResult.Failure("Too many requests, slowing down (429)", backOff = true)
             HttpStatusCode.ServiceUnavailable -> FetchResult.Failure("The server is starting up, no data yet (503)")
@@ -88,15 +73,9 @@ class RadarNeboApi(
         FetchResult.Failure(e.message ?: "Network error")
     }
 
-    /**
-     * Tracked targets with their position history; null on any failure. Without [smartMapping] the server's basic
-     * tracking is asked for (`?mapping=basic`), linking alerts without the same-group filter and course gates.
-     */
-    suspend fun tracks(endpoint: ServerEndpoint, smartMapping: Boolean = true): DroneTracksResponse? = try {
-        val response = client.get(endpoint.resolve(TRACKS_PATH)) {
-            authorize(endpoint)
-            if (!smartMapping) url.parameters.append(MAPPING_PARAM, BASIC_MAPPING)
-        }
+    /** Tracked targets with their position history; null on any failure. */
+    suspend fun tracks(endpoint: ServerEndpoint): DroneTracksResponse? = try {
+        val response = client.get(endpoint.resolve(TRACKS_PATH)) { authorize(endpoint) }
         if (response.status == HttpStatusCode.OK) response.body<DroneTracksResponse>() else null
     } catch (e: kotlinx.coroutines.CancellationException) {
         throw e
@@ -126,8 +105,6 @@ class RadarNeboApi(
 
         const val ACTIVE_ALERTS_PATH = "/v1/alerts/active.json"
         const val TRACKS_PATH = "/v1/drones/tracks.json"
-        const val MAPPING_PARAM = "mapping"
-        const val BASIC_MAPPING = "basic"
         const val POSITIONS_PATH = "/v1/drones/positions.json"
         const val TRACK_ARCHIVE_PATH = "/v1/drones/archive.json"
         const val HEALTH_PATH = "/health"

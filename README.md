@@ -178,15 +178,10 @@ apps only read. It is a Ktor (CIO) application in DDD layers, under `mission-con
   never affects the upstream rate. alerts.in.ua allows 8–10 requests/min per IP (soft) and 12 (hard). The server polls
   every 15 s; a sliding-window limiter caps it at `UPSTREAM_MAX_PER_MINUTE` (default 6, never above 8) and spaces
   requests evenly. It sends `If-Modified-Since`, honours `Retry-After` on 429 and backs off exponentially (up to 10 min).
-  Alerts carry no positions, so tracks are reconstructed from them (`DroneTracker`, `TrackKinematics`). alerts.in.ua
-  alerts per raion, and a passing drone group shows up as a chain of raion alerts 10–30 min apart, each often raised
-  for two or three neighbouring raions within a minute or two. Alerts of one kind that start within 3 min and 80 km
-  of each other are therefore one report of one group, placed at their centroid. A report continues the track whose
-  predicted position (its fitted velocity over the last few reports) is nearest, if that track reported within the
-  re-acquire window (45 min for drones), the hop is reachable at the type's top speed, and a drone group would not
-  turn back more than 100°. The window and gates were tuned by replaying the server's archive of real alerts.
-  The app can switch this off (Settings → Smart mapping): raion alerts then scatter in their oblast and the server
-  serves tracks from a second tracker that links alerts by distance alone.
+  Clients get alerts.in.ua's active-alerts body exactly as it was received.
+  Alerts carry no positions, so tracks are reconstructed from them (`DroneTracker`, `TrackKinematics`): each new
+  alert continues the nearest track of its kind that is still open or ended within the re-acquire window (45 min for
+  drones), if the hop is reachable at the type's top speed; otherwise it starts a track.
 - **Simulation** (no token, or `DATA_SOURCE=simulation`): see below. It reports what air surveillance would see, so
   tracks follow the real flight paths (`ObservationTracking`).
 
@@ -222,15 +217,15 @@ of every target in the air.
 ### API
 
 Clients authenticate like alerts.in.ua (`Authorization: Bearer <key>` or `?token=<key>`) when `CLIENT_KEYS` is set.
-Errors are `{"message": "..."}`. All alert endpoints support `ETag`/`If-None-Match` and
-`Last-Modified`/`If-Modified-Since`. Responses over 1 KB are gzipped.
+Errors are `{"message": "..."}`. Nothing is cached: every request gets a full answer from the latest data, with
+`X-Data-Age-Seconds` saying how long ago the data source confirmed it. Responses over 1 KB are gzipped.
 
 **alerts.in.ua API** ([documentation](https://devs.alerts.in.ua/)): same paths and JSON, so any alerts.in.ua client works
 against the server:
 
 | Endpoint | Returns |
 |---|---|
-| `GET /v1/alerts/active.json` | `{"alerts": [...]}`, active alerts with their threats |
+| `GET /v1/alerts/active.json` | `{"alerts": [...]}`, active alerts with their threats: alerts.in.ua's body unchanged, or the simulation's alerts in its format |
 | `GET /v1/iot/active_air_raid_alerts_by_oblast.json` | `"ANPN…"`: 27 oblasts in the documented order, `A` whole / `P` partial / `N` none |
 | `GET /v2/iot/active_air_raid_alerts_by_oblast.json` | The same with levels: `R` red, `Y` yellow, `P`, `N` |
 | `GET /v{1,2}/iot/active_air_raid_alerts/{uid}.json` | One location's status, e.g. `"A"` |
@@ -241,7 +236,7 @@ against the server:
 
 | Endpoint | Returns |
 |---|---|
-| `GET /v1/drones/tracks.json[?active=true][&mapping=basic]` | Every tracked target (drones, cruise and ballistic missiles, guided bombs) with its position history, plus `serverTime` and `simulated`. Long tracks are thinned so polls stay small. `mapping=basic` serves tracks linked without smart mapping (the app's Settings → Smart mapping switch). |
+| `GET /v1/drones/tracks.json[?active=true]` | Every tracked target (drones, cruise and ballistic missiles, guided bombs) with its position history, plus `serverTime` and `simulated`. Long tracks are thinned so polls stay small. |
 | `GET /v1/drones/positions.json?at=<ms or ISO-8601>` | Positions interpolated between samples, or dead-reckoned past the last one |
 | `GET /v1/drones/archive.json?from=&to=&type=&limit=` | Finished and current tracks in a time window (default: the last day) |
 | `GET /health` | Data source, freshness, upstream budget, last error (no key needed) |
@@ -327,13 +322,11 @@ console they run in; access keys and tokens are masked.
 The app needs only the server's address (Settings → Server) and, if the server requires one, an access key. It never
 sees an alerts.in.ua token: that lives on the server. Earlier versions kept the token on the device; it is removed on
 the first settings save. By default the app looks for a server on the same machine (the Android emulator reaches it as
-`10.0.2.2`; cleartext HTTP is allowed only to that and `localhost`). Polling defaults to 30 s. The server answers
-unchanged data with a 304, and the app interpolates target positions every frame between polls.
+`10.0.2.2`; cleartext HTTP is allowed only to that and `localhost`). Polling defaults to 30 s. Every poll gets the
+full data, and the app interpolates target positions every frame between polls.
 
-The alerts.in.ua API gives no coordinates for raions or hromadas. Raions (most alerts) are placed at their centre from
-`geo/UkraineRaions.kt`, generated from OpenStreetMap by `python3 -I tools/download-raions.py`. Known cities are placed
-exactly, oblast-wide alerts sit at the oblast centroid, and other locations get a stable pseudo-random spot inside their
-oblast.
+The alerts.in.ua API gives no coordinates for raions or hromadas. Known cities are placed exactly, oblast-wide alerts
+sit at the oblast centroid, and other locations, raions included, get a stable pseudo-random spot inside their oblast.
 
 
 * [/app/ios](./app/ios/iosApp) contains an iOS application. Even if you’re sharing your UI with Compose Multiplatform,

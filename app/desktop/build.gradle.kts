@@ -18,12 +18,8 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
-// The macOS trackpad pinch bridge (MacTrackpad.java) uses the JDK-internal com.apple.eawt.event package.
+// The macOS trackpad pinch bridge (shared's MacTrackpad.java) uses the JDK-internal com.apple.eawt.event package.
 val macGestureExports = listOf("--add-exports", "java.desktop/com.apple.eawt.event=ALL-UNNAMED")
-
-tasks.withType<JavaCompile>().configureEach {
-    options.compilerArgs.addAll(macGestureExports)
-}
 
 // The name and icon macOS shows in the Dock and app switcher, instead of "MainKt" and the Java cup.
 // -Xdock is macOS-only; other JVMs refuse to start with it.

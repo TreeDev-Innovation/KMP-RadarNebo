@@ -1,7 +1,6 @@
 package com.gusak.lab.radarnebo.desktop
 
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -20,8 +19,8 @@ import com.gusak.lab.radarnebo.ui.debug.RequestInspectorScreen
 import com.gusak.lab.radarnebo.di.desktopModule
 import com.gusak.lab.radarnebo.di.initKoin
 import com.gusak.lab.radarnebo.ui.map.LocalPinchZoom
+import com.gusak.lab.radarnebo.ui.rememberWindowPinch
 import io.ktor.client.plugins.logging.Logger
-import kotlinx.coroutines.flow.MutableSharedFlow
 import org.slf4j.LoggerFactory
 import java.io.File
 
@@ -51,14 +50,7 @@ fun main() {
             icon = icon,
             state = rememberWindowState(width = 1100.dp, height = 820.dp),
         ) {
-            val pinch = remember { MutableSharedFlow<Float>(extraBufferCapacity = 64) }
-            DisposableEffect(window) {
-                MacTrackpad.installPinch(window.rootPane) { magnification ->
-                    pinch.tryEmit((1.0 + magnification).toFloat().coerceIn(0.5f, 2f))
-                }
-                onDispose { }
-            }
-            CompositionLocalProvider(LocalPinchZoom provides pinch) {
+            CompositionLocalProvider(LocalPinchZoom provides rememberWindowPinch(window.rootPane)) {
                 App(onOpenRequests = { requestsOpen = true })
             }
         }

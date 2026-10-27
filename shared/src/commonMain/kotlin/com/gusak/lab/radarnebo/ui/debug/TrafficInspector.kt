@@ -31,15 +31,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -52,6 +55,8 @@ import androidx.compose.ui.unit.sp
 import com.gusak.lab.radarnebo.debug.HttpExchange
 import com.gusak.lab.radarnebo.ui.formatClock
 import com.gusak.lab.radarnebo.ui.radarColors
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -212,7 +217,8 @@ private fun bodySize(exchange: HttpExchange) = exchange.responseBody?.length?.le
 
 @Composable
 private fun ExchangeDetail(exchange: HttpExchange, onBack: (() -> Unit)?) {
-    val body = remember(exchange.id) { exchange.responseBody?.let(::prettyJson)?.lines().orEmpty() }
+    val pretty = remember(exchange.id) { exchange.responseBody?.let(::prettyJson) }
+    val body = remember(pretty) { pretty?.lines().orEmpty() }
     val highlight = jsonHighlightColors()
     SelectionContainer {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
@@ -235,7 +241,9 @@ private fun ExchangeDetail(exchange: HttpExchange, onBack: (() -> Unit)?) {
                 Headers(exchange.requestHeaders)
                 Section("Response headers")
                 Headers(exchange.responseHeaders)
-                Section("Response body")
+                Section("Response body") {
+                    if (pretty != null) CopyButton(pretty)
+                }
                 if (body.isEmpty()) Text("(none)", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             itemsIndexed(body) { _, line ->
@@ -256,10 +264,33 @@ private fun Fact(label: String, value: String, color: Color = MaterialTheme.colo
 }
 
 @Composable
-private fun Section(title: String) {
+private fun Section(title: String, action: @Composable () -> Unit = {}) {
     Spacer(Modifier.padding(top = 12.dp))
-    Text(title, style = MaterialTheme.typography.titleSmall)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+        action()
+    }
     HorizontalDivider(Modifier.padding(vertical = 4.dp))
+}
+
+/** Copies [text] to the clipboard, and says so for a moment. */
+@Composable
+private fun CopyButton(text: String) {
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    var copied by remember(text) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1500)
+            copied = false
+        }
+    }
+    TextButton(onClick = {
+        scope.launch {
+            clipboard.setClipEntry(plainTextClip(text))
+            copied = true
+        }
+    }) { Text(if (copied) "Copied ✓" else "Copy to clipboard") }
 }
 
 @Composable

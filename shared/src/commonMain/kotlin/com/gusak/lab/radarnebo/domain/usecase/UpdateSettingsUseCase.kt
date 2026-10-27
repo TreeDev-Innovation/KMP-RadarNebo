@@ -8,8 +8,6 @@ import com.gusak.lab.radarnebo.data.SettingsRepository
 data class SettingsUpdate(
     /** Another server or access key: everything fetched from the old one was dropped. */
     val sourceChanged: Boolean,
-    /** Smart mapping switched: the server's other tracks should be fetched right away. */
-    val trackingChanged: Boolean,
 )
 
 /** Saves a settings change. Switching server or access key drops everything fetched from the old one. */
@@ -22,6 +20,6 @@ class UpdateSettingsUseCase(
         val new = settings.update(transform)
         val sourceChanged = new.endpoint != old.endpoint
         if (sourceChanged) alerts.reset()
-        return SettingsUpdate(sourceChanged, trackingChanged = new.smartMapping != old.smartMapping)
+        return SettingsUpdate(sourceChanged)
     }
 }

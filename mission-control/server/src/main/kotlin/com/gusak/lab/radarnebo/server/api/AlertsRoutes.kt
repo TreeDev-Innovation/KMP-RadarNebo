@@ -10,8 +10,6 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import kotlinx.serialization.builtins.serializer
 import java.time.ZoneOffset
-import java.util.concurrent.atomic.AtomicReference
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 import kotlin.time.toJavaInstant
@@ -19,18 +17,15 @@ import kotlin.time.toKotlinInstant
 
 /**
  * The alerts.in.ua API (https://devs.alerts.in.ua), served from the server's own data: the same paths,
- * parameters and JSON, so any alerts.in.ua client can use the server instead.
+ * parameters and JSON, so any alerts.in.ua client can use the server instead. Nothing is cached: every
+ * request gets a full answer from the latest data.
  */
-internal fun Route.alertsInUaRoutes(situation: SituationService, maxAge: () -> Duration, clock: () -> Long) {
-    val encoded = AtomicReference<Pair<Long, String>?>(null)
-
-    /** Active alerts: `{"alerts": [...]}`. */
+internal fun Route.alertsInUaRoutes(situation: SituationService, clock: () -> Long) {
+    /** Active alerts: `{"alerts": [...]}`, alerts.in.ua's body as it sent it, or the simulation's alerts in its format. */
     get("/v1/alerts/active.json") {
         val board = situation.board.orWarmingUp()
-        if (call.notModifiedSince(board, maxAge(), clock())) return@get
-        // Encoded once per board version, however many clients ask.
-        val body = encoded.get()?.takeIf { it.first == board.version }?.second
-            ?: AlertsInUaContract.encode(board.alerts, board.changedAt).also { encoded.set(board.version to it) }
+        call.dataAge(board, clock())
+        val body = situation.rawAlerts ?: AlertsInUaContract.encode(board.alerts, board.changedAt)
         call.respondText(body, ContentType.Application.Json)
     }
 
@@ -40,14 +35,14 @@ internal fun Route.alertsInUaRoutes(situation: SituationService, maxAge: () -> D
 
         get("/$v/iot/active_air_raid_alerts_by_oblast.json") {
             val board = situation.board.orWarmingUp()
-            if (call.notModifiedSince(board, maxAge(), clock())) return@get
+            call.dataAge(board, clock())
             call.respondJsonString(situation.airRaidStatus().byOblast(version))
         }
 
         /** One character per location UID, at the UID's position; a space where no location has that UID. */
         get("/$v/iot/active_air_raid_alerts.json") {
             val board = situation.board.orWarmingUp()
-            if (call.notModifiedSince(board, maxAge(), clock())) return@get
+            call.dataAge(board, clock())
             call.respondJsonString(situation.airRaidStatus().byUid(version))
         }
 
@@ -56,7 +51,7 @@ internal fun Route.alertsInUaRoutes(situation: SituationService, maxAge: () -> D
             val uid = call.parameters["file"].orEmpty().removeJsonSuffix()
             if (uid.toIntOrNull() == null) badRequest("Location UID must be a number")
             val board = situation.board.orWarmingUp()
-            if (call.notModifiedSince(board, maxAge(), clock())) return@get
+            call.dataAge(board, clock())
             call.respondJsonString(situation.airRaidStatus().location(uid).code(version).toString())
         }
     }

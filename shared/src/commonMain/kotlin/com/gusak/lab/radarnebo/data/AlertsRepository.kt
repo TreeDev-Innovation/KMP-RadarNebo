@@ -35,16 +35,15 @@ class AlertsRepository(
     private var clockOffsetMs = 0L
     private var simulated = false
 
-    /** Polls [endpoint] once; [smartMapping] picks which of the server's tracks to fetch. */
-    suspend fun refresh(endpoint: ServerEndpoint, smartMapping: Boolean = true): AlertsUpdate {
+    /** Polls [endpoint] once. */
+    suspend fun refresh(endpoint: ServerEndpoint): AlertsUpdate {
         when (val result = api.activeAlerts(endpoint)) {
             is FetchResult.Fresh -> alerts = result.alerts
-            FetchResult.NotModified -> Unit
             is FetchResult.Failure -> return AlertsUpdate.Failed(result.message, result.backOff)
         }
         // Tracks move even when alerts don't, so they are fetched on every poll. A failed request keeps the
         // previous tracks rather than wiping the map.
-        api.tracks(endpoint, smartMapping)?.let { response ->
+        api.tracks(endpoint)?.let { response ->
             tracks = response.tracks
             clockOffsetMs = response.serverTime - clock()
             simulated = response.simulated

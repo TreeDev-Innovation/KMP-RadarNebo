@@ -88,3 +88,11 @@ kotlin {
 dependencies {
     androidRuntimeClasspath(libs.compose.uiTooling)
 }
+// The macOS trackpad pinch bridge (jvmMain's MacTrackpad.java) uses the JDK-internal com.apple.eawt.event package;
+// apps running it need the same export at run time.
+// Targets JVM 11 like the Kotlin code; through source/target rather than --release, which forbids --add-exports.
+tasks.withType<JavaCompile>().configureEach {
+    sourceCompatibility = "11"
+    targetCompatibility = "11"
+    options.compilerArgs.addAll(listOf("--add-exports", "java.desktop/com.apple.eawt.event=ALL-UNNAMED"))
+}

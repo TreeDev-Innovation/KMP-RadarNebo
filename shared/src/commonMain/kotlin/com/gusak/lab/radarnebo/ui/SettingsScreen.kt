@@ -144,15 +144,6 @@ fun SettingsScreen(
                 onCheckedChange = { v -> onChange { it.copy(dronesOnly = v) } },
             )
             SectionDivider()
-            SwitchSetting(
-                title = "Smart mapping",
-                description = "Place district alerts at their district, merge alerts raised together for one drone group and " +
-                    "keep tracks on a plausible course. Off: district alerts land anywhere in their oblast and alerts are " +
-                    "linked by distance alone.",
-                checked = settings.smartMapping,
-                onCheckedChange = { v -> onChange { it.copy(smartMapping = v) } },
-            )
-            SectionDivider()
             SliderSetting(
                 title = "Refresh interval",
                 description = "The server refreshes its data every 10–15 s; polling faster only uses more battery.",

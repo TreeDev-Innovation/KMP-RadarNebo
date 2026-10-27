@@ -74,27 +74,10 @@ class TrackingTest {
     }
 
     @Test
-    fun neighbouringAlertsRaisedTogetherAreOneReport() {
-        // Brovary and Boryspil raions alerted in the same minute: one group's warning zone, placed between them.
+    fun simultaneousAlertsStartSeparateTracks() {
         val tracker = DroneTracker()
         tracker.update(listOf(marker("brovary", 50.6, 31.0), marker("boryspil", 50.3, 31.0)), 0)
-        val track = tracker.snapshot().single()
-        assertEquals(1, track.samples.size)
-        assertEquals(50.45, track.samples.single().lat, 1e-9)
-        assertEquals(setOf("brovary", "boryspil"), track.markerIds.toSet())
-
-        // A third neighbour joining two minutes later widens the same report rather than moving the group.
-        tracker.update(listOf(marker("brovary", 50.6, 31.0), marker("boryspil", 50.3, 31.0), marker("obukhiv", 50.1, 30.6)), 2 * minute)
-        val widened = tracker.snapshot().single()
-        assertEquals(1, widened.samples.size)
-        assertEquals(3, widened.markerIds.size)
-    }
-
-    @Test
-    fun withoutSmartMappingEveryAlertIsItsOwnReport() {
-        val tracker = DroneTracker(smart = false)
-        tracker.update(listOf(marker("brovary", 50.6, 31.0), marker("boryspil", 50.3, 31.0)), 0)
-        assertEquals(2, tracker.snapshot().size, "the basic tracker keeps simultaneous alerts apart")
+        assertEquals(2, tracker.snapshot().size, "every alert is its own report")
     }
 
     @Test
@@ -102,28 +85,6 @@ class TrackingTest {
         val tracker = DroneTracker(maxHopKm = 120.0)
         tracker.update(listOf(marker("a", 50.5, 30.8), marker("far", 46.48, 30.72)), 0)
         assertEquals(2, tracker.snapshot().size, "Odesa is too far from Kyiv to be the same group")
-    }
-
-    @Test
-    fun aGroupDoesNotTurnBack() {
-        // Flying west for two hops; an alert back east is another group, even though it is within reach.
-        val tracker = DroneTracker()
-        tracker.update(listOf(marker("a", 50.45, 32.0)), 0)
-        tracker.update(listOf(marker("b", 50.45, 31.5)), 15 * minute)
-        tracker.update(listOf(marker("c", 50.45, 31.0)), 30 * minute)
-        tracker.update(listOf(marker("back", 50.45, 31.6)), 45 * minute)
-        val tracks = tracker.snapshot()
-        assertEquals(2, tracks.size)
-        assertEquals(3, tracks.maxOf { it.samples.size })
-    }
-
-    @Test
-    fun aLongStandingAlertDoesNotKeepATrackOpenForNewReports() {
-        // A frontline raion stays alerted for hours; an alert next to it two hours later is a new group.
-        val tracker = DroneTracker()
-        tracker.update(listOf(marker("front", 50.0, 36.2)), 0)
-        tracker.update(listOf(marker("front", 50.0, 36.2), marker("later", 50.2, 35.8)), 120 * minute)
-        assertEquals(2, tracker.snapshot().size)
     }
 
     @Test

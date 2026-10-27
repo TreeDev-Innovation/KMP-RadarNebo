@@ -106,10 +106,8 @@ class DependencyInjectionTest {
         assertTrue(k.get<FavoritesRepository>().favorites.value.isEmpty())
 
         val update2 = k.get<UpdateSettingsUseCase>()
-        assertEquals(SettingsUpdate(sourceChanged = false, trackingChanged = false), update2 { it.copy(proximityRadiusKm = 80) })
+        assertEquals(SettingsUpdate(sourceChanged = false), update2 { it.copy(proximityRadiusKm = 80) })
         assertEquals("80", storage.getString("proximity_radius_km"))
-        assertEquals(SettingsUpdate(sourceChanged = false, trackingChanged = true), update2 { it.copy(smartMapping = false) })
-        assertEquals("false", storage.getString("smart_mapping"))
         assertTrue(update2 { it.copy(accessKey = "key") }.sourceChanged, "a new access key changes the data source")
         assertTrue(update2 { it.copy(serverUrl = "https://radar.example") }.sourceChanged)
         assertEquals("https://radar.example", storage.getString("server_url"))

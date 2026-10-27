@@ -166,9 +166,6 @@ class AppViewModel(
             snapshot = null
             _state.update { it.copy(error = null, tracks = emptyList(), allTracks = emptyList(), clockOffsetMs = 0, simulated = false, serverHealth = null, lastUpdated = null, nextRetryAt = null) }
             startPolling()
-        } else if (update.trackingChanged) {
-            // Markers re-place at once from the settings; the other tracks come with a poll right away.
-            startPolling()
         }
     }
 
