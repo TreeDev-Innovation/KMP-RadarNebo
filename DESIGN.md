@@ -325,7 +325,7 @@ move to versioned migrations when the first column is renamed or dropped (deferr
 ### Deployment & operations
 
 Single JVM: `./gradlew :mission-control:ui:run` (with console) or `:mission-control:server:run` (headless).
-`SingleInstance` keeps one server per machine. Backup = copy the SQLite file. Rollback = previous Git tag. CI: n/a
+`SingleInstance` keeps one server per machine. Backup = copy the SQLite file. Rollback = redeploy a previous commit's image (deploy workflow, `image_tag` input). CI: n/a
 today — the repository has no CI workflow; adding one is milestone M1.
 
 ### Technology stack

@@ -12,10 +12,16 @@ on:
       - "gradle.properties"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:  # manual redeploy from the Actions tab (e.g. after rotating ALERTS_IN_UA_API_KEY or CLIENT_KEYS)
+    inputs:
+      image_tag:  # rollback: redeploys an image already on Docker Hub, skipping tests, build and scan
+        description: Deploy this existing image sha instead of building
+        type: string
+        required: false
   # Labelling a pull request `deploy` deploys its branch, and every push to it redeploys while the label stays.
   # Same paths as push: a pull request that doesn't touch the server never deploys.
+  # closed and unlabeled only run restore-main, which puts main back after a pull request deploy.
   pull_request:
-    types: [labeled, synchronize]
+    types: [labeled, synchronize, closed, unlabeled]
     paths:
       - "core/**"
       - "mission-control/server/**"
@@ -42,11 +48,14 @@ env:
 jobs:
   test:
     # Pull requests only with the `deploy` label, and only from this repository: forks get no secrets.
+    # A rollback (image_tag) deploys an image that was tested when it was built.
     if: >-
-      github.event_name != 'pull_request' || (
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        contains(github.event.pull_request.labels.*.name, 'deploy') &&
-        (github.event.action != 'labeled' || github.event.label.name == 'deploy'))
+      inputs.image_tag == '' && (
+        github.event_name != 'pull_request' || (
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          contains(github.event.pull_request.labels.*.name, 'deploy') &&
+          (github.event.action == 'synchronize' ||
+            (github.event.action == 'labeled' && github.event.label.name == 'deploy'))))
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -65,31 +74,49 @@ jobs:
 
   build-and-deploy:
     needs: test
+    # test is skipped only for a rollback; any other skip (a pull request it doesn't apply to) skips the deploy too.
+    if: >-
+      !cancelled() && (
+        needs.test.result == 'success' ||
+        (needs.test.result == 'skipped' && inputs.image_tag != ''))
     runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.image_tag || github.sha }}
     steps:
+      - name: Check image_tag
+        if: inputs.image_tag != ''
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{7,40}$ ]] || { echo "::error::image_tag must be a commit sha (7-40 hex chars)"; exit 1; }
       - id: checkout
         name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download the fat jar
+        if: inputs.image_tag == ''
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: server-jar
           path: mission-control/server/build/libs
       - name: Login to Docker Hub
+        if: inputs.image_tag == ''
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
       - id: setup-qemu
         name: Set up QEMU
+        if: inputs.image_tag == ''
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
       - id: setup-builder
         name: Set up Docker Buildx
+        if: inputs.image_tag == ''
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       # One multi-arch build, pushed under the sha only. Trivy then scans what was pushed for both architectures
       # (OCI's Always Free Ampere A1 VMs are arm64) before anything deploys or :latest moves.
       - id: build
         name: Build and push
+        if: inputs.image_tag == ''
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           platforms: linux/amd64,linux/arm64/v8
@@ -99,6 +126,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Scan arm64 image (Trivy)
+        if: inputs.image_tag == ''
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_PLATFORM: linux/arm64
@@ -110,6 +138,7 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
       - name: Scan amd64 image (Trivy)
+        if: inputs.image_tag == ''
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         env:
           TRIVY_PLATFORM: linux/amd64
@@ -122,7 +151,7 @@ jobs:
           exit-code: "1"
       # Only main moves :latest, and only to an image both scans passed.
       - name: Tag latest
-        if: github.ref == 'refs/heads/main'
+        if: inputs.image_tag == '' && github.ref == 'refs/heads/main'
         run: docker buildx imagetools create -t "${IMAGE}:latest" "${IMAGE}:${GITHUB_SHA}"
       - name: Copy compose file and Caddyfile to remote machine
         uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1
@@ -153,9 +182,36 @@ jobs:
           envs: ALERTS_API_TOKEN,CLIENT_KEYS,DOMAIN
           script: |
             set -e  # this ssh-action carries on after a failed command otherwise
-            export RADARNEBO_SERVER_IMAGE=${{ env.IMAGE }}:${{ github.sha }}
+            export RADARNEBO_SERVER_IMAGE=${{ env.IMAGE }}:${{ env.TAG }}
             cd $PWD/${{ env.APP_DIR }}
             docker pull $RADARNEBO_SERVER_IMAGE
+            # Compose reads .env from here, so a manual `docker compose ps/logs/up` on the VM works too.
+            # One line per value: none of them may contain a newline. rm first: umask applies only to a new file.
+            (rm -f .env; umask 077; printf 'RADARNEBO_SERVER_IMAGE=%s\nDOMAIN=%s\nALERTS_API_TOKEN=%s\nCLIENT_KEYS=%s\n' \
+              "$RADARNEBO_SERVER_IMAGE" "$DOMAIN" "$ALERTS_API_TOKEN" "$CLIENT_KEYS" > .env)
             # --wait fails the deploy if the container doesn't turn healthy (the start replays 2 h of history).
             docker compose up -d --wait --wait-timeout 180
-            docker system prune -f
+            # Only this app's unused images: the VM is shared, and the image in use is kept.
+            docker image prune -af --filter label=org.opencontainers.image.title=radarnebo-server
+      # From outside, through Caddy, TLS, DNS and the firewall, which the container healthcheck never touches.
+      - name: Check https://DOMAIN/health
+        run: curl -fsS --retry 12 --retry-delay 5 --retry-all-errors "https://${DOMAIN}/health" | jq -e '.status'
+
+  # A pull request deploy stays live until this puts main back: on losing the `deploy` label, or on closing unmerged
+  # (a merged one is deployed by the push to main).
+  restore-main:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository && (
+        (github.event.action == 'unlabeled' && github.event.label.name == 'deploy') ||
+        (github.event.action == 'closed' && !github.event.pull_request.merged &&
+          contains(github.event.pull_request.labels.*.name, 'deploy')))
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Redeploy main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh workflow run deploy.yml --ref main
