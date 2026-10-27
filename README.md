@@ -268,11 +268,12 @@ builds an image from `mission-control/server/Dockerfile`, scans it with Trivy (f
 SSH, and runs `docker compose up -d --wait`, so a container that doesn't turn healthy fails the deploy.
 
 Secrets it needs: `DOCKERHUB_USERNAME`, `DOCKERHUB_PASSWORD`, `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY`, `SSH_PORT`,
-`DOMAIN`, `ALERTS_API_TOKEN` (empty runs the simulation), `CLIENT_KEYS`, and `TELEGRAM_NOTIFY_CHAT` /
+`ALERTS_API_TOKEN` (empty runs the simulation), `CLIENT_KEYS`, and `TELEGRAM_NOTIFY_CHAT` /
 `TELEGRAM_NOTIFY_TOKEN` for the status messages.
 
 Caddy (`mission-control/server/Caddyfile`) sits in front of the server and is the only thing with published ports. On
-first start it gets a Let's Encrypt certificate for `DOMAIN` and renews it on its own; plain HTTP redirects to HTTPS.
+first start it gets a Let's Encrypt certificate for `DOMAIN` (`radar-nebo.worxbend.com`; a repository variable `DOMAIN`
+overrides it) and renews it on its own; plain HTTP redirects to HTTPS.
 `DOMAIN`'s DNS A record must point at the VM. The server isn't published, so it trusts Caddy's `X-Forwarded-For`
 (`TRUST_PROXY_HEADERS=true`) to rate-limit each client by its own IP. Apps use `https://<DOMAIN>` as the server URL.
 

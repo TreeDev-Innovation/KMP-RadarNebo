@@ -24,6 +24,8 @@ concurrency:
 env:
   IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/radarnebo-server
   APP_DIR: docker-deployments/apps/radarnebo/radarnebo-server
+  # Caddy gets and renews its Let's Encrypt certificate for it; a repository variable DOMAIN overrides it.
+  DOMAIN: ${{ vars.DOMAIN || 'radar-nebo.worxbend.com' }}
 
 jobs:
   test:
@@ -134,7 +136,6 @@ jobs:
           # Passed via envs:, never pasted into the script. Empty ALERTS_API_TOKEN runs the simulation.
           ALERTS_API_TOKEN: ${{ secrets.ALERTS_API_TOKEN }}
           CLIENT_KEYS: ${{ secrets.CLIENT_KEYS }}
-          DOMAIN: ${{ secrets.DOMAIN }}  # Caddy gets and renews its Let's Encrypt certificate for it
         uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -159,4 +160,4 @@ jobs:
             #notifications
             🚀 Deployed!
 
-            📡 radarnebo-server has been re-deployed with `${{ env.IMAGE }}:${{ github.sha }}` at https://${{ secrets.DOMAIN }}
+            📡 radarnebo-server has been re-deployed with `${{ env.IMAGE }}:${{ github.sha }}` at https://${{ env.DOMAIN }}
