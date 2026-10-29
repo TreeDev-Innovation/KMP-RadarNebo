@@ -17,7 +17,7 @@ interface AlertArchive {
      * Alerts for the location [uid] that were active at some point since [since], newest first. For an
      * oblast, also the alerts of its raions, hromadas and cities.
      */
-    suspend fun history(uid: String, since: Instant, limit: Int = 1_000): List<AirAlert>
+    suspend fun history(uid: String, since: Instant, limit: Int): List<AirAlert>
 
     /** Deletes alerts that finished before [before]; returns how many. */
     suspend fun prune(before: Instant): Int

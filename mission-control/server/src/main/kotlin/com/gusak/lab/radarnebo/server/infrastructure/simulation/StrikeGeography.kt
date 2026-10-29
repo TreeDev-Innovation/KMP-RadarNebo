@@ -151,7 +151,7 @@ internal object StrikeGeography {
     private const val COVERAGE_KM = 40.0
 
     /** Ukrainian radars cover the country up to the front line, but not Crimea. */
-    private val UNCOVERED_REGIONS = setOf(29, Regions.SEVASTOPOL_UID)
+    private val UNCOVERED_REGIONS = setOf(SimulatedLocations.CRIMEA_UID, Regions.SEVASTOPOL_UID)
 
     /** Whether air surveillance sees a low-flying target at [point]: over the mainland, or near a border settlement. */
     fun inCoverage(point: GeoPoint): Boolean {

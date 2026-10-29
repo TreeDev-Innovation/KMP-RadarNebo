@@ -3,9 +3,11 @@ package com.gusak.lab.radarnebo.server.api
 import com.gusak.lab.radarnebo.data.ActiveAlertsResponse
 import com.gusak.lab.radarnebo.data.RadarNeboApi
 import com.gusak.lab.radarnebo.data.ThreatType
+import com.gusak.lab.radarnebo.geo.Regions
 import com.gusak.lab.radarnebo.server.Archives
 import com.gusak.lab.radarnebo.server.ServerComponents
 import com.gusak.lab.radarnebo.server.config.ClientApiConfig
+import com.gusak.lab.radarnebo.server.config.DataSourceKind
 import com.gusak.lab.radarnebo.server.config.ServerConfig
 import com.gusak.lab.radarnebo.server.config.SimulationConfig
 import com.gusak.lab.radarnebo.server.infrastructure.simulation.SimulatedAlertsSource
@@ -15,7 +17,6 @@ import com.gusak.lab.radarnebo.tracking.TrackOutcome
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
 import io.ktor.server.testing.testApplication
-import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -39,7 +40,7 @@ class SimulatedServerTest {
         val trackTypes = mutableSetOf<ThreatType>()
         var mostTracks = 0
         repeat(6 * 60) {
-            runBlocking { server.poller.pollOnce() }
+            server.poller.pollOnce()
             val alerts = RadarNeboApi.json.decodeFromString(ActiveAlertsResponse.serializer(), client.get(RadarNeboApi.ACTIVE_ALERTS_PATH).bodyAsText())
             alerts.alerts.flatMap { it.threats }.mapTo(threatTypes) { ThreatType.from(it.threatType) }
             val tracks = RadarNeboApi.json.decodeFromString(DroneTracksResponse.serializer(), client.get(RadarNeboApi.TRACKS_PATH).bodyAsText())
@@ -58,11 +59,14 @@ class SimulatedServerTest {
         val outcomes = archive.tracks.filter { !it.active }.mapNotNull { it.outcome }.toSet()
         assertEquals(TrackOutcome.entries.toSet(), outcomes)
         // And so are finished alerts: Kyiv city is alerted during every strike.
-        val kyiv = RadarNeboApi.json.decodeFromString(ActiveAlertsResponse.serializer(), client.get("/v1/regions/31/alerts/day_ago.json").bodyAsText())
+        val kyiv = RadarNeboApi.json.decodeFromString(ActiveAlertsResponse.serializer(), client.get("/v1/regions/${Regions.KYIV_CITY_UID}/alerts/day_ago.json").bodyAsText())
         assertTrue(kyiv.alerts.any { it.finishedAt != null }, "Kyiv's finished alerts are archived")
 
-        val health = client.get("/health").bodyAsText()
-        assertTrue("\"simulated\":true" in health && "\"upstreamRequestsTotal\":0" in health && "\"source\":\"Simulation\"" in health, health)
+        val health = RadarNeboApi.json.decodeFromString(Health.serializer(), client.get("/health").bodyAsText())
+        assertTrue(health.simulated)
+        assertEquals(0, health.upstreamRequestsTotal)
+        assertEquals(DataSourceKind.Simulation.key, health.source)
+        assertEquals(null, health.upstreamBudgetPerMinute, "the simulation has no upstream budget")
 
         val page = client.get("/").bodyAsText()
         assertTrue("RadarNebo server" in page && "Simulation (not the real situation)" in page, "a status page for browsers")

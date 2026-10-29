@@ -15,12 +15,10 @@ internal class WarningProfile(
     val corridorKm: Double,
 ) {
     companion object {
-        private const val MIN = 60_000L
-
-        val Drone = WarningProfile(redRadiusKm = 22.0, redLeadMs = 8 * MIN, yellowLeadMs = 30 * MIN, corridorKm = 15.0)
-        val JetDrone = WarningProfile(redRadiusKm = 25.0, redLeadMs = 4 * MIN, yellowLeadMs = 10 * MIN, corridorKm = 20.0)
-        val ReconDrone = WarningProfile(redRadiusKm = 18.0, redLeadMs = 4 * MIN, yellowLeadMs = 0, corridorKm = 0.0)
-        val CruiseMissile = WarningProfile(redRadiusKm = 30.0, redLeadMs = 4 * MIN, yellowLeadMs = 12 * MIN, corridorKm = 25.0)
+        val Drone = WarningProfile(redRadiusKm = 22.0, redLeadMs = 8 * MINUTE_MS, yellowLeadMs = 30 * MINUTE_MS, corridorKm = 15.0)
+        val JetDrone = WarningProfile(redRadiusKm = 25.0, redLeadMs = 4 * MINUTE_MS, yellowLeadMs = 10 * MINUTE_MS, corridorKm = 20.0)
+        val ReconDrone = WarningProfile(redRadiusKm = 18.0, redLeadMs = 4 * MINUTE_MS, yellowLeadMs = 0, corridorKm = 0.0)
+        val CruiseMissile = WarningProfile(redRadiusKm = 30.0, redLeadMs = 4 * MINUTE_MS, yellowLeadMs = 12 * MINUTE_MS, corridorKm = 25.0)
 
         /** Ballistic missiles and guided bombs are alerted by region or target, not along the way. */
         val None = WarningProfile(redRadiusKm = 0.0, redLeadMs = 0, yellowLeadMs = 0, corridorKm = 0.0)
@@ -45,7 +43,7 @@ internal enum class Munition(
     val lossChance: Double,
     /** Where along its path (as a fraction) an interception happens. */
     val interceptWindow: ClosedFloatingPointRange<Double>,
-    /** Standard deviation of surveillance position errors, km. */
+    /** Largest surveillance position error, km. */
     val positionErrorKm: Double,
     val warning: WarningProfile,
     val message: String,

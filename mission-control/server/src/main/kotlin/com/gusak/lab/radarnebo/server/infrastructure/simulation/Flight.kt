@@ -6,11 +6,14 @@ import com.gusak.lab.radarnebo.geo.GeoMath
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import com.gusak.lab.radarnebo.tracking.TrackOutcome
 
+internal const val MINUTE_MS = 60_000L
+internal const val HOUR_MS = 3_600_000L
+
 /** A route flown at constant speed, starting at [departAt]. Positions between waypoints are linear. */
 internal class FlightPath(val waypoints: List<GeoPoint>, val speedKmh: Double, val departAt: Long) {
     init {
         require(waypoints.size >= 2) { "A path needs at least two waypoints" }
-        require(speedKmh > 0)
+        require(speedKmh > 0) { "Speed must be positive: $speedKmh" }
     }
 
     /** Distance from the first waypoint to each waypoint, km. */
@@ -18,24 +21,27 @@ internal class FlightPath(val waypoints: List<GeoPoint>, val speedKmh: Double, v
         .runningFold(0.0) { acc, d -> acc + d }.toDoubleArray()
 
     val lengthKm: Double get() = cumulativeKm.last()
-    val durationMs: Long = (lengthKm / speedKmh * 3_600_000).toLong().coerceAtLeast(1)
+    val durationMs: Long = (lengthKm / speedKmh * HOUR_MS).toLong().coerceAtLeast(1)
     val arriveAt: Long get() = departAt + durationMs
     val target: GeoPoint get() = waypoints.last()
 
     fun timeAtFraction(fraction: Double): Long = departAt + (durationMs * fraction.coerceIn(0.0, 1.0)).toLong()
 
-    fun positionAt(t: Long): GeoPoint = positionAtKm(((t - departAt).coerceIn(0, durationMs)) * speedKmh / 3_600_000)
+    fun positionAt(t: Long): GeoPoint = positionAtKm(kmAt(t))
 
     fun positionAtFraction(fraction: Double): GeoPoint = positionAtKm(lengthKm * fraction.coerceIn(0.0, 1.0))
 
     /** Points every [stepKm] along the path from [from] to [to] (times), both ends included. */
     fun pointsBetween(from: Long, to: Long, stepKm: Double): List<GeoPoint> {
-        val start = (from - departAt).coerceIn(0, durationMs) * speedKmh / 3_600_000
-        val end = (to - departAt).coerceIn(0, durationMs) * speedKmh / 3_600_000
+        val start = kmAt(from)
+        val end = kmAt(to)
         if (end <= start) return listOf(positionAtKm(start))
         val steps = ((end - start) / stepKm).toInt().coerceAtLeast(1)
         return (0..steps).map { positionAtKm(start + (end - start) * it / steps) }
     }
+
+    /** Distance flown by [t], km: none before departure, the whole path after arrival. */
+    private fun kmAt(t: Long): Double = (t - departAt).coerceIn(0, durationMs) * speedKmh / HOUR_MS
 
     private fun positionAtKm(km: Double): GeoPoint {
         val i = cumulativeKm.indexOfLast { it <= km }.coerceIn(0, waypoints.lastIndex - 1)
@@ -66,7 +72,7 @@ internal class Flight(
     val origin: String,
     /** The settlement or region it is aimed at. */
     val targetName: String,
-    val targetOblastUid: Int?,
+    val targetOblastUid: Int,
     val level: ThreatLevel = ThreatLevel.Red,
 ) {
     val departAt: Long get() = path.departAt
@@ -109,11 +115,4 @@ internal class AreaThreat(
 }
 
 /** What an attack consists of: the flights it launches and the regional threats around them. */
-internal class AttackPlan(val flights: List<Flight>, val areas: List<AreaThreat>) {
-    /** When the last flight or regional threat is over. */
-    val endsAt: Long = maxOf(flights.maxOfOrNull { it.endAt } ?: Long.MIN_VALUE, areas.maxOfOrNull { it.until } ?: Long.MIN_VALUE)
-
-    companion object {
-        val Empty = AttackPlan(emptyList(), emptyList())
-    }
-}
+internal class AttackPlan(val flights: List<Flight>, val areas: List<AreaThreat>)

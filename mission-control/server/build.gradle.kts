@@ -29,7 +29,7 @@ dependencies {
     implementation(libs.ktor.server.cio)
     implementation(libs.ktor.server.contentNegotiation)
     implementation(libs.ktor.server.rateLimit)
-    implementation(libs.ktor.server.callLogging)
+    implementation(libs.ktor.server.forwardedHeader)
     implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.auth)
     implementation(libs.ktor.server.statusPages)

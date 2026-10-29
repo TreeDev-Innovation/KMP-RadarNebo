@@ -7,8 +7,16 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
-/** Where the server's alerts come from. Clients never see this: they only talk to the server. */
-enum class DataSourceKind { AlertsInUa, Simulation }
+/**
+ * Where the server's alerts come from. Clients never see this: they only talk to the server.
+ *
+ * [key] is stored as the archive partition and served as `/health`'s `source`, so it must never change,
+ * even if an entry is renamed.
+ */
+enum class DataSourceKind(val key: String) {
+    AlertsInUa("AlertsInUa"),
+    Simulation("Simulation"),
+}
 
 /** Everything the server is configured with; built from the environment by [fromEnv]. */
 data class ServerConfig(
@@ -22,6 +30,11 @@ data class ServerConfig(
     /** Logs every alerts.in.ua request and response, body included, with the token masked. */
     val logHttp: Boolean = false,
 ) {
+    init {
+        // 0 asks for any free port, as the tests do.
+        require(port in 0..65_535) { "PORT must be between 0 and 65535" }
+    }
+
     val dataSource: DataSourceKind
         get() = dataSourceOverride ?: if (upstream.token.isNullOrBlank()) DataSourceKind.Simulation else DataSourceKind.AlertsInUa
 
@@ -29,29 +42,32 @@ data class ServerConfig(
         fun fromEnv(env: Map<String, String> = System.getenv()): ServerConfig {
             fun int(name: String) = env[name]?.trim()?.toIntOrNull()
             fun text(name: String) = env[name]?.trim()?.takeIf { it.isNotEmpty() }
+            // Unset or malformed values fall back to the data-class defaults, the only place defaults are written.
+            val defaults = ServerConfig()
             return ServerConfig(
-                port = int("PORT") ?: 8080,
+                port = int("PORT") ?: defaults.port,
                 upstream = UpstreamConfig(
                     token = text("ALERTS_API_TOKEN"),
-                    baseUrl = text("UPSTREAM_BASE_URL") ?: UpstreamConfig.DEFAULT_BASE_URL,
-                    maxPerMinute = int("UPSTREAM_MAX_PER_MINUTE") ?: UpstreamConfig.DEFAULT_PER_MINUTE,
-                    pollInterval = (int("POLL_INTERVAL_SECONDS") ?: 15).seconds,
+                    baseUrl = text("UPSTREAM_BASE_URL") ?: defaults.upstream.baseUrl,
+                    maxPerMinute = int("UPSTREAM_MAX_PER_MINUTE") ?: defaults.upstream.maxPerMinute,
+                    pollInterval = int("POLL_INTERVAL_SECONDS")?.seconds ?: defaults.upstream.pollInterval,
                 ),
                 simulation = SimulationConfig(
-                    seed = text("SIM_SEED")?.toLongOrNull() ?: SimulationConfig.DEFAULT_SEED,
-                    strikePeriod = (int("SIM_STRIKE_PERIOD_MINUTES") ?: 360).minutes,
-                    tick = (int("SIM_TICK_SECONDS") ?: 10).seconds,
-                    warmUp = (int("SIM_WARM_UP_MINUTES") ?: 120).minutes,
+                    seed = text("SIM_SEED")?.toLongOrNull() ?: defaults.simulation.seed,
+                    strikePeriod = int("SIM_STRIKE_PERIOD_MINUTES")?.minutes ?: defaults.simulation.strikePeriod,
+                    tick = int("SIM_TICK_SECONDS")?.seconds ?: defaults.simulation.tick,
+                    warmUp = int("SIM_WARM_UP_MINUTES")?.minutes ?: defaults.simulation.warmUp,
                 ),
                 archive = ArchiveConfig(
-                    jdbcUrl = text("ARCHIVE_JDBC_URL") ?: ArchiveConfig.DEFAULT_JDBC_URL,
-                    retention = (int("ARCHIVE_RETENTION_DAYS") ?: 45).days,
+                    jdbcUrl = text("ARCHIVE_JDBC_URL") ?: defaults.archive.jdbcUrl,
+                    retention = int("ARCHIVE_RETENTION_DAYS")?.days ?: defaults.archive.retention,
                 ),
                 clients = ClientApiConfig(
                     keys = (text("CLIENT_KEYS") ?: text("PROXY_CLIENT_KEYS")).orEmpty()
                         .split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
-                    requestsPerMinute = int("CLIENT_REQUESTS_PER_MINUTE") ?: 120,
-                    historyRequestsPerMinute = int("HISTORY_REQUESTS_PER_MINUTE") ?: 2,
+                    requestsPerMinute = int("CLIENT_REQUESTS_PER_MINUTE") ?: defaults.clients.requestsPerMinute,
+                    historyRequestsPerMinute = int("HISTORY_REQUESTS_PER_MINUTE") ?: defaults.clients.historyRequestsPerMinute,
+                    trustProxyHeaders = text("TRUST_PROXY_HEADERS").toBoolean(),
                 ),
                 dataSourceOverride = when (text("DATA_SOURCE")?.lowercase()) {
                     "simulation" -> DataSourceKind.Simulation
@@ -118,8 +134,17 @@ data class ArchiveConfig(
     val jdbcUrl: String = DEFAULT_JDBC_URL,
     val retention: Duration = 45.days,
 ) {
+    init {
+        // Pruning keeps only what finished within the retention, so zero or less would empty the archive.
+        require(retention.isPositive()) { "ARCHIVE_RETENTION_DAYS must be positive" }
+    }
+
+    /** True for ARCHIVE_JDBC_URL=memory: the archive is kept in memory, not in a database. */
+    val inMemory: Boolean get() = jdbcUrl == IN_MEMORY
+
     companion object {
         const val DEFAULT_JDBC_URL = "jdbc:sqlite:data/radarnebo-archive.db"
+        const val IN_MEMORY = "memory"
     }
 }
 
@@ -130,4 +155,15 @@ data class ClientApiConfig(
     val requestsPerMinute: Int = 120,
     /** alerts.in.ua allows 2 history requests per minute; the server keeps the same contract. */
     val historyRequestsPerMinute: Int = 2,
-)
+    /**
+     * Behind a reverse proxy (Caddy in the deployment), every call comes from the proxy, so the client's IP is
+     * taken from the last `X-Forwarded-For` entry, the one the proxy added. Only set it when the server can't be
+     * reached around the proxy: otherwise a client could pick its own IP and dodge the rate limits.
+     */
+    val trustProxyHeaders: Boolean = false,
+) {
+    init {
+        require(requestsPerMinute > 0) { "CLIENT_REQUESTS_PER_MINUTE must be positive" }
+        require(historyRequestsPerMinute > 0) { "HISTORY_REQUESTS_PER_MINUTE must be positive" }
+    }
+}

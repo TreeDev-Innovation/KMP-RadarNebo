@@ -55,8 +55,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import ch.qos.logback.classic.Level
 import com.gusak.lab.radarnebo.server.api.Health
 import com.gusak.lab.radarnebo.server.config.DataSourceKind
 import com.gusak.lab.radarnebo.ui.debug.TrafficInspector
@@ -64,8 +66,15 @@ import com.gusak.lab.radarnebo.ui.formatClock
 import com.gusak.lab.radarnebo.ui.radarColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import org.slf4j.LoggerFactory
 import java.awt.Desktop
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.net.URI
+
+private val log = LoggerFactory.getLogger("Console")
+
+private const val REFRESH_MS = 1_000L
 
 private enum class ConsoleTab(val label: String) { Requests("Requests"), Clients("Clients"), Logs("Logs") }
 
@@ -73,11 +82,16 @@ private enum class ConsoleTab(val label: String) { Requests("Requests"), Clients
 fun ConsoleScreen(server: ConsoleServer, logs: LogCapture) {
     val state by server.state.collectAsState()
     val running = state as? ServerState.Running
-    // The server's own report, refreshed every second while it runs.
+    // The server's own report, refreshed every second while it runs; not polled while it doesn't.
     val health by produceState<Health?>(null, running) {
+        // The state outlives a change of key, so the last report is cleared by hand once the server stops.
+        if (running == null) {
+            value = null
+            return@produceState
+        }
         while (true) {
             value = server.health()
-            delay(1_000)
+            delay(REFRESH_MS)
         }
     }
     var tab by rememberSaveable { mutableStateOf(ConsoleTab.Requests) }
@@ -126,6 +140,7 @@ fun ConsoleScreen(server: ConsoleServer, logs: LogCapture) {
 private fun TopBar(server: ConsoleServer, state: ServerState, clientView: ClientView, onClientViewChange: (ClientView) -> Unit) {
     val scope = rememberCoroutineScope()
     var port by rememberSaveable { mutableStateOf(server.defaultPort.toString()) }
+    val portNumber = port.toIntOrNull()?.takeIf { it in 1..65_535 }
     val stopped = state is ServerState.Stopped || state is ServerState.Failed
     val (color, label) = when (state) {
         is ServerState.Running -> radarColors.ok to "Running on port ${state.port}"
@@ -159,8 +174,8 @@ private fun TopBar(server: ConsoleServer, state: ServerState, clientView: Client
         )
         if (stopped) {
             Button(
-                onClick = { scope.launch { server.start(port.toIntOrNull() ?: server.defaultPort) } },
-                enabled = port.toIntOrNull() in 1..65_535,
+                onClick = { portNumber?.let { scope.launch { server.start(it) } } },
+                enabled = portNumber != null,
             ) { Text("Start server") }
         } else {
             Button(
@@ -178,16 +193,16 @@ private fun TopBar(server: ConsoleServer, state: ServerState, clientView: Client
 private fun DataSourceToggle(server: ConsoleServer, enabled: Boolean) {
     val scope = rememberCoroutineScope()
     val current by server.dataSource.collectAsState()
-    val options = listOf(DataSourceKind.AlertsInUa to "alerts.in.ua", DataSourceKind.Simulation to "Simulation")
+    val options = DataSourceKind.entries
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         SingleChoiceSegmentedButtonRow {
-            options.forEachIndexed { index, (kind, label) ->
+            options.forEachIndexed { index, kind ->
                 SegmentedButton(
                     selected = current == kind,
                     onClick = { scope.launch { server.switchDataSource(kind) } },
                     shape = SegmentedButtonDefaults.itemShape(index, options.size),
                     enabled = enabled && (kind != DataSourceKind.AlertsInUa || server.alertsInUaAvailable),
-                ) { Text(label) }
+                ) { Text(kind.label) }
             }
         }
         if (!server.alertsInUaAvailable) {
@@ -204,7 +219,7 @@ private fun Overview(server: ConsoleServer, state: ServerState, health: Health?)
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
             value = System.currentTimeMillis()
-            delay(1_000)
+            delay(REFRESH_MS)
         }
     }
     FlowRow(
@@ -218,12 +233,14 @@ private fun Overview(server: ConsoleServer, state: ServerState, health: Health?)
             } else {
                 Fact("Listening", "0.0.0.0:${running.port} (all interfaces)")
                 Link("http://localhost:${running.port}")
-                ConsoleServer.lanAddresses().forEach { Link("http://$it:${running.port}") }
+                // Looked up once per run rather than on every one-second recomposition.
+                val lan = remember(running.port) { lanAddresses() }
+                lan.forEach { Link("http://$it:${running.port}") }
                 Fact("Up for", duration(now - running.since))
             }
         }
         InfoCard("Data source") {
-            Fact("Source", if (dataSource == DataSourceKind.AlertsInUa) "alerts.in.ua" else "Simulation")
+            Fact("Source", dataSource.label)
             if (dataSource == DataSourceKind.AlertsInUa) Fact("Upstream", server.upstreamUrl)
             Fact("Client keys", if (server.clientKeys == 0) "none (open to everyone)" else "${server.clientKeys} configured")
             Fact("Archive", server.archive)
@@ -280,12 +297,35 @@ private fun Fact(label: String, value: String, color: Color = MaterialTheme.colo
 private fun Link(url: String) {
     Text(
         url,
-        Modifier.padding(start = 90.dp).clickable { runCatching { Desktop.getDesktop().browse(URI(url)) } },
+        Modifier.padding(start = 90.dp).clickable { browse(url) },
         fontSize = 13.sp,
         fontFamily = FontFamily.Monospace,
         color = MaterialTheme.colorScheme.primary,
     )
 }
+
+private fun browse(url: String) {
+    if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+        log.warn("Couldn't open {}: this desktop has no browser to open it with", url)
+        return
+    }
+    runCatching { Desktop.getDesktop().browse(URI(url)) }.onFailure { log.warn("Couldn't open {}", url, it) }
+}
+
+private val DataSourceKind.label: String
+    get() = when (this) {
+        DataSourceKind.AlertsInUa -> "alerts.in.ua"
+        DataSourceKind.Simulation -> "Simulation"
+    }
+
+/** Addresses other devices can use to reach this machine, IPv4 only. */
+private fun lanAddresses(): List<String> = runCatching {
+    NetworkInterface.getNetworkInterfaces().toList()
+        .filter { it.isUp && !it.isLoopback && !it.isVirtual }
+        .flatMap { it.inetAddresses.toList() }
+        .filterIsInstance<Inet4Address>()
+        .map { it.hostAddress }
+}.getOrDefault(emptyList())
 
 private fun duration(ms: Long): String {
     val s = ms / 1000
@@ -296,6 +336,19 @@ private fun duration(ms: Long): String {
     }
 }
 
+/** A fixed-width column of the clients table; the user agent follows them and takes the rest of the row. */
+private class ClientColumn(val title: String, val width: Dp, val value: (ClientInfo) -> String)
+
+private val clientColumns = listOf(
+    ClientColumn("Address", 160.dp) { it.address },
+    ClientColumn("Requests", 80.dp) { it.requests.toString() },
+    ClientColumn("Errors", 70.dp) { it.errors.toString() },
+    ClientColumn("Last seen", 90.dp) { formatClock(it.lastSeen) },
+    ClientColumn("Last request", 300.dp) { it.lastRequest },
+    ClientColumn("Status", 60.dp) { it.lastStatus?.toString() ?: "–" },
+    ClientColumn("Key", 50.dp) { if (it.usedKey) "yes" else "no" },
+)
+
 @Composable
 private fun ClientsTab(server: ConsoleServer) {
     val clients by server.clients.collectAsState()
@@ -305,9 +358,8 @@ private fun ClientsTab(server: ConsoleServer) {
             Text("${rows.size} clients since the console started", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
             TextButton(onClick = server::clearClients) { Text("Clear") }
         }
-        val header = listOf("Address" to 160.dp, "Requests" to 80.dp, "Errors" to 70.dp, "Last seen" to 90.dp, "Last request" to 300.dp, "Status" to 60.dp, "Key" to 50.dp)
         Row(Modifier.padding(horizontal = 16.dp)) {
-            header.forEach { (title, width) -> Text(title, Modifier.width(width), fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
+            clientColumns.forEach { column -> Text(column.title, Modifier.width(column.width), fontWeight = FontWeight.SemiBold, fontSize = 13.sp) }
             Text("User agent", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         }
         HorizontalDivider(Modifier.padding(top = 6.dp))
@@ -316,12 +368,8 @@ private fun ClientsTab(server: ConsoleServer) {
             LazyColumn(contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
                 items(rows, key = { it.address }) { client ->
                     Row(Modifier.padding(vertical = 4.dp)) {
-                        val cells = listOf(
-                            client.address, client.requests.toString(), client.errors.toString(), formatClock(client.lastSeen),
-                            client.lastRequest, client.lastStatus?.toString() ?: "–", if (client.usedKey) "yes" else "no",
-                        )
-                        cells.zip(header).forEach { (value, column) ->
-                            Text(value, Modifier.width(column.second), fontSize = 13.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        clientColumns.forEach { column ->
+                            Text(column.value(client), Modifier.width(column.width), fontSize = 13.sp, fontFamily = FontFamily.Monospace, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Text(client.userAgent ?: "–", fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -334,16 +382,17 @@ private fun ClientsTab(server: ConsoleServer) {
 @Composable
 private fun LogsTab(logs: LogCapture) {
     val lines by logs.lines.collectAsState()
-    var minLevel by rememberSaveable { mutableStateOf("INFO") }
+    var minLevel by rememberSaveable { mutableStateOf(Level.INFO.levelStr) }
     var follow by rememberSaveable { mutableStateOf(true) }
     var query by rememberSaveable { mutableStateOf("") }
-    val levels = listOf("DEBUG", "INFO", "WARN", "ERROR")
-    val shown = lines.filter { line ->
-        levels.indexOf(line.level).coerceAtLeast(0) >= levels.indexOf(minLevel) &&
-            (query.isBlank() || query.lowercase() in line.message.lowercase() || query.lowercase() in line.logger.lowercase())
+    val shown = remember(lines, minLevel, query) {
+        val min = Level.toLevel(minLevel)
+        val q = query.lowercase()
+        lines.filter { it.level.isGreaterOrEqual(min) && (q.isBlank() || q in it.message.lowercase() || q in it.logger.lowercase()) }
     }
     val listState = rememberLazyListState()
-    LaunchedEffect(shown.size, follow) {
+    // Keyed on the newest line, not the count: once the buffer is full the count stays the same as lines arrive.
+    LaunchedEffect(shown.lastOrNull()?.id, follow) {
         if (follow && shown.isNotEmpty()) listState.scrollToItem(shown.lastIndex)
     }
     Column(Modifier.fillMaxSize()) {
@@ -352,7 +401,9 @@ private fun LogsTab(logs: LogCapture) {
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            levels.drop(1).forEach { level -> FilterChip(minLevel == level, onClick = { minLevel = level }, label = { Text("$level+") }) }
+            listOf(Level.INFO, Level.WARN, Level.ERROR).forEach { level ->
+                FilterChip(minLevel == level.levelStr, onClick = { minLevel = level.levelStr }, label = { Text("${level.levelStr}+") })
+            }
             OutlinedTextField(query, onValueChange = { query = it }, placeholder = { Text("Search logs") }, singleLine = true, modifier = Modifier.weight(1f))
             FilterChip(follow, onClick = { follow = !follow }, label = { Text("Follow") })
             TextButton(onClick = logs::clear) { Text("Clear") }
@@ -362,13 +413,13 @@ private fun LogsTab(logs: LogCapture) {
             LazyColumn(state = listState, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)) {
                 items(shown, key = { it.id }) { line ->
                     val color = when (line.level) {
-                        "ERROR" -> radarColors.danger
-                        "WARN" -> radarColors.warning
+                        Level.ERROR -> radarColors.danger
+                        Level.WARN -> radarColors.warning
                         else -> MaterialTheme.colorScheme.onSurface
                     }
                     Row(Modifier.padding(vertical = 1.dp)) {
                         Text(formatClock(line.time), Modifier.width(72.dp), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(line.level, Modifier.width(52.dp), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = color, fontWeight = FontWeight.Bold)
+                        Text(line.level.levelStr, Modifier.width(52.dp), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = color, fontWeight = FontWeight.Bold)
                         Text(line.logger, Modifier.width(150.dp), fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(line.message, fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = color)
                     }

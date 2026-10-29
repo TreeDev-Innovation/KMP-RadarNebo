@@ -2,11 +2,13 @@ package com.gusak.lab.radarnebo.server.api
 
 import com.gusak.lab.radarnebo.server.application.SituationService
 import com.gusak.lab.radarnebo.server.contract.AlertsInUaContract
+import com.gusak.lab.radarnebo.server.domain.alert.AlertBoard
 import com.gusak.lab.radarnebo.server.domain.alert.IotVersion
 import io.ktor.http.ContentType
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.RoutingContext
 import io.ktor.server.routing.get
 import kotlinx.serialization.builtins.serializer
 import java.time.ZoneOffset
@@ -22,9 +24,7 @@ import kotlin.time.toKotlinInstant
  */
 internal fun Route.alertsInUaRoutes(situation: SituationService, clock: () -> Long) {
     /** Active alerts: `{"alerts": [...]}`, alerts.in.ua's body as it sent it, or the simulation's alerts in its format. */
-    get("/v1/alerts/active.json") {
-        val board = situation.board.orWarmingUp()
-        call.dataAge(board, clock())
+    boardGet("/v1/alerts/active.json", situation, clock) { board ->
         val body = situation.rawAlerts ?: AlertsInUaContract.encode(board.alerts, board.changedAt)
         call.respondText(body, ContentType.Application.Json)
     }
@@ -33,28 +33,46 @@ internal fun Route.alertsInUaRoutes(situation: SituationService, clock: () -> Lo
     IotVersion.entries.forEach { version ->
         val v = version.name.lowercase()
 
-        get("/$v/iot/active_air_raid_alerts_by_oblast.json") {
-            val board = situation.board.orWarmingUp()
-            call.dataAge(board, clock())
-            call.respondJsonString(situation.airRaidStatus().byOblast(version))
+        boardGet("/$v/iot/active_air_raid_alerts_by_oblast.json", situation, clock) { board ->
+            call.respondJsonString(situation.airRaidStatus(board).byOblast(version))
         }
 
         /** One character per location UID, at the UID's position; a space where no location has that UID. */
-        get("/$v/iot/active_air_raid_alerts.json") {
-            val board = situation.board.orWarmingUp()
-            call.dataAge(board, clock())
-            call.respondJsonString(situation.airRaidStatus().byUid(version))
+        boardGet("/$v/iot/active_air_raid_alerts.json", situation, clock) { board ->
+            call.respondJsonString(situation.airRaidStatus(board).byUid(version))
         }
 
         /** The status of one oblast, raion, hromada or city: `"A"`, `"P"` or `"N"` (v2: `"R"`, `"Y"`, `"P"`, `"N"`). */
         get("/$v/iot/active_air_raid_alerts/{file}") {
-            val uid = call.parameters["file"].orEmpty().removeJsonSuffix()
+            // The file name and UID are checked before the data, so a bad request is a 404 or 400 even while warming up.
+            val uid = call.parameters["file"].orEmpty().jsonFileStem()
             if (uid.toIntOrNull() == null) badRequest("Location UID must be a number")
-            val board = situation.board.orWarmingUp()
-            call.dataAge(board, clock())
-            call.respondJsonString(situation.airRaidStatus().location(uid).code(version).toString())
+            respondFromBoard(situation, clock) { board ->
+                call.respondJsonString(situation.airRaidStatus(board).location(uid).code(version).toString())
+            }
         }
     }
+}
+
+/** A GET of data derived from the current board; see [respondFromBoard]. */
+private fun Route.boardGet(
+    path: String,
+    situation: SituationService,
+    clock: () -> Long,
+    respond: suspend RoutingContext.(AlertBoard) -> Unit,
+) {
+    get(path) { respondFromBoard(situation, clock, respond) }
+}
+
+/** 503 while warming up, otherwise [respond] with the board, telling the client how old its data is. */
+private suspend fun RoutingContext.respondFromBoard(
+    situation: SituationService,
+    clock: () -> Long,
+    respond: suspend RoutingContext.(AlertBoard) -> Unit,
+) {
+    val board = situation.board.orWarmingUp()
+    call.dataAge(board, clock())
+    respond(board)
 }
 
 /**
@@ -65,9 +83,9 @@ internal fun Route.alertHistoryRoutes(situation: SituationService, clock: () -> 
     get("/v1/regions/{uid}/alerts/{file}") {
         val uid = call.parameters["uid"].orEmpty()
         if (uid.toIntOrNull() == null) badRequest("Location UID must be a number")
-        val period = HistoryPeriod.from(call.parameters["file"].orEmpty().removeJsonSuffix())
+        val period = HistoryPeriod.from(call.parameters["file"].orEmpty().jsonFileStem())
             ?: badRequest("Unknown period; use ${HistoryPeriod.entries.joinToString { it.apiValue }}")
-        situation.board.orWarmingUp()
+        situation.requireData()
         val alerts = situation.alertHistory(uid, period.since(Instant.fromEpochMilliseconds(clock())), HISTORY_LIMIT)
         call.respondText(AlertsInUaContract.encode(alerts), ContentType.Application.Json)
     }
@@ -91,7 +109,8 @@ internal enum class HistoryPeriod(val apiValue: String) {
 
 private const val HISTORY_LIMIT = 1_000
 
-private fun String.removeJsonSuffix(): String = if (endsWith(".json")) removeSuffix(".json") else notFound("Not found")
+/** The file name without `.json`; answers 404 when it doesn't end in `.json`. */
+private fun String.jsonFileStem(): String = if (endsWith(".json")) removeSuffix(".json") else notFound("Not found")
 
 /** The IoT endpoints answer with a bare JSON string. */
 private suspend fun ApplicationCall.respondJsonString(value: String) =

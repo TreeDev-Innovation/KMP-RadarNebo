@@ -19,7 +19,6 @@ internal class FlightFactory(private val random: Random) {
         departAt: Long,
         origin: LaunchSite?,
         target: String,
-        targetOblastUid: Int?,
         count: Int = 1,
         level: ThreatLevel = ThreatLevel.Red,
     ): Flight {
@@ -45,7 +44,7 @@ internal class FlightFactory(private val random: Random) {
             count = count,
             origin = origin?.originUk.orEmpty(),
             targetName = target,
-            targetOblastUid = targetOblastUid,
+            targetOblastUid = SimulatedLocations.settlement(target).city.oblastUid,
             level = level,
         )
     }
@@ -56,8 +55,12 @@ internal class FlightFactory(private val random: Random) {
      */
     fun droneRoute(from: GeoPoint, gate: GeoPoint, to: GeoPoint): List<GeoPoint> = listOf(from) + droneRoute(gate, to)
 
+    /** A drone route from [site], through the border gate nearest its way, to [target]. */
+    fun droneRouteFrom(site: LaunchSite, target: GeoPoint): List<GeoPoint> =
+        droneRoute(jitter(site.point, 15.0), gate(StrikeGeography.droneGates, site.point, target, 15.0), target)
+
     /** A drone route straight from [from] at [to], doglegging on the way. */
-    fun droneRoute(from: GeoPoint, to: GeoPoint): List<GeoPoint> {
+    private fun droneRoute(from: GeoPoint, to: GeoPoint): List<GeoPoint> {
         val totalKm = GeoMath.distanceKm(from, to)
         val doglegs = when {
             totalKm < 120 -> 0

@@ -25,6 +25,7 @@ enum class AlertType(val apiValue: String) {
     Nuclear("nuclear");
 
     companion object {
+        /** An alert type alerts.in.ua does not document is read as an air raid, so it still counts for the IoT statuses. */
         fun from(value: String?): AlertType = entries.firstOrNull { it.apiValue == value } ?: AirRaid
     }
 }
@@ -84,15 +85,8 @@ data class AirAlert(
 
     /** True when the alert is for the location [uid] or, if [uid] is a region, for any place in it. */
     fun concerns(uid: String): Boolean =
-        location.uid == uid || (isRegionUid(uid) && location.oblastUid?.toString() == uid)
+        location.uid == uid || (LocationDirectory.isRegionUid(uid) && location.oblastUid?.toString() == uid)
 
     /** True when the alert was active at some point at or after [since]. */
     fun activeSince(since: Instant): Boolean = finishedAt?.let { it >= since } ?: true
-
-    companion object {
-        /** Oblasts, Kyiv and Sevastopol: the UIDs whose history includes the places inside them. */
-        fun isRegionUid(uid: String): Boolean = uid.toIntOrNull()?.let { it in REGION_UIDS } == true
-
-        private val REGION_UIDS = 3..31
-    }
 }

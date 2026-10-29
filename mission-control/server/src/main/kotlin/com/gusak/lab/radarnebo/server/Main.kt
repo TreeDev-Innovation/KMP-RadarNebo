@@ -21,6 +21,7 @@ import com.gusak.lab.radarnebo.server.infrastructure.tracking.AlertDerivedTracki
 import com.gusak.lab.radarnebo.server.infrastructure.upstream.AlertsInUaSource
 import com.gusak.lab.radarnebo.server.infrastructure.upstream.UpstreamRateLimiter
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
 import kotlinx.coroutines.launch
@@ -39,14 +40,12 @@ fun main() {
 /** The archive, in [ArchiveDatabase] or, with `ARCHIVE_JDBC_URL=memory`, in memory. */
 class Archives(val alerts: AlertArchive, val tracks: TrackArchive) {
     companion object {
-        const val IN_MEMORY = "memory"
-
         fun inMemory() = Archives(InMemoryAlertArchive(), InMemoryTrackArchive())
 
         fun create(config: ServerConfig): Archives {
-            if (config.archive.jdbcUrl == IN_MEMORY) return inMemory()
+            if (config.archive.inMemory) return inMemory()
             val db = ArchiveDatabase(config.archive.jdbcUrl)
-            val partition = config.dataSource.name
+            val partition = config.dataSource.key
             return Archives(ExposedAlertArchive(db, partition), ExposedTrackArchive(db, partition))
         }
     }
@@ -60,9 +59,13 @@ class ServerComponents(
     val clock: () -> Long,
     /** Receives the server's HTTP traffic, both ways; the server console sets it. */
     val traffic: TrafficRecorder? = null,
-) {
-    /** The alerts.in.ua budget `/health` reports; null for the simulation. */
-    val upstreamBudgetPerMinute get() = config.upstream.effectivePerMinute.takeIf { config.dataSource == DataSourceKind.AlertsInUa }
+) : AutoCloseable {
+    /** The alerts.in.ua budget `/health` reports; null for the simulation. Follows the source actually in use. */
+    val upstreamBudgetPerMinute: Int?
+        get() = config.upstream.effectivePerMinute.takeIf { poller.source.kind == DataSourceKind.AlertsInUa }
+
+    /** Releases what the components hold, e.g. the alerts.in.ua HTTP client; safe to call more than once. */
+    override fun close() = poller.source.close()
 
     companion object {
         /**
@@ -74,8 +77,9 @@ class ServerComponents(
             clock: () -> Long = System::currentTimeMillis,
             traffic: TrafficRecorder? = null,
             upstreamLimiter: UpstreamRateLimiter = UpstreamRateLimiter(config.upstream.effectivePerMinute),
-            source: AlertsDataSource = defaultSource(config, clock, traffic, upstreamLimiter),
+            // Defaults are evaluated in order: the archive opens first, so a failure there can't leak the source's HttpClient.
             archives: Archives = Archives.create(config),
+            source: AlertsDataSource = defaultSource(config, clock, traffic, upstreamLimiter),
         ): ServerComponents {
             // A source with air surveillance gives real flight paths; otherwise tracks are inferred from alerts.
             val tracking = if (source.providesObservations) ObservationTracking() else AlertDerivedTracking(runId = (clock() / 1000).toString(36))
@@ -102,7 +106,10 @@ class ServerComponents(
     }
 }
 
-/** Wires the server. [startPoller] is false in tests that drive [SituationPoller.pollOnce] themselves. */
+/**
+ * Wires the server. [startPoller] is false in tests that drive [SituationPoller.pollOnce] themselves.
+ * Stopping the engine closes [components].
+ */
 fun Application.radarServer(components: ServerComponents, startPoller: Boolean = true) {
     val config = components.config
     radarApi(
@@ -113,5 +120,6 @@ fun Application.radarServer(components: ServerComponents, startPoller: Boolean =
         clock = components.clock,
         traffic = components.traffic,
     )
+    monitor.subscribe(ApplicationStopped) { components.close() }
     if (startPoller) launch { components.poller.run() }
 }

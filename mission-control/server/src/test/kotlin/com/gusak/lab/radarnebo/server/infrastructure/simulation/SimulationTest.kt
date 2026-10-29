@@ -8,6 +8,7 @@ import com.gusak.lab.radarnebo.geo.Regions
 import com.gusak.lab.radarnebo.server.application.SituationReport
 import com.gusak.lab.radarnebo.server.config.SimulationConfig
 import com.gusak.lab.radarnebo.server.contract.AlertsInUaContract.toDto
+import com.gusak.lab.radarnebo.server.domain.alert.AirAlert
 import com.gusak.lab.radarnebo.server.domain.tracking.ObservationTracking
 import com.gusak.lab.radarnebo.tracking.DroneTrack
 import com.gusak.lab.radarnebo.tracking.TargetClassifier
@@ -72,7 +73,7 @@ class SimulationTest {
         strike.flights.filter { it.munition.weaponClass != WeaponClass.GuidedBomb }.forEach { flight ->
             val launch = flight.path.waypoints.first()
             val launchOblast = Regions.oblastByPolygon(launch)
-            assertTrue(launchOblast == null || launchOblast in SimulatedLocations.OCCUPIED_REGIONS || launchOblast == 28, "${flight.id} launched over $launchOblast")
+            assertTrue(launchOblast == null || launchOblast in SimulatedLocations.OCCUPIED_REGIONS || launchOblast == SimulatedLocations.DONETSK_UID, "${flight.id} launched over $launchOblast")
             if (flight.munition.weaponClass == WeaponClass.BallisticMissile) {
                 assertEquals(flight.departAt, flight.detectedAt, "ballistic launches are seen at once")
             } else {
@@ -112,7 +113,7 @@ class SimulationTest {
             assertEquals(report.alerts.size, report.alerts.map { it.location.uid }.distinct().size, "one alert per location")
             report.alerts.forEach { alert ->
                 assertTrue(alert.isActive && alert.startedAt <= now)
-                assertTrue(alert.threats.all { it.startedAt >= alert.startedAt || alert.id < 100 }, "threats open within their alert")
+                assertTrue(alert.threats.all { it.startedAt >= alert.startedAt || alert.id < SimulatedLocations.FIRST_DYNAMIC_ALERT_ID }, "threats open within their alert")
                 val previous = seen.putIfAbsent(alert.id, alert.location.uid to alert.startedAt)
                 if (previous != null) assertEquals(previous, alert.location.uid to alert.startedAt, "an alert keeps its location and start")
                 if (alert.threats.isNotEmpty()) {
@@ -130,7 +131,7 @@ class SimulationTest {
     @Test
     fun everyAlertedSettlementIsLocatedByTheApp() {
         SimulatedLocations.settlements.forEach { settlement ->
-            val alert = AirAlertFixture.cityAlert(settlement)
+            val alert = AirAlert(id = 1, location = settlement.location, startedAt = Instant.fromEpochMilliseconds(0))
             val point = ThreatMapper.locate(alert.toDto())!!
             assertTrue(GeoMath.distanceKm(point, settlement.city.point) < 1.0, "${settlement.location.title} is located at ${settlement.city.name}")
         }
@@ -190,13 +191,13 @@ class SimulationTest {
             assertTrue(kab.path.durationMs in 2 * minute..10 * minute)
         }
     }
-}
 
-/** Builds the alert the simulation raises for a settlement. */
-internal object AirAlertFixture {
-    fun cityAlert(settlement: Settlement) = com.gusak.lab.radarnebo.server.domain.alert.AirAlert(
-        id = 1,
-        location = settlement.location,
-        startedAt = Instant.fromEpochMilliseconds(0),
-    )
+    /** Alert ids follow the order locations are demanded in, so that order must not depend on hash codes. */
+    @Test
+    fun demandsKeepTheOrderTheyAreMadeIn() {
+        val uids = Regions.oblasts.map { it.uid }.reversed()
+        val area = AreaThreat(ThreatType.BallisticMissiles, uids, from = 0, until = minute, message = "test")
+        val demanded = WarningSystem().demands(0, emptyList(), listOf(area)).keys.map { it.oblastUid }
+        assertEquals(uids, demanded)
+    }
 }

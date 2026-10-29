@@ -17,7 +17,7 @@ import io.ktor.server.request.httpMethod
 import io.ktor.server.request.uri
 import io.ktor.util.AttributeKey
 
-class TrafficCaptureConfig {
+internal class TrafficCaptureConfig {
     var recorder: TrafficRecorder = TrafficRecorder { }
 }
 
@@ -35,7 +35,7 @@ private object BeforeContentEncoding : Hook<suspend (ApplicationCall, Any) -> Un
 }
 
 /** Records each call the server answers, for the server console. Streamed bodies are recorded without their content. */
-val ServerTrafficCapture = createApplicationPlugin("ServerTrafficCapture", ::TrafficCaptureConfig) {
+internal val ServerTrafficCapture = createApplicationPlugin("ServerTrafficCapture", ::TrafficCaptureConfig) {
     val recorder = pluginConfig.recorder
     onCall { call -> call.attributes.put(StartedAt, System.currentTimeMillis()) }
     on(BeforeContentEncoding) { call, content ->

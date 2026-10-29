@@ -55,14 +55,12 @@ class ArchiveDatabase(jdbcUrl: String) {
     private val database: Database
 
     init {
-        if (jdbcUrl.startsWith(SQLITE_PREFIX)) {
-            jdbcUrl.removePrefix(SQLITE_PREFIX).substringBefore('?').takeIf { it.isNotBlank() && !it.startsWith(":") }
-                ?.let { File(it).absoluteFile.parentFile?.mkdirs() }
-        }
+        val isSqlite = jdbcUrl.startsWith(SQLITE_PREFIX)
+        sqliteFile(jdbcUrl)?.absoluteFile?.parentFile?.mkdirs()
         database = Database.connect(
             url = jdbcUrl,
             setupConnection = { connection ->
-                if (jdbcUrl.startsWith(SQLITE_PREFIX)) connection.createStatement().use { it.execute("PRAGMA journal_mode=WAL") }
+                if (isSqlite) connection.createStatement().use { it.execute("PRAGMA journal_mode=WAL") }
             },
             // SQLite supports only serializable transactions.
             databaseConfig = DatabaseConfig { defaultIsolationLevel = Connection.TRANSACTION_SERIALIZABLE },
@@ -74,5 +72,12 @@ class ArchiveDatabase(jdbcUrl: String) {
 
     private companion object {
         const val SQLITE_PREFIX = "jdbc:sqlite:"
+
+        /** The database file of a SQLite URL; null for other databases and in-memory (`:memory:`) URLs. */
+        fun sqliteFile(jdbcUrl: String): File? {
+            if (!jdbcUrl.startsWith(SQLITE_PREFIX)) return null
+            val path = jdbcUrl.removePrefix(SQLITE_PREFIX).substringBefore('?')
+            return path.takeIf { it.isNotBlank() && !it.startsWith(":") }?.let(::File)
+        }
     }
 }

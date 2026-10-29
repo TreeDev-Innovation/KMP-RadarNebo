@@ -29,7 +29,7 @@ import kotlin.time.Instant
  * alerts.in.ua, the only component that talks to it. Requests go through [limiter], so the upstream rate is
  * independent of how many clients are connected, and are conditional (`If-Modified-Since`), so an unchanged
  * feed costs a 304. Each fresh body is kept as received, for clients; alerts.in.ua reports alerts only, so
- * tracks are reconstructed from them.
+ * tracks are reconstructed from them. The source owns the [client] it is given and closes it.
  */
 class AlertsInUaSource(
     private val config: UpstreamConfig,
@@ -37,9 +37,8 @@ class AlertsInUaSource(
     private val limiter: UpstreamRateLimiter = UpstreamRateLimiter(config.effectivePerMinute),
     private val clock: () -> Long = System::currentTimeMillis,
 ) : AlertsDataSource {
-    init {
-        require(!config.token.isNullOrBlank()) { "alerts.in.ua needs ALERTS_API_TOKEN" }
-    }
+    private val log = LoggerFactory.getLogger(AlertsInUaSource::class.java)
+    private val token: String = requireNotNull(config.token?.takeIf { it.isNotBlank() }) { "alerts.in.ua needs ALERTS_API_TOKEN" }
 
     override val kind = DataSourceKind.AlertsInUa
     override val description get() = "${config.baseUrl} (max ${config.effectivePerMinute} req/min)"
@@ -57,7 +56,7 @@ class AlertsInUaSource(
         val intervalMs = pollInterval.inWholeMilliseconds
         return try {
             val response = client.get("${config.baseUrl.trimEnd('/')}$ACTIVE_ALERTS_PATH") {
-                header(HttpHeaders.Authorization, "Bearer ${config.token}")
+                header(HttpHeaders.Authorization, "Bearer $token")
                 lastModified?.let { header(HttpHeaders.IfModifiedSince, it) }
             }
             when (response.status) {
@@ -70,22 +69,29 @@ class AlertsInUaSource(
                 HttpStatusCode.NotModified -> FetchResult.NotModified
                 HttpStatusCode.TooManyRequests -> FetchResult.Failed(
                     "Upstream rate limit hit (429)",
-                    response.headers[HttpHeaders.RetryAfter]?.toLongOrNull()?.times(1000),
-                    minWaitMs = 60_000,
+                    minWaitMs = RATE_LIMITED_WAIT_MS,
+                    retryAfterMs = response.headers[HttpHeaders.RetryAfter]?.toLongOrNull()?.times(1000),
                 )
                 HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden ->
-                    FetchResult.Failed("Upstream rejected credentials or IP (${response.status.value})", null, minWaitMs = 5 * 60_000)
-                else -> FetchResult.Failed("Upstream returned ${response.status.value}", null, minWaitMs = intervalMs)
+                    FetchResult.Failed("Upstream rejected credentials or IP (${response.status.value})", minWaitMs = REJECTED_WAIT_MS)
+                else -> FetchResult.Failed("Upstream returned ${response.status.value}", minWaitMs = intervalMs)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            FetchResult.Failed("Upstream request failed: ${e.message}", null, minWaitMs = intervalMs)
+            log.debug("Upstream request failed", e)
+            FetchResult.Failed("Upstream request failed: ${e.message ?: e::class.simpleName}", minWaitMs = intervalMs)
         }
     }
 
+    override fun close() = client.close()
+
     companion object {
         const val ACTIVE_ALERTS_PATH = "/v1/alerts/active.json"
+        private const val RATE_LIMITED_WAIT_MS = 60_000L
+        private const val REJECTED_WAIT_MS = 5 * 60_000L
+        private const val REQUEST_TIMEOUT_MS = 15_000L
+        private const val CONNECT_TIMEOUT_MS = 10_000L
 
         /**
          * With [logHttp], each exchange is logged with its body under the `http.upstream` logger; [traffic] receives
@@ -94,8 +100,8 @@ class AlertsInUaSource(
         fun defaultClient(logHttp: Boolean = false, traffic: TrafficRecorder? = null) = HttpClient(CIO) {
             expectSuccess = false
             install(HttpTimeout) {
-                requestTimeoutMillis = 15_000
-                connectTimeoutMillis = 10_000
+                requestTimeoutMillis = REQUEST_TIMEOUT_MS
+                connectTimeoutMillis = CONNECT_TIMEOUT_MS
             }
             if (logHttp) {
                 val log = LoggerFactory.getLogger("http.upstream")

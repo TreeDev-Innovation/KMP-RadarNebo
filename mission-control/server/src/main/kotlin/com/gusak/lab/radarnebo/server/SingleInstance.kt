@@ -12,6 +12,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.PosixFilePermissions
+import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
@@ -47,6 +48,7 @@ class SingleInstance private constructor(
         private val log = LoggerFactory.getLogger(SingleInstance::class.java)
         private const val LOCK_FILE = "server.lock"
         private const val CONTROL_FILE = "server.control"
+        private const val CONTROL_READ_TIMEOUT_MS = 1_000
 
         val defaultDir get() = File(System.getProperty("user.home"), ".radarnebo")
 
@@ -61,22 +63,25 @@ class SingleInstance private constructor(
         fun acquire(dir: File = defaultDir, timeout: Duration = 15.seconds, onShutdownRequest: () -> Unit): SingleInstance {
             dir.mkdirs()
             val channel = FileChannel.open(dir.resolve(LOCK_FILE).toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE)
-            val controlFile = dir.resolve(CONTROL_FILE)
-            val started = TimeSource.Monotonic.markNow()
-            var asked = false
-            while (true) {
-                val lock = tryLock(channel)
-                if (lock != null) return hold(channel, lock, controlFile, onShutdownRequest)
-                if (!asked) {
-                    log.info("Another RadarNebo server is running; asking it to shut down")
-                    askToShutDown(controlFile)
-                    asked = true
+            // Whatever goes wrong from here closes the channel, which also releases a lock taken before the failure.
+            try {
+                val controlFile = dir.resolve(CONTROL_FILE)
+                val started = TimeSource.Monotonic.markNow()
+                var asked = false
+                while (true) {
+                    val lock = tryLock(channel)
+                    if (lock != null) return hold(channel, lock, controlFile, onShutdownRequest)
+                    if (!asked) {
+                        log.info("Another RadarNebo server is running; asking it to shut down")
+                        askToShutDown(controlFile)
+                        asked = true
+                    }
+                    if (started.elapsedNow() > timeout) error("Another RadarNebo server is running and didn't shut down within $timeout")
+                    Thread.sleep(100)
                 }
-                if (started.elapsedNow() > timeout) {
-                    channel.close()
-                    error("Another RadarNebo server is running and didn't shut down within $timeout")
-                }
-                Thread.sleep(100)
+            } catch (e: Throwable) {
+                runCatching { channel.close() }
+                throw e
             }
         }
 
@@ -89,13 +94,30 @@ class SingleInstance private constructor(
         private fun hold(channel: FileChannel, lock: FileLock, controlFile: File, onShutdownRequest: () -> Unit): SingleInstance {
             val token = UUID.randomUUID().toString()
             val control = ServerSocket(0, 4, InetAddress.getLoopbackAddress())
-            writePrivately(controlFile, "${control.localPort} $token")
+            try {
+                writePrivately(controlFile, "${control.localPort} $token")
+            } catch (e: Exception) {
+                runCatching { control.close() }
+                throw e
+            }
             val requested = AtomicBoolean(false)
+            // Exactly what askToShutDown sends.
+            val expected = "$token\n".encodeToByteArray()
             thread(isDaemon = true, name = "single-instance") {
                 while (!control.isClosed) {
                     val accepted = runCatching { control.accept() }.getOrNull() ?: continue
-                    val line = accepted.use { socket -> runCatching { socket.getInputStream().bufferedReader().readLine() }.getOrNull() }
-                    if (line == token && requested.compareAndSet(false, true)) {
+                    val received = accepted.use { socket ->
+                        // A local peer must not block the listener: the read is bounded in size (the expected message)
+                        // and each read in time, whatever the peer sends or doesn't.
+                        runCatching {
+                            socket.soTimeout = CONTROL_READ_TIMEOUT_MS
+                            socket.getInputStream().readNBytes(expected.size)
+                        }.getOrNull()
+                    }
+                    // Constant-time, so a local peer can't learn the token from how long a guess takes to reject.
+                    if (received != null && MessageDigest.isEqual(received, expected) &&
+                        requested.compareAndSet(false, true)
+                    ) {
                         log.info("A newer RadarNebo server asked this one to shut down")
                         onShutdownRequest()
                     }
@@ -109,7 +131,7 @@ class SingleInstance private constructor(
                 ?.takeIf { it.size == 2 } ?: return
             runCatching {
                 Socket(InetAddress.getLoopbackAddress(), port.toInt()).use { socket ->
-                    socket.getOutputStream().write("$token\n".toByteArray())
+                    socket.getOutputStream().write("$token\n".encodeToByteArray())
                 }
             }.onFailure { log.warn("Couldn't reach the running server to ask it to shut down: {}", it.message) }
         }

@@ -14,30 +14,18 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.cio.CIOApplicationEngine
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
-import java.net.Inet4Address
-import java.net.NetworkInterface
-
-/** A client seen since the console started, from the requests it made. */
-data class ClientInfo(
-    val address: String,
-    val requests: Int,
-    val errors: Int,
-    val firstSeen: Long,
-    val lastSeen: Long,
-    val lastRequest: String,
-    val lastStatus: Int?,
-    val userAgent: String?,
-    val usedKey: Boolean,
-)
 
 sealed interface ServerState {
     data object Stopped : ServerState
@@ -51,7 +39,7 @@ sealed interface ServerState {
  * Runs the RadarNebo server inside the console, configured like `:mission-control:server:run` (environment and mission-control/server/.env),
  * and keeps what the console shows: traffic both ways, clients and the server's state.
  */
-class ConsoleServer(private val baseConfig: ServerConfig = ServerConfig.fromEnv()) {
+class ConsoleServer(private val baseConfig: ServerConfig) {
     private val log = LoggerFactory.getLogger("Console")
     private val lock = Mutex()
     private var engine: EmbeddedServer<CIOApplicationEngine, CIOApplicationEngine.Configuration>? = null
@@ -79,7 +67,6 @@ class ConsoleServer(private val baseConfig: ServerConfig = ServerConfig.fromEnv(
     val alertsInUaAvailable get() = !baseConfig.upstream.token.isNullOrBlank()
 
     val defaultPort get() = baseConfig.port
-    val upstreamBudgetPerMinute get() = baseConfig.upstream.effectivePerMinute
     val upstreamUrl get() = baseConfig.upstream.baseUrl
     val archive get() = baseConfig.archive.jdbcUrl
     val clientKeys get() = baseConfig.clients.keys.size
@@ -95,8 +82,26 @@ class ConsoleServer(private val baseConfig: ServerConfig = ServerConfig.fromEnv(
     /** The server's own report, as `/health` would give it; null while stopped. */
     fun health(): Health? = components?.let { health(it.situation, it.poller, it.upstreamBudgetPerMinute) }
 
-    suspend fun start(port: Int) = lock.withLock {
-        if (engine != null) return@withLock
+    suspend fun start(port: Int) = lock.withLock { startLocked(port) }
+
+    suspend fun stop() = lock.withLock { stopLocked() }
+
+    /** Serves alerts from [kind] from now on; a running server restarts on the same port to switch. */
+    suspend fun switchDataSource(kind: DataSourceKind) = lock.withLock {
+        if (kind == _dataSource.value || (kind == DataSourceKind.AlertsInUa && !alertsInUaAvailable)) return@withLock
+        _dataSource.value = kind
+        log.info("Data source set to {}", kind)
+        // Under one lock, so no start or stop can slip in between and leave the server on the old source.
+        val running = _state.value as? ServerState.Running ?: return@withLock
+        stopLocked()
+        startLocked(running.port)
+    }
+
+    fun clearClients() = _clients.update { emptyMap() }
+
+    /** Only while [lock] is held. */
+    private suspend fun startLocked(port: Int) {
+        if (engine != null) return
         _state.value = ServerState.Starting
         val config = baseConfig.copy(port = port, dataSourceOverride = _dataSource.value)
         try {
@@ -108,69 +113,47 @@ class ConsoleServer(private val baseConfig: ServerConfig = ServerConfig.fromEnv(
             try {
                 server.start(wait = false)
             } catch (e: Throwable) {
+                // Nothing else holds these yet, so a failed start (a taken port) would leak the archive and poller.
                 server.stop(0, 0)
+                built.close()
                 throw e
             }
             engine = server
             components = built
             log.info("Server started on port {} ({})", port, config.dataSource)
             _state.value = ServerState.Running(port, System.currentTimeMillis())
-        } catch (e: Throwable) {
-            log.error("Server failed to start on port $port", e)
+        } catch (e: Exception) {
+            // CIO reports a taken port by cancelling its own job, so only our own cancellation propagates.
+            if (e is CancellationException && !currentCoroutineContext().isActive) {
+                _state.value = ServerState.Stopped
+                throw e
+            }
+            log.error("Server failed to start on port {}", port, e)
             _state.value = ServerState.Failed(e.message ?: e::class.simpleName ?: "error")
         }
     }
 
-    suspend fun stop() = lock.withLock {
-        val server = engine ?: return@withLock
+    /** Only while [lock] is held. Whatever happens while stopping, the console ends up stopped and can start again. */
+    private suspend fun stopLocked() {
+        val server = engine ?: return
         _state.value = ServerState.Stopping
-        withContext(Dispatchers.IO) { server.stop(gracePeriodMillis = 500, timeoutMillis = 3_000) }
-        engine = null
-        components = null
+        try {
+            withContext(Dispatchers.IO) { server.stop(gracePeriodMillis = 500, timeoutMillis = 3_000) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.warn("Server didn't stop cleanly", e)
+        } finally {
+            engine = null
+            components?.close()
+            components = null
+            _state.value = ServerState.Stopped
+        }
         log.info("Server stopped")
-        _state.value = ServerState.Stopped
     }
-
-    /** Serves alerts from [kind] from now on; a running server restarts on the same port to switch. */
-    suspend fun switchDataSource(kind: DataSourceKind) {
-        if (kind == _dataSource.value || (kind == DataSourceKind.AlertsInUa && !alertsInUaAvailable)) return
-        _dataSource.value = kind
-        log.info("Data source set to {}", kind)
-        val running = _state.value as? ServerState.Running ?: return
-        stop()
-        start(running.port)
-    }
-
-    fun clearClients() = _clients.update { emptyMap() }
 
     private fun noteClient(exchange: HttpExchange) {
         val address = exchange.remoteAddress ?: return
-        val failed = exchange.status == null || exchange.status!! >= 400
-        val usedKey = exchange.requestHeaders.any { it.first.equals("Authorization", ignoreCase = true) } || "token=" in exchange.url
-        _clients.update { all ->
-            val old = all[address]
-            all + (address to ClientInfo(
-                address = address,
-                requests = (old?.requests ?: 0) + 1,
-                errors = (old?.errors ?: 0) + if (failed) 1 else 0,
-                firstSeen = old?.firstSeen ?: exchange.startedAt,
-                lastSeen = exchange.startedAt,
-                lastRequest = "${exchange.method} ${exchange.path}",
-                lastStatus = exchange.status,
-                userAgent = exchange.userAgent ?: old?.userAgent,
-                usedKey = usedKey || old?.usedKey == true,
-            ))
-        }
-    }
-
-    companion object {
-        /** Addresses other devices can use to reach this machine, IPv4 only. */
-        fun lanAddresses(): List<String> = runCatching {
-            NetworkInterface.getNetworkInterfaces().toList()
-                .filter { it.isUp && !it.isLoopback && !it.isVirtual }
-                .flatMap { it.inetAddresses.toList() }
-                .filterIsInstance<Inet4Address>()
-                .map { it.hostAddress }
-        }.getOrDefault(emptyList())
+        _clients.update { it + (address to it[address].after(exchange, address)) }
     }
 }

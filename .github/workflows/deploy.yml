@@ -1,0 +1,147 @@
+name: Deploy server to OCI
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "core/**"
+      - "mission-control/server/**"
+      - "buildSrc/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:  # manual redeploy from the Actions tab (e.g. after rotating ALERTS_IN_UA_API_KEY or CLIENT_KEYS)
+  # Labelling a pull request `deploy` deploys its branch, and every push to it redeploys while the label stays.
+  # Same paths as push: a pull request that doesn't touch the server never deploys.
+  pull_request:
+    types: [labeled, synchronize]
+    paths:
+      - "core/**"
+      - "mission-control/server/**"
+      - "buildSrc/**"
+      - "gradle/**"
+      - "*.gradle.kts"
+      - "gradle.properties"
+      - ".github/workflows/deploy.yml"
+
+permissions:
+  contents: read
+
+# Two pushes in a row deploy one after the other, never side by side.
+concurrency:
+  group: deploy-oci
+  cancel-in-progress: false
+
+env:
+  IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/radarnebo-server
+  APP_DIR: docker-deployments/apps/radarnebo/radarnebo-server
+  # Caddy gets and renews its Let's Encrypt certificate for it; a repository variable DOMAIN overrides it.
+  DOMAIN: ${{ vars.DOMAIN || 'radar-nebo.worxbend.com' }}
+
+jobs:
+  test:
+    # Pull requests only with the `deploy` label, and only from this repository: forks get no secrets.
+    if: >-
+      github.event_name != 'pull_request' || (
+        github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(github.event.pull_request.labels.*.name, 'deploy') &&
+        (github.event.action != 'labeled' || github.event.label.name == 'deploy'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - name: Test and build the fat jar
+        run: ./gradlew :core:jvmTest :mission-control:server:test :mission-control:server:buildFatJar
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: server-jar
+          path: mission-control/server/build/libs/server-all.jar
+          retention-days: 7
+
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - id: checkout
+        name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Download the fat jar
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: server-jar
+          path: mission-control/server/build/libs
+      - name: Login to Docker Hub
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+      - id: setup-qemu
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - id: setup-builder
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build image for scanning
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          platforms: linux/amd64
+          context: mission-control/server
+          load: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan image (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      # arm64 too: OCI's Always Free Ampere A1 VMs are arm64.
+      - id: build
+        name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          platforms: linux/amd64,linux/arm64/v8
+          context: mission-control/server
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+      - name: Copy compose file and Caddyfile to remote machine
+        uses: appleboy/scp-action@ff85246acaad7bdce478db94a363cd2bf7c90345 # v1
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: mission-control/server/docker-compose.yaml,mission-control/server/Caddyfile
+          target: ${{ env.APP_DIR }}
+          strip_components: 2
+      - id: deploy
+        name: Connect to remote machine and deploy
+        env:
+          # Passed via envs:, never pasted into the script. Empty ALERTS_API_TOKEN runs the simulation.
+          ALERTS_API_TOKEN: ${{ secrets.ALERTS_IN_UA_API_KEY }}
+          CLIENT_KEYS: ${{ secrets.CLIENT_KEYS }}
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: ALERTS_API_TOKEN,CLIENT_KEYS,DOMAIN
+          script: |
+            set -e  # this ssh-action carries on after a failed command otherwise
+            export RADARNEBO_SERVER_IMAGE=${{ env.IMAGE }}:${{ github.sha }}
+            cd $PWD/${{ env.APP_DIR }}
+            docker pull $RADARNEBO_SERVER_IMAGE
+            # --wait fails the deploy if the container doesn't turn healthy (the start replays 2 h of history).
+            docker compose up -d --wait --wait-timeout 180
+            docker system prune -f

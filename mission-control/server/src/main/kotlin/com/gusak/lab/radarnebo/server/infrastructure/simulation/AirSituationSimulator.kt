@@ -1,9 +1,11 @@
 package com.gusak.lab.radarnebo.server.infrastructure.simulation
 
+import com.gusak.lab.radarnebo.domain.ThreatMapper
 import com.gusak.lab.radarnebo.geo.GeoMath
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import com.gusak.lab.radarnebo.server.application.SituationReport
 import com.gusak.lab.radarnebo.server.config.SimulationConfig
+import com.gusak.lab.radarnebo.server.domain.alert.AlertLocation
 import com.gusak.lab.radarnebo.server.domain.tracking.TargetObservation
 import kotlin.math.abs
 import kotlin.random.Random
@@ -16,11 +18,11 @@ import kotlin.random.Random
  * Attacks are planned per time slot from the seed, so they are the same across restarts. The alert
  * registry is stateful, so [reportAt] must be called with times that never go back.
  */
-internal class AirSituationSimulator(private val config: SimulationConfig, firstAlertId: Long) {
+internal class AirSituationSimulator(config: SimulationConfig, firstAlertId: Long) {
     private val strikes = CombinedStrikePlanner(config.seed)
     private val frontline = FrontlinePlanner(config.seed)
     private val warning = WarningSystem()
-    private val registry = AlertRegistry(maxOf(firstAlertId, FIRST_DYNAMIC_ALERT_ID))
+    private val registry = AlertRegistry(maxOf(firstAlertId, SimulatedLocations.FIRST_DYNAMIC_ALERT_ID))
     private val strikePeriodMs = config.strikePeriod.inWholeMilliseconds
 
     private val strikePlans = HashMap<Long, AttackPlan>()
@@ -37,20 +39,23 @@ internal class AirSituationSimulator(private val config: SimulationConfig, first
         val demands = warning.demands(t, flights, areas)
         val alerts = registry.update(demands, t) + SimulatedLocations.permanentAlerts
 
-        // The alerts each target is in right now, so clients draw the target instead of those alerts' markers.
-        val markerIds = HashMap<String, MutableList<String>>()
-        demands.forEach { (location, locationDemands) ->
-            val alertId = registry.alertId(location.uid) ?: return@forEach
-            locationDemands.forEach { demand ->
-                demand.targetId?.let { markerIds.getOrPut(it) { mutableListOf() } += "$alertId:${demand.type.apiValue}" }
-            }
-        }
-        val observations = flights.mapNotNull { observe(it, t, markerIds[it.id].orEmpty().distinct()) }
+        val markerIds = markerIdsByTarget(demands)
+        val observations = flights.mapNotNull { observe(it, t, markerIds[it.id].orEmpty()) }
         return SituationReport(t, alerts, observations)
     }
 
     /** Every location the simulation alerts. */
     val locations get() = SimulatedLocations.all
+
+    /**
+     * The markers of the alerts each target is in right now, by target id, so clients draw the target instead
+     * of those alerts' markers.
+     */
+    private fun markerIdsByTarget(demands: Map<AlertLocation, List<ThreatDemand>>): Map<String, List<String>> =
+        demands.flatMap { (location, locationDemands) ->
+            val alertId = registry.alertId(location.uid) ?: return@flatMap emptyList<Pair<String, String>>()
+            locationDemands.mapNotNull { demand -> demand.targetId?.let { it to ThreatMapper.markerId(alertId, demand.type.apiValue) } }
+        }.groupBy({ it.first }, { it.second }).mapValues { it.value.distinct() }
 
     /** The current and recent strikes and front-line slots, planned once and kept while they matter. */
     private fun plansAround(t: Long): List<AttackPlan> {
@@ -96,13 +101,11 @@ internal class AirSituationSimulator(private val config: SimulationConfig, first
     }
 
     private companion object {
-        /** Below are the standing alerts' ids. */
-        const val FIRST_DYNAMIC_ALERT_ID = 1_000L
         /** Longer than any strike lasts, from its first launch to its last drone coming down. */
-        const val MAX_STRIKE_SPAN_MS = 10 * 3_600_000L
+        const val MAX_STRIKE_SPAN_MS = 10 * HOUR_MS
         /** Longer than any front-line flight (drones from the nearest launch sites, up to 600 km). */
-        const val MAX_FRONTLINE_SPAN_MS = 5 * 3_600_000L
+        const val MAX_FRONTLINE_SPAN_MS = 5 * HOUR_MS
         /** How long after a flight ends its last sighting is still reported. */
-        const val TERMINAL_REPORT_MS = 5 * 60_000L
+        const val TERMINAL_REPORT_MS = 5 * MINUTE_MS
     }
 }

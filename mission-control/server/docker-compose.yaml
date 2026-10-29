@@ -1,0 +1,37 @@
+services:
+  caddy:
+    image: docker.io/caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - radarnebo-server
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN}
+    ports:                     # no port 80: it belongs to another service on the VM, and HTTPS doesn't need it
+      - "443:443"
+      - "443:443/udp"          # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data       # certificates: keep them, or Let's Encrypt's rate limits bite on redeploys
+      - caddy-config:/config
+
+  radarnebo-server:
+    image: ${RADARNEBO_SERVER_IMAGE:?set RADARNEBO_SERVER_IMAGE}
+    restart: unless-stopped
+    read_only: true            # only /data (and /tmp) need to be writable
+    tmpfs:
+      - /tmp:exec              # sqlite-jdbc extracts and loads its native library from /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      - ALERTS_API_TOKEN       # empty runs the simulation
+      - CLIENT_KEYS
+      - TRUST_PROXY_HEADERS=true   # safe only because no port is published: every call comes through Caddy
+    volumes:
+      - radarnebo-data:/data
+
+volumes:
+  radarnebo-data:
+  caddy-data:
+  caddy-config:

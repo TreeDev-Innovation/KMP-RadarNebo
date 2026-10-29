@@ -311,15 +311,15 @@ move to versioned migrations when the first column is renamed or dropped (deferr
 
 | Trust boundary | STRIDE concern | Mitigation |
 |---|---|---|
-| Client → server | Spoofing (no key), DoS | Bearer keys when exposed; rate limits; gzip and 304s |
+| Client → server | Spoofing (no key), DoS | Bearer keys when exposed; per-IP rate limits, applied before the key check; gzip and 304s |
 | Server → alerts.in.ua | Information disclosure (token in logs) | Token masked when `LOG_HTTP=true` |
-| Server on LAN (`0.0.0.0`) | Tampering/eavesdropping over plain HTTP | Acceptable on a LAN; put a TLS reverse proxy in front before any public exposure (Q1) |
+| Server on LAN (`0.0.0.0`) | Tampering/eavesdropping over plain HTTP | Acceptable on a LAN; put a TLS reverse proxy in front before any public exposure (Q1). Behind it every client shares the proxy's IP, so the per-IP limits (120/min, history 2/min) become global: raise `CLIENT_REQUESTS_PER_MINUTE` / `HISTORY_REQUESTS_PER_MINUTE` or rate-limit at the proxy. Forwarded headers are deliberately not trusted. |
 | Console's own client | Elevation via a stored key | Key copied from server config in memory, saved to the user's home only |
 
 ### Observability & reliability
 
-- SLI: freshness (`/health` data age); SLO: data age ≤ 60 s for 99 % of minutes while upstream is healthy.
-- Logs: logback, captured into the console's Logs tab. Traffic: `TrafficLog` (500 exchanges) in the console.
+- SLI: freshness, `now - dataConfirmedAt` from `/health` (the board routes send it as `X-Data-Age-Seconds`); SLO: data age ≤ 60 s for 99 % of minutes while upstream is healthy.
+- Logs: logback, captured into the console's Logs tab. Traffic: `TrafficLog` (500 exchanges) in the console. There is no per-request access log: the full URI can carry `?token=`, and request traffic is already in `TrafficLog`; errors log the path only.
 - Degradation: on upstream failure, serve last known state and expose the error in `/health`; clients show it.
 
 ### Deployment & operations

@@ -1,0 +1,3 @@
+# Only the prebuilt jar goes into the image; this keeps .env and sources out of the build context.
+*
+!build/libs/server-all.jar

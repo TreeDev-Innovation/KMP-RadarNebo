@@ -1,0 +1,16 @@
+# Caddy gets a Let's Encrypt certificate for {$DOMAIN} on first start and renews it on its own. It proves the
+# domain over port 443 (TLS-ALPN-01), so port 80 can stay with another service on the VM. Certificates live in the
+# caddy-data volume.
+{
+  admin off
+}
+
+{$DOMAIN} {
+  tls {
+    issuer acme {
+      disable_http_challenge
+    }
+  }
+  # The server compresses its own responses.
+  reverse_proxy radarnebo-server:8080
+}

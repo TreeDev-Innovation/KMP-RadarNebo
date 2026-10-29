@@ -3,6 +3,7 @@ package com.gusak.lab.radarnebo.server.application
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import org.slf4j.LoggerFactory
 import kotlin.time.Duration
@@ -58,8 +59,9 @@ class SituationPoller(
     /** Performs one fetch and returns how long to wait before the next one. */
     suspend fun pollOnce(): Long {
         if (!primed) {
-            prime()
+            // History is best effort and attempted once, so a failed replay can't stop live fetches.
             primed = true
+            prime()
         }
         val result = source.fetch(lastModified)
         val now = clock()
@@ -85,6 +87,8 @@ class SituationPoller(
         val started = clock()
         var replayed = 0
         source.history(started).forEach { report ->
+            // A long replay suspends only if the mutex is contended, so check for shutdown explicitly.
+            currentCoroutineContext().ensureActive()
             situation.replay(report)
             replayed++
         }
@@ -94,11 +98,17 @@ class SituationPoller(
     private suspend fun succeeded(now: Long) {
         backoffMs = 0
         status = status.copy(lastError = null)
-        if (now - lastPruneAt >= PRUNE_EVERY.inWholeMilliseconds) {
+        // Not `now - lastPruneAt`: from Long.MIN_VALUE that overflows to a negative, and pruning would never run.
+        if (now >= lastPruneAt + PRUNE_EVERY.inWholeMilliseconds) {
             lastPruneAt = now
-            runCatching { situation.pruneArchive(Instant.fromEpochMilliseconds(now) - retention) }
-                .onSuccess { if (it > 0) log.info("Pruned {} archived records older than {}", it, retention) }
-                .onFailure { log.warn("Archive pruning failed", it) }
+            try {
+                val pruned = situation.pruneArchive(Instant.fromEpochMilliseconds(now) - retention)
+                if (pruned > 0) log.info("Pruned {} archived records older than {}", pruned, retention)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.warn("Archive pruning failed", e)
+            }
         }
     }
 

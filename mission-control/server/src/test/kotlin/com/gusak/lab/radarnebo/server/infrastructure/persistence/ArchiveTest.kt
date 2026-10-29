@@ -58,12 +58,16 @@ class ArchiveTest {
 
         assertEquals(1, archive.prune(t0 + 2.hours))
         assertTrue(archive.history("14", since = t0, limit = 10).isEmpty())
+
+        archive.save(listOf(alert(3, Fixtures.brovary, startedAt = t0 + 3.hours), alert(4, Fixtures.brovary, startedAt = t0 + 4.hours)))
+        assertEquals(listOf(4L), archive.history("14", since = t0, limit = 1).map { it.id }, "the limit keeps the newest")
     }
 
     private suspend fun checkTracks(archive: TrackArchive) {
         val t = t0.toEpochMilliseconds()
         archive.save(listOf(track("a", t, t + 3_600_000), track("b", t + 7_200_000, t + 9_000_000), track("m", t, t + 600_000, ThreatType.CruiseMissiles)))
         assertEquals(listOf("b", "a", "m"), archive.history(TrackQuery(t, t + 9_000_000)).map { it.id }, "newest first")
+        assertEquals(listOf("b"), archive.history(TrackQuery(t, t + 9_000_000, limit = 1)).map { it.id }, "the limit keeps the newest")
         assertEquals(listOf("a", "m"), archive.history(TrackQuery(t + 60_000, t + 120_000)).map { it.id }, "tracks overlapping the window")
         assertEquals(listOf("m"), archive.history(TrackQuery(t, t + 9_000_000, ThreatType.CruiseMissiles)).map { it.id })
         assertEquals(track("a", t, t + 3_600_000), archive.history(TrackQuery(t, t + 60_000, ThreatType.Drones)).single())
@@ -85,8 +89,22 @@ class ArchiveTest {
 
     @Test
     fun dataSourcesNeverSeeEachOthersRecords() = runTest {
-        ExposedAlertArchive(db, "Simulation").save(listOf(alert(1, Fixtures.brovary)))
-        assertTrue(ExposedAlertArchive(db, "AlertsInUa").unfinished().isEmpty())
+        val t = t0.toEpochMilliseconds()
+        val simulatedAlerts = ExposedAlertArchive(db, "Simulation")
+        val simulatedTracks = ExposedTrackArchive(db, "Simulation")
+        simulatedAlerts.save(listOf(alert(1, Fixtures.brovary), alert(2, Fixtures.kharkiv).finish(t0 + 1.hours)))
+        simulatedTracks.save(listOf(track("a", t, t + 3_600_000)))
+
+        val realAlerts = ExposedAlertArchive(db, "AlertsInUa")
+        val realTracks = ExposedTrackArchive(db, "AlertsInUa")
+        assertTrue(realAlerts.unfinished().isEmpty())
+        assertTrue(realAlerts.history("1293", since = t0, limit = 10).isEmpty())
+        assertTrue(realTracks.history(TrackQuery(t, t + 3_600_000)).isEmpty())
+        assertEquals(0, realAlerts.prune(t0 + 2.days), "pruning one source leaves the other's records")
+        assertEquals(0, realTracks.prune(t + 2.days.inWholeMilliseconds))
+
+        assertEquals(listOf(2L), simulatedAlerts.history("1293", since = t0, limit = 10).map { it.id })
+        assertEquals(listOf("a"), simulatedTracks.history(TrackQuery(t, t + 3_600_000)).map { it.id })
     }
 
     @Test

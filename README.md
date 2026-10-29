@@ -51,6 +51,7 @@ From a terminal:
   keystore and `keystore.properties`; see [Android release build](./docs/android-release-build.md).
 - Desktop app: `./gradlew :app:desktop:run`
 - iOS app: open the [/app/ios](./app/ios) directory in Xcode and run it from there.
+- Server: CI, the Oracle Cloud deploy and the server's environment variables are in [Server deployment](./docs/deployment.md).
 
 ---
 
