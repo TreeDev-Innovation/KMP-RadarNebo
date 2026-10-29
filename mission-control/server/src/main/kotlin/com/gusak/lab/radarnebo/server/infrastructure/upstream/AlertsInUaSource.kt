@@ -28,8 +28,8 @@ import kotlin.time.Instant
 /**
  * alerts.in.ua, the only component that talks to it. Requests go through [limiter], so the upstream rate is
  * independent of how many clients are connected, and are conditional (`If-Modified-Since`), so an unchanged
- * feed costs a 304. alerts.in.ua reports alerts only, so tracks are reconstructed from them. The source owns
- * the [client] it is given and closes it.
+ * feed costs a 304. Each fresh body is kept as received, for clients; alerts.in.ua reports alerts only, so
+ * tracks are reconstructed from them. The source owns the [client] it is given and closes it.
  */
 class AlertsInUaSource(
     private val config: UpstreamConfig,
@@ -62,9 +62,9 @@ class AlertsInUaSource(
             when (response.status) {
                 HttpStatusCode.OK -> {
                     val now = clock()
-                    val alerts = AlertsInUaContract.decodeActive(response.bodyAsText())
-                        .map { it.toDomain(Instant.fromEpochMilliseconds(now)) }
-                    FetchResult.Fresh(SituationReport(now, alerts), response.headers[HttpHeaders.LastModified])
+                    val body = response.bodyAsText()
+                    val alerts = AlertsInUaContract.decodeActive(body).map { it.toDomain(Instant.fromEpochMilliseconds(now)) }
+                    FetchResult.Fresh(SituationReport(now, alerts, rawAlerts = body), response.headers[HttpHeaders.LastModified])
                 }
                 HttpStatusCode.NotModified -> FetchResult.NotModified
                 HttpStatusCode.TooManyRequests -> FetchResult.Failed(

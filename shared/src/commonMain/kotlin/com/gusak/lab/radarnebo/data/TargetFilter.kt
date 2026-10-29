@@ -6,21 +6,21 @@ import com.gusak.lab.radarnebo.tracking.TargetKind
 import com.gusak.lab.radarnebo.tracking.TargetProfile
 import com.gusak.lab.radarnebo.tracking.TrackInterpolator
 
-/** Which tracked targets the map and list show: every kind except [hiddenKinds], and only reported ones with [hideProbable]. */
+/** Which tracked targets the Targets list and the map show. Alerts and proximity warnings are never filtered. */
 data class TargetFilter(
     val hiddenKinds: Set<TargetKind> = emptySet(),
+    /** Hides targets whose type is only inferred, not named in the alert. */
     val hideProbable: Boolean = false,
 ) {
-    /** True when the filter hides anything at all. */
     val isActive get() = hiddenKinds.isNotEmpty() || hideProbable
 
-    fun allows(track: DroneTrack, now: Long): Boolean = !isActive || allows(profileAt(track, now))
-
-    fun allows(profile: TargetProfile): Boolean =
+    fun allows(profile: TargetProfile) =
         profile.kind !in hiddenKinds && !(hideProbable && profile.source == TargetProfile.Source.Probable)
 
+    /** [now] is server time; the speed at that moment can change a drone's probable type. */
+    fun allows(track: DroneTrack, now: Long) = !isActive || allows(profileAt(track, now))
+
     companion object {
-        /** The track's profile at [now]; its speed then tells drone types apart, as in the target list. */
         fun profileAt(track: DroneTrack, now: Long): TargetProfile =
             TargetClassifier.classify(track, TrackInterpolator.positionAt(track, now)?.speedKmh)
     }

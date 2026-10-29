@@ -8,7 +8,7 @@ import io.ktor.client.HttpClient
 import org.koin.dsl.module
 import org.koin.mp.KoinPlatform
 
-/** iOS storage: NSUserDefaults; the server on this machine, which the simulator reaches as localhost. */
+/** iOS storage: NSUserDefaults; the deployed server by default. */
 val iosModule = module {
     single<KeyValueStorage> { UserDefaultsStorage() }
     single { ServerDefaults() }

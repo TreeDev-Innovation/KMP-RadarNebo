@@ -55,7 +55,7 @@ fun viewModelModule() = module {
 /**
  * Everything the app needs. [platformModule] provides what only the platform can: the
  * [KeyValueStorage] (SharedPreferences, a properties file, NSUserDefaults) and where the server is by default
- * ([ServerDefaults]: the Android emulator reaches the host as 10.0.2.2).
+ * ([ServerDefaults]).
  */
 fun appModules(platformModule: Module): List<Module> = listOf(platformModule, dataModule(), domainModule(), viewModelModule())
 
