@@ -124,13 +124,12 @@ kotlin {
 dependencies {
     androidRuntimeClasspath(libs.compose.uiTooling)
 }
-// The macOS trackpad pinch bridge (jvmMain's MacTrackpad.java) uses the JDK-internal com.apple.eawt.event package;
-// apps running it need the same export at run time.
-// Targets JVM 11 like the Kotlin code; through source/target rather than --release, which forbids --add-exports.
+// Targets JVM 11 like the Kotlin code. The macOS trackpad pinch bridge (jvmMain's MacTrackpad.java) reaches the
+// JDK-internal com.apple.eawt.event package by reflection, so it compiles on any JDK; apps running it need
+// --add-exports java.desktop/com.apple.eawt.event=ALL-UNNAMED at run time.
 tasks.withType<JavaCompile>().configureEach {
     sourceCompatibility = "11"
     targetCompatibility = "11"
-    options.compilerArgs.addAll(listOf("--add-exports", "java.desktop/com.apple.eawt.event=ALL-UNNAMED"))
 }
 
 // ./gradlew :shared:jvmTest --tests '*ContrastScreenshotsTest*' -PcontrastScreenshots[=Radar,Nord,…] renders every overlay

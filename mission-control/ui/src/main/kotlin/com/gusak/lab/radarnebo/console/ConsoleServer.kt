@@ -84,6 +84,9 @@ class ConsoleServer(private val baseConfig: ServerConfig = ServerConfig.fromEnv(
     val archive get() = baseConfig.archive.jdbcUrl
     val clientKeys get() = baseConfig.clients.keys.size
 
+    /** A key the console's own client can use; null when the server doesn't ask for one. */
+    val clientKey get() = baseConfig.clients.keys.firstOrNull()
+
     private val recorder = TrafficRecorder { exchange ->
         if (exchange.direction == HttpExchange.Direction.Incoming) noteClient(exchange)
         traffic.record(exchange)

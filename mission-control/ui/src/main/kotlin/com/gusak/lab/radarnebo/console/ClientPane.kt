@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import com.gusak.lab.radarnebo.App
+import com.gusak.lab.radarnebo.data.AppSettings
 
 /** How the console shows the client app: not at all, in a pane on the right, or over the whole console below the top bar. */
 enum class ClientView(val label: String, val glyph: String) {
@@ -22,6 +23,12 @@ enum class ClientView(val label: String, val glyph: String) {
 
     val next get() = entries[(ordinal + 1) % entries.size]
 }
+
+/**
+ * The client's settings pointed at this console's server on [port], with [key] when the server wants one. Applied on
+ * every start, so a new port or a saved address from an earlier run can't leave the client calling the wrong server.
+ */
+fun AppSettings.pointedAt(port: Int, key: String?) = copy(serverUrl = "http://localhost:$port", accessKey = key.orEmpty())
 
 /** Width of the client pane in [ClientView.Embedded]: about a phone's. */
 val EmbeddedClientWidth = 440.dp
