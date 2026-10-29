@@ -39,8 +39,10 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
@@ -87,6 +89,7 @@ import com.gusak.lab.radarnebo.ui.RadarColors
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.log2
 import kotlin.math.min
 import kotlin.math.sin
 
@@ -140,9 +143,10 @@ data class MapCamera(val center: Offset, val zoom: Float) {
 
         /**
          * Camera that fits [points] plus [marginKm] around them inside [visible], the part of the
-         * [viewport] not covered by other UI, centred in that area.
+         * [viewport] not covered by other UI. It is centred on [focus] when given (the points then fit
+         * around it), otherwise on the middle of the points.
          */
-        fun framing(points: List<GeoPoint>, viewport: Size, visible: Rect, marginKm: Float = 40f): MapCamera {
+        fun framing(points: List<GeoPoint>, viewport: Size, visible: Rect, marginKm: Float = 40f, focus: GeoPoint? = null): MapCamera {
             if (points.isEmpty() || visible.isEmpty) return Overview
             val world = points.map(MapProjection::toWorld)
             val margin = MapProjection.kmToWorld(marginKm)
@@ -150,10 +154,18 @@ data class MapCamera(val center: Offset, val zoom: Float) {
             val maxX = world.maxOf { it.x } + margin
             val minY = world.minOf { it.y } - margin
             val maxY = world.maxOf { it.y } + margin
+            val center = focus?.let(MapProjection::toWorld) ?: Offset((minX + maxX) / 2, (minY + maxY) / 2)
+            // Half the extent on each side of the centre, so every point stays in view around it.
+            val halfWidth = maxOf(center.x - minX, maxX - center.x)
+            val halfHeight = maxOf(center.y - minY, maxY - center.y)
             val base = Overview.scale(viewport)
-            val zoom = min(visible.width / ((maxX - minX) * base), visible.height / ((maxY - minY) * base)).coerceIn(1f, 10f)
-            val s = base * zoom
-            val focus = Offset((minX + maxX) / 2, (minY + maxY) / 2)
+            val zoom = min(visible.width / (2 * halfWidth * base), visible.height / (2 * halfHeight * base)).coerceIn(1f, 10f)
+            return centeredOn(center, zoom, viewport, visible)
+        }
+
+        /** Camera at [zoom] that puts the world point [focus] in the middle of [visible], a part of [viewport]. */
+        fun centeredOn(focus: Offset, zoom: Float, viewport: Size, visible: Rect): MapCamera {
+            val s = Overview.scale(viewport) * zoom
             return MapCamera(
                 Offset(
                     focus.x - (visible.center.x - viewport.width / 2) / s,
@@ -190,6 +202,22 @@ private fun buildOblastPaths(): List<OblastPath> = UkraineGeometry.oblasts.map {
     path.close()
     OblastPath(shape.uid, path)
 }
+
+/** Every oblast in one path: the whole country. */
+private fun buildCountryPath(paths: List<OblastPath>) = Path().apply { paths.forEach { addPath(it.path) } }
+
+/**
+ * Everything outside Ukraine within [area] (world coordinates): the area with the country cut out.
+ * The oblasts meet without gaps or overlaps, so even-odd filling leaves exactly the country unfilled.
+ */
+private fun outsideUkraine(country: Path, area: Rect) = Path().apply {
+    fillType = PathFillType.EvenOdd
+    addRect(area)
+    addPath(country)
+}
+
+/** How much of the satellite imagery outside Ukraine stays visible; the rest is darkened away. */
+private const val OUTSIDE_IMAGERY_ALPHA = 0.2f
 
 /**
  * Pinch-to-zoom factors from a platform gesture source that Compose doesn't surface as pointer
@@ -234,6 +262,7 @@ fun UkraineMap(
     onLongPress: (GeoPoint) -> Unit = {},
 ) {
     val paths = remember { buildOblastPaths() }
+    val country = remember(paths) { buildCountryPath(paths) }
     val mapTiles = LocalMapTiles.current?.takeIf { tileSource != null }
     val colors = LocalRadarColors.current
     val textMeasurer = rememberTextMeasurer()
@@ -345,6 +374,7 @@ fun UkraineMap(
             }
     ) {
         drawRect(colors.mapBackground)
+        val ink = MapInk.over(tileSource, colors)
         val scale = camera.scale(size)
         if (mapTiles != null && tileSource != null) {
             // Reading it makes the canvas redraw as tiles arrive.
@@ -352,9 +382,9 @@ fun UkraineMap(
             drawMapTiles(mapTiles, tileSource, camera)
         }
         // Over a real map the oblasts are tinted rather than painted, so the map shows through.
-        val idleFill = when (tileSource) {
-            null -> colors.oblastIdle
-            TileSource.Satellite -> colors.oblastIdle.copy(alpha = 0.12f)
+        val idleFill = when {
+            tileSource == null -> colors.oblastIdle
+            tileSource.isImagery -> colors.oblastIdle.copy(alpha = 0.12f)
             else -> colors.oblastIdle.copy(alpha = 0.3f)
         }
 
@@ -364,6 +394,11 @@ fun UkraineMap(
             translate(-camera.center.x, -camera.center.y)
         }) {
             if (mapTiles == null) drawGrid(scale, colors)
+            // Over satellite imagery the country stands out: the land around it is darkened.
+            if (mapTiles != null && tileSource?.isImagery == true) {
+                val area = Rect(camera.toWorld(Offset.Zero, size), camera.toWorld(Offset(size.width, size.height), size))
+                drawPath(outsideUkraine(country, area), Color.Black.copy(alpha = 1f - OUTSIDE_IMAGERY_ALPHA))
+            }
             paths.forEach { oblast ->
                 val fill = when (alertedOblasts[oblast.uid]) {
                     true -> colors.oblastAlertFull
@@ -387,7 +422,7 @@ fun UkraineMap(
             val glyph = 10.dp.toPx()
             Rect(p.x - glyph - 40.dp.toPx(), p.y - glyph, p.x + glyph + 40.dp.toPx(), p.y + 26.dp.toPx())
         }
-        drawCities(camera, colors, favoriteAreas, cityFader, nowMs(clockOffsetMs), instantLabels = inspectionMode) { city ->
+        drawCities(camera, ink, favoriteAreas, cityFader, nowMs(clockOffsetMs), instantLabels = inspectionMode) { city ->
             cityLabels.getOrPut(city) {
                 val style = when {
                     city in UkraineCities.oblastCentres -> OblastCentreLabel
@@ -412,8 +447,8 @@ fun UkraineMap(
                 style = Stroke(1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f))),
             )
             drawFavoriteGlyph(p, 9.dp.toPx(), if (alerted) colors.danger else colors.favorite, colors.glyphOutline)
-            val label = textMeasurer.measure(favorite.name, TextStyle(color = colors.mapLabel, fontSize = 11.sp))
-            drawText(label, topLeft = Offset(p.x - label.size.width / 2, p.y + 11.dp.toPx()))
+            val label = textMeasurer.measure(favorite.name, FavoriteLabel)
+            drawHaloText(label, ink.label, ink.halo, Offset(p.x - label.size.width / 2, p.y + 11.dp.toPx()))
         }
 
         pendingFavorite?.let { point ->
@@ -439,13 +474,10 @@ fun UkraineMap(
                 }
             }
         }
-        // Selected track last, so its path and labels sit on top.
-        visibleTracks.sortedBy { it.first.id == selectedTrackId }.forEach { (track, position) ->
-            val highlighted = focused(track)
-            val dimmed = selectedTrackId != null && track.id != selectedTrackId
-            val kind = trackKinds[track.id] ?: TargetKind.AttackDrone
-            drawTrack(track, position, camera, highlighted, dimmed, pulse, colors, kind)
-            if (track.id == selectedTrackId) drawTrackTimestamps(track, camera, colors, textMeasurer)
+        // The selected target's course over the ground, under everything in the air.
+        visibleTracks.firstOrNull { it.first.id == selectedTrackId }?.let { (track, position) ->
+            drawTrail(track, position, camera)
+            drawTrackTimestamps(track, camera, colors, textMeasurer)
         }
 
         // Threats reported for the same place (an oblast centre, Kyiv city) fan out so their icons don't stack.
@@ -471,6 +503,15 @@ fun UkraineMap(
                 drawTargetGlyph(markerKinds[marker.id] ?: TargetKind.Unknown, p, glyphSize * 1.15f, headingFor(marker), color, colors.glyphOutline)
             }
         }
+
+        // Air layer: targets fly over everything on the ground, the higher ones over the lower ones.
+        visibleTracks
+            .map { Triple(it.first, it.second, trackKinds[it.first.id] ?: TargetKind.AttackDrone) }
+            .sortedWith(compareBy({ it.third.typicalAltitudeM ?: 0 }, { it.first.id == selectedTrackId }))
+            .forEach { (track, position, kind) ->
+                val dimmed = selectedTrackId != null && track.id != selectedTrackId
+                drawTarget(track, position, camera, focused(track), dimmed, pulse, colors, kind)
+            }
     }
 }
 
@@ -492,8 +533,12 @@ private fun Density.hitTest(
         .map { it to (camera.toScreen(MapProjection.toWorld(it.point), s) - offset).getDistance() }
         .filter { it.second < threshold }
         .minByOrNull { it.second }
+    // Targets are tapped where they are drawn, in the air.
     val track = tracks
-        .map { it to (camera.toScreen(MapProjection.toWorld(it.second.point), s) - offset).getDistance() }
+        .map {
+            val ground = camera.toScreen(MapProjection.toWorld(it.second.point), s)
+            it to (elevate(ground, TargetClassifier.classify(it.first).kind.typicalAltitudeM, s).air - offset).getDistance()
+        }
         .filter { it.second < threshold }
         .minByOrNull { it.second }
     if (track != null && (threat == null || track.second <= threat.second) && (favorite == null || track.second <= favorite.second)) {
@@ -513,8 +558,23 @@ private fun trackPositions(tracks: List<DroneTrack>, now: Long): List<Pair<Drone
     .filter { TrackInterpolator.isVisible(it, now) }
     .mapNotNull { track -> TrackInterpolator.positionAt(track, now)?.let { track to it } }
 
-/** The target's icon; a [highlighted] one also gets its trail through the recorded samples up to where it is now. */
-private fun DrawScope.drawTrack(
+/**
+ * The selected target's trail over the ground through the reported positions up to where it is now: a dashed
+ * white line that fades out towards the oldest report, so the recent course reads first.
+ */
+private fun DrawScope.drawTrail(track: DroneTrack, position: InterpolatedPosition, camera: MapCamera) {
+    val points = track.samples.map { camera.toScreen(MapProjection.toWorld(it.point), size) }
+    val trail = points + camera.toScreen(MapProjection.toWorld(position.point), size)
+    val fade = trailFade(trail)
+    if (trail.size >= 2) drawFadingDashes(trail, fade)
+    points.forEachIndexed { i, p ->
+        drawCircle(Color.Black.copy(alpha = 0.35f * fade[i]), 3.5.dp.toPx(), p)
+        drawCircle(Color.White.copy(alpha = fade[i]), 2.5.dp.toPx(), p)
+    }
+}
+
+/** The target's icon, up in the air at its class's typical altitude, as the camera above the map sees it (see [elevate]). */
+private fun DrawScope.drawTarget(
     track: DroneTrack,
     position: InterpolatedPosition,
     camera: MapCamera,
@@ -526,43 +586,117 @@ private fun DrawScope.drawTrack(
 ) {
     val color = if (track.level == ThreatLevel.Red) colors.danger else colors.warning
     val alpha = (if (track.active) 1f else 0.45f) * (if (dimmed) 0.35f else 1f)
-    val head = camera.toScreen(MapProjection.toWorld(position.point), size)
-    val points = track.samples.map { camera.toScreen(MapProjection.toWorld(it.point), size) }
-    if (highlighted) {
-        if (points.size >= 2 || position.mode != PositionMode.Held) {
-            val trail = Path().apply {
-                moveTo(points.first().x, points.first().y)
-                points.drop(1).forEach { lineTo(it.x, it.y) }
-                lineTo(head.x, head.y)
-            }
-            drawPath(trail, color.copy(alpha = 0.25f), style = Stroke(9.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-            drawPath(trail, color, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-        }
-        points.forEach {
-            drawCircle(color.copy(alpha = 0.7f), 4.5.dp.toPx(), it)
-            drawCircle(colors.mapLabel, 4.5.dp.toPx(), it, style = Stroke(1.5.dp.toPx()))
-        }
-    }
-
-    val base = 9.dp.toPx()
-    drawCircle(color.copy(alpha = (1f - pulse) * 0.5f * alpha), base + pulse * base * 2.4f, head, style = Stroke(1.5.dp.toPx()))
+    val ground = camera.toScreen(MapProjection.toWorld(position.point), size)
+    val elevated = elevate(ground, kind.typicalAltitudeM, size)
+    val air = elevated.air
+    val scaled = 9.dp.toPx() * elevated.scale
+    drawCircle(color.copy(alpha = (1f - pulse) * 0.5f * alpha), scaled + pulse * scaled * 2.4f, air, style = Stroke(1.5.dp.toPx()))
     if (position.mode == PositionMode.Extrapolated) {
         // Dead-reckoned past the last report: show an uncertainty ring.
-        drawCircle(color.copy(alpha = 0.35f), base * 2f, head, style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f))))
+        drawCircle(color.copy(alpha = 0.35f), scaled * 2f, air, style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 6f))))
     }
-    if (highlighted) drawCircle(colors.mapLabel, base * 2.2f, head, style = Stroke(2.dp.toPx()))
+    if (highlighted) drawCircle(colors.mapLabel, scaled * 2.2f, air, style = Stroke(2.dp.toPx()))
     drawTargetGlyph(
         kind,
-        head,
-        base * (if (highlighted) 1.6f else 1.2f),
+        air,
+        scaled * (if (highlighted) 1.6f else 1.2f),
         (position.headingDeg ?: 270.0).toFloat(),
         color.copy(alpha = alpha),
         colors.glyphOutline.copy(alpha = colors.glyphOutline.alpha * alpha),
     )
 }
 
+/** Where a target at some altitude appears: [ground] is its spot on the map, [air] where it is drawn, [scale] times larger. */
+private class Elevated(val ground: Offset, val air: Offset, val scale: Float)
+
 /**
- * Selected target's predicted course: a dashed line ahead along its heading, with each settlement on
+ * The map's perspective camera: it looks straight down on the map from above the centre of the view. A target
+ * [altitudeM] high is nearer to it than the ground, by a height that grows with the log of the altitude (a 50 m
+ * cruise missile and a 10 km bomber both stay readable), so it shows up pushed out from the centre of the view
+ * and a little larger. Panning changes that push, so targets glide over the map at their own pace: parallax
+ * that shows how high they fly.
+ */
+private fun Density.elevate(ground: Offset, altitudeM: Int?, viewport: Size): Elevated {
+    val magnification = magnification(altitudeM, viewport)
+    val air = viewport.center + (ground - viewport.center) * magnification
+    return Elevated(ground, air, 1f + (magnification - 1f) * SIZE_EXAGGERATION)
+}
+
+/** Where on the screen the ground under a target [altitudeM] high must be for the target to show up at [air]. */
+fun Density.groundUnder(air: Offset, altitudeM: Int?, viewport: Size): Offset =
+    viewport.center + (air - viewport.center) / magnification(altitudeM, viewport)
+
+/** Pinhole projection: what is some height closer to the camera spreads out by cameraHeight / (cameraHeight - height). */
+private fun Density.magnification(altitudeM: Int?, viewport: Size): Float {
+    val altitude = altitudeM ?: 0
+    if (altitude <= 0) return 1f
+    val height = (HEIGHT_PER_DOUBLING.toPx() * log2(1f + altitude / HEIGHT_REFERENCE_M)).coerceAtMost(MAX_HEIGHT.toPx())
+    val cameraHeight = maxOf(viewport.width, viewport.height) * CAMERA_DISTANCE
+    return cameraHeight / (cameraHeight - height)
+}
+
+private val HEIGHT_PER_DOUBLING = 22.dp
+private const val HEIGHT_REFERENCE_M = 250f
+private val MAX_HEIGHT = 110.dp
+private const val CAMERA_DISTANCE = 0.9f
+/** Targets grow with height more than true perspective would make them, so altitude also reads from their size. */
+private const val SIZE_EXAGGERATION = 2f
+
+/** Opacity along a trail, by distance from its newest end: 1 there, [TRAIL_MIN_ALPHA] at the oldest point. */
+private fun trailFade(points: List<Offset>): List<Float> {
+    val fromHead = FloatArray(points.size)
+    for (i in points.lastIndex - 1 downTo 0) fromHead[i] = fromHead[i + 1] + (points[i + 1] - points[i]).getDistance()
+    val total = fromHead.firstOrNull()?.takeIf { it > 0f } ?: return List(points.size) { 1f }
+    return fromHead.map { 1f - (1f - TRAIL_MIN_ALPHA) * it / total }
+}
+
+/**
+ * White dashes along [points], each segment as opaque as [fade] says at its newer end. The dash phase carries on
+ * from segment to segment, so the pattern runs unbroken through the reported positions.
+ */
+private fun DrawScope.drawFadingDashes(points: List<Offset>, fade: List<Float>) {
+    val dash = 7.dp.toPx()
+    val gap = 5.dp.toPx()
+    var travelled = 0f
+    for (i in 0 until points.lastIndex) {
+        val a = points[i]
+        val b = points[i + 1]
+        val effect = PathEffect.dashPathEffect(floatArrayOf(dash, gap), phase = travelled % (dash + gap))
+        val alpha = (fade[i] + fade[i + 1]) / 2f
+        // A dark underlay keeps the white line readable on the light map and over bright imagery.
+        drawLine(Color.Black.copy(alpha = 0.3f * alpha), a, b, 4.dp.toPx(), pathEffect = effect, cap = StrokeCap.Butt)
+        drawLine(Color.White.copy(alpha = alpha), a, b, 2.dp.toPx(), pathEffect = effect, cap = StrokeCap.Butt)
+        travelled += (b - a).getDistance()
+    }
+}
+
+/** How faint the oldest part of a trail gets. */
+private const val TRAIL_MIN_ALPHA = 0.12f
+
+/** A solid line from [from] to [to] ending in a filled arrowhead, for a predicted course. */
+private fun DrawScope.drawCourseArrow(from: Offset, to: Offset, color: Color) {
+    val length = (to - from).getDistance()
+    if (length < 1f) return
+    val direction = (to - from) / length
+    val normal = Offset(-direction.y, direction.x)
+    val headLength = minOf(14.dp.toPx(), length * 0.6f)
+    val headHalfWidth = 7.dp.toPx()
+    val base = to - direction * headLength
+    val width = 3.dp.toPx()
+    drawLine(Color.Black.copy(alpha = 0.3f), from, base, width + 2.dp.toPx(), cap = StrokeCap.Round)
+    drawLine(color, from, base, width, cap = StrokeCap.Round)
+    val head = Path().apply {
+        moveTo(to.x, to.y)
+        lineTo(base.x + normal.x * headHalfWidth, base.y + normal.y * headHalfWidth)
+        lineTo(base.x - normal.x * headHalfWidth, base.y - normal.y * headHalfWidth)
+        close()
+    }
+    drawPath(head, color)
+    drawPath(head, Color.Black.copy(alpha = 0.3f), style = Stroke(1.dp.toPx(), join = StrokeJoin.Round))
+}
+
+/**
+ * Selected target's predicted course: a solid arrow ahead along its fitted heading, with each settlement on
  * the way marked and labelled with the estimated minutes to reach it.
  */
 private fun DrawScope.drawPredictedRoute(
@@ -579,20 +713,7 @@ private fun DrawScope.drawPredictedRoute(
     val end = TrackPredictor.courseEnd(track, now, horizon) ?: return
     val from = camera.toScreen(MapProjection.toWorld(position.point), size)
     val to = camera.toScreen(MapProjection.toWorld(end), size)
-    drawLine(
-        colors.warning.copy(alpha = 0.9f), from, to, 2.5.dp.toPx(),
-        pathEffect = PathEffect.dashPathEffect(floatArrayOf(8.dp.toPx(), 6.dp.toPx())), cap = StrokeCap.Round,
-    )
-    // Arrow head at the end of the course.
-    val angle = kotlin.math.atan2((to.y - from.y).toDouble(), (to.x - from.x).toDouble())
-    val head = 9.dp.toPx()
-    listOf(2.6, -2.6).forEach { da ->
-        drawLine(
-            colors.warning, to,
-            Offset(to.x + (head * kotlin.math.cos(angle + da)).toFloat(), to.y + (head * kotlin.math.sin(angle + da)).toFloat()),
-            2.5.dp.toPx(), cap = StrokeCap.Round,
-        )
-    }
+    drawCourseArrow(from, to, colors.warning)
     var lastLabelled: GeoPoint? = null
     route.forEachIndexed { index, stop ->
         val p = camera.toScreen(MapProjection.toWorld(stop.place.point), size)
@@ -603,7 +724,7 @@ private fun DrawScope.drawPredictedRoute(
         lastLabelled = stop.place.point
         val label = textMeasurer.measure(
             "${index + 1}. ${stop.place.name} · ~${stop.etaMinutes} min",
-            TextStyle(color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold),
+            TextStyle(color = colors.onWarning, fontSize = 11.sp, fontWeight = FontWeight.Bold),
         )
         // Alternate above/below the course line so neighbouring labels don't collide.
         val dy = if (index % 2 == 0) -label.size.height - 6.dp.toPx() else 6.dp.toPx()
@@ -635,7 +756,7 @@ private fun DrawScope.drawTrackTimestamps(track: DroneTrack, camera: MapCamera, 
     }
 }
 
-/** Dashed projection from the drone to the place it is heading for, with the estimated time to reach it. */
+/** Solid arrow from the drone to the place it is heading for, with the estimated time to reach it. */
 private fun DrawScope.drawPrediction(
     position: InterpolatedPosition,
     prediction: ArrivalPrediction,
@@ -646,11 +767,14 @@ private fun DrawScope.drawPrediction(
     val from = camera.toScreen(MapProjection.toWorld(position.point), size)
     val to = camera.toScreen(MapProjection.toWorld(prediction.place.point), size)
     val color = colors.warning
-    drawLine(color, from, to, 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 5.dp.toPx())), cap = StrokeCap.Round)
-    drawCircle(color, 7.dp.toPx(), to, style = Stroke(2.dp.toPx()))
+    // The arrow stops at the place's ring rather than covering its dot.
+    val ring = 7.dp.toPx()
+    val length = (to - from).getDistance()
+    if (length > ring * 2) drawCourseArrow(from, to - (to - from) * (ring / length), color)
+    drawCircle(color, ring, to, style = Stroke(2.dp.toPx()))
     drawCircle(color, 2.5.dp.toPx(), to)
     val text = "${prediction.place.name} · ~${prediction.etaMinutes} min"
-    val label = textMeasurer.measure(text, TextStyle(color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold))
+    val label = textMeasurer.measure(text, TextStyle(color = colors.onWarning, fontSize = 11.sp, fontWeight = FontWeight.Bold))
     val topLeft = Offset(to.x - label.size.width / 2, to.y + 10.dp.toPx())
     drawRoundRect(
         colors.warning,
@@ -664,19 +788,24 @@ private fun DrawScope.drawPrediction(
 /** Zoom from which city names are shown; below it cities are dots only. */
 private const val CITY_LABEL_ZOOM = 2.5f
 private const val MAJOR_CITY = 200_000
+private val FavoriteLabel = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium)
 private val CityLabel = TextStyle(fontSize = 10.sp)
 private val MajorCityLabel = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium)
 private val OblastCentreLabel = TextStyle(fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
 
+/** Oblast centres in the order their names claim space: the largest city wins a collision. */
+private val CentresByPopulation = UkraineCities.oblastCentres.sortedByDescending { it.population }
+
 /**
- * Every settlement with city status as a dot, sized by population. Oblast centres are always named, at every
- * zoom. Once zoomed in, other names are added largest city first, skipping any that would overlap a name
- * already placed or a [reserved] area. Those names fade (and rise slightly) in when revealed and fade out
- * when hidden, via [fader].
+ * Every settlement with city status as a dot, sized by population. Oblast centres are named at every zoom,
+ * largest first; one whose name would overlap a name already placed or a [reserved] area collapses into a
+ * bigger, brighter dot instead. Once zoomed in, other names are added largest city first, skipping any that
+ * would overlap. Names fade (and rise slightly) in when revealed and fade out when hidden, via [fader]; an
+ * oblast centre's dot grows as its name fades out.
  */
 private fun DrawScope.drawCities(
     camera: MapCamera,
-    colors: RadarColors,
+    ink: MapInk,
     reserved: List<Rect>,
     fader: CityLabelFader,
     nowMs: Long,
@@ -687,41 +816,88 @@ private fun DrawScope.drawCities(
     val placed = reserved.toMutableList()
     val gap = 3.dp.toPx()
     val wanted = HashSet<MapCity>()
-    // Oblast centres first, so other names keep clear of them.
-    UkraineCities.oblastCentres.forEach { city ->
-        val p = cityOnScreen(city, camera)
+    fun onScreen(p: Offset) = p.x >= -120 && p.y >= -20 && p.x <= size.width + 20 && p.y <= size.height + 20
+    fun labelBox(city: MapCity, p: Offset): Rect {
         val text = label(city)
         val topLeft = Offset(p.x + cityDotRadius(city) + gap, p.y - text.size.height / 2f)
-        placed += Rect(topLeft, Size(text.size.width.toFloat(), text.size.height.toFloat())).inflate(gap)
+        return Rect(topLeft, Size(text.size.width.toFloat(), text.size.height.toFloat())).inflate(gap)
     }
-    UkraineCities.all.forEach { city ->
+    // Oblast centres first, so other names keep clear of them.
+    CentresByPopulation.forEach { city ->
         val p = cityOnScreen(city, camera)
-        if (p.x < -120 || p.y < -20 || p.x > size.width + 20 || p.y > size.height + 20) return@forEach
-        val r = cityDotRadius(city)
-        drawCircle(colors.cityDot, r, p)
-        if (city in UkraineCities.oblastCentres) {
-            val text = label(city)
-            drawText(text, color = colors.cityLabel, topLeft = Offset(p.x + r + gap, p.y - text.size.height / 2f))
-            return@forEach
-        }
-        if (!showLabels) return@forEach
-        val text = label(city)
-        val topLeft = Offset(p.x + r + gap, p.y - text.size.height / 2f)
-        val box = Rect(topLeft, Size(text.size.width.toFloat(), text.size.height.toFloat())).inflate(gap)
+        if (!onScreen(p)) return@forEach
+        val box = labelBox(city, p)
         if (placed.any { it.overlaps(box) }) return@forEach
         placed += box
         wanted += city
     }
+    UkraineCities.all.forEach { city ->
+        if (city in UkraineCities.oblastCentres) return@forEach
+        val p = cityOnScreen(city, camera)
+        if (!onScreen(p)) return@forEach
+        drawCityDot(ink, cityDotRadius(city), p)
+        if (!showLabels) return@forEach
+        val box = labelBox(city, p)
+        if (placed.any { it.overlaps(box) }) return@forEach
+        placed += box
+        wanted += city
+    }
+    val labels = fader.update(wanted, nowMs, instantLabels)
+    // Ease out, so names settle gently; they rise into place and sink as they go.
+    fun eased(city: MapCity) = (labels[city] ?: 0f).let { 1f - (1f - it) * (1f - it) }
+    val collapsedRadius = 5.5.dp.toPx()
+    CentresByPopulation.forEach { city ->
+        val p = cityOnScreen(city, camera)
+        if (!onScreen(p)) return@forEach
+        val named = eased(city)
+        val r = collapsedRadius + (cityDotRadius(city) - collapsedRadius) * named
+        drawCircle(ink.halo.copy(alpha = ink.halo.alpha * (1f - named)), r + 1.5.dp.toPx(), p)
+        drawCircle(androidx.compose.ui.graphics.lerp(ink.cityLabel, ink.cityDot, named), r, p)
+    }
     val rise = 4.dp.toPx()
-    fader.update(wanted, nowMs, instantLabels).forEach { (city, opacity) ->
+    labels.keys.forEach { city ->
         val p = cityOnScreen(city, camera)
         val text = label(city)
-        // Ease out, so names settle gently; they rise into place and sink as they go.
-        val eased = 1f - (1f - opacity) * (1f - opacity)
-        val topLeft = Offset(p.x + cityDotRadius(city) + gap, p.y - text.size.height / 2f + (1f - eased) * rise)
-        drawText(text, color = colors.cityLabel, topLeft = topLeft, alpha = eased)
+        val shown = eased(city)
+        val topLeft = Offset(p.x + cityDotRadius(city) + gap, p.y - text.size.height / 2f + (1f - shown) * rise)
+        drawHaloText(text, ink.cityLabel, ink.halo, topLeft, alpha = shown)
     }
 }
+
+/**
+ * Colours of what is drawn straight onto the map: names, city dots and the halo around them. Over satellite
+ * imagery, which is dark and busy in either theme, names are light on a dark halo; over the drawn map they
+ * take the theme's colours, haloed in the map's background.
+ */
+private class MapInk(val label: Color, val cityLabel: Color, val cityDot: Color, val halo: Color) {
+    companion object {
+        private val Imagery = MapInk(
+            label = Color.White,
+            cityLabel = Color(0xFFF4F7FA),
+            cityDot = Color(0xFFE4EAF0),
+            halo = Color(0xD9000000),
+        )
+
+        fun over(tileSource: TileSource?, colors: RadarColors) =
+            if (tileSource?.isImagery == true) Imagery else MapInk(colors.mapLabel, colors.cityLabel, colors.cityDot, colors.mapBackground.copy(alpha = 0.85f))
+    }
+}
+
+/** [text] with a solid outline in [halo], so it stays legible over tiles, imagery, oblast fills and borders. */
+private fun DrawScope.drawHaloText(text: TextLayoutResult, color: Color, halo: Color, topLeft: Offset, alpha: Float = 1f) {
+    drawText(text, color = halo, topLeft = topLeft, alpha = alpha, drawStyle = Stroke(HaloWidth.toPx(), join = StrokeJoin.Round))
+    // Fill must be explicit: on Android the text paint keeps the last draw style, so without it the stroke above
+    // carries over and the name is drawn as a thick outline too.
+    drawText(text, color = color, topLeft = topLeft, alpha = alpha, drawStyle = Fill)
+}
+
+/** A city dot ringed in the halo colour, so it shows on any background. */
+private fun DrawScope.drawCityDot(ink: MapInk, radius: Float, center: Offset) {
+    drawCircle(ink.halo, radius + 1.dp.toPx(), center)
+    drawCircle(ink.cityDot, radius, center)
+}
+
+private val HaloWidth = 3.dp
 
 private fun DrawScope.cityOnScreen(city: MapCity, camera: MapCamera) =
     camera.toScreen(MapProjection.toWorld(GeoPoint(city.lat.toDouble(), city.lon.toDouble())), size)

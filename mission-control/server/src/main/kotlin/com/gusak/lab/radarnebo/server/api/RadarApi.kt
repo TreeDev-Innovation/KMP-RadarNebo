@@ -60,8 +60,6 @@ fun Application.radarApi(
     clients: ClientApiConfig,
     upstreamBudgetPerMinute: Int?,
     clock: () -> Long = System::currentTimeMillis,
-    /** Tells this process's ETags apart from the last one's, whose board versions repeat. */
-    bootId: String = bootId(clock()),
     /** Receives every call with its response, for the server console. */
     traffic: TrafficRecorder? = null,
 ) {
@@ -76,9 +74,6 @@ fun Application.radarApi(
         anyHost()
         allowMethod(HttpMethod.Get)
         allowHeader(HttpHeaders.Authorization)
-        allowHeader(HttpHeaders.IfNoneMatch)
-        allowHeader(HttpHeaders.IfModifiedSince)
-        exposeHeader(HttpHeaders.ETag)
         exposeHeader(DATA_AGE_HEADER)
     }
     val log = LoggerFactory.getLogger("RadarApi")
@@ -96,7 +91,7 @@ fun Application.radarApi(
         // The limits wrap authentication, so callers guessing keys are throttled too.
         rateLimit(CLIENTS) {
             clientRoute(authRequired) {
-                alertsInUaRoutes(situation, pollInterval, clock, bootId)
+                alertsInUaRoutes(situation, clock)
                 trackingRoutes(situation, pollInterval, clock)
             }
         }

@@ -50,8 +50,9 @@ internal fun Route.healthRoutes(situation: SituationService, poller: SituationPo
 }
 
 /**
- * What `/health` reports at [nowMs]; the server console shows it too. `stale` wins over `degraded`: the data is
- * too old while polls succeed, or the poller is overdue (dead or hung).
+ * What `/health` reports at [nowMs]; the server console shows it too. `stale`: the poller is overdue (dead or hung),
+ * whatever the last poll did, or polls succeed but the data is still too old. Failing polls with a running poller
+ * are `degraded`, however old the data.
  */
 fun health(situation: SituationService, poller: SituationPoller, upstreamBudgetPerMinute: Int?, nowMs: Long): Health {
     val board = situation.board

@@ -111,8 +111,12 @@ data class TrackKinematics(
     val maxExtrapolationMs: Long,
 ) {
     companion object {
-        /** Shahed-type drones cruise at 150-185 km/h; reports come as a group crosses hromadas, 10-30 min apart. */
-        val Drones = TrackKinematics(220.0, 120.0, 30 * 60_000L, 30 * 60_000L)
+        /**
+         * Shahed-type drones cruise at 150-185 km/h; reports come as a group crosses raions, 10-30 min apart. Replaying
+         * the alerts.in.ua archive, a 45 min re-acquire window links the most reports while courses stay coherent;
+         * at 60 min unrelated groups start being chained into tracks that turn back on themselves.
+         */
+        val Drones = TrackKinematics(220.0, 120.0, 45 * 60_000L, 30 * 60_000L)
 
         /** Jet Shaheds (Geran-3) fly at 350-550 km/h; they come as drone alerts, recognised by the alert text. */
         val JetDrones = TrackKinematics(600.0, 120.0, 15 * 60_000L, 10 * 60_000L)
@@ -160,8 +164,8 @@ object TrackInterpolator {
 
     /**
      * Linear interpolation between the two samples surrounding [t]. Past the newest sample an active
-     * track keeps moving along its last heading at its last (capped) speed, for at most
-     * the type's [TrackKinematics.maxExtrapolationMs], so targets keep moving between reports.
+     * track keeps moving along its [trend] at its (capped) speed, for at most the type's
+     * [TrackKinematics.maxExtrapolationMs], so targets keep moving between reports.
      */
     fun positionAt(track: DroneTrack, t: Long): InterpolatedPosition? {
         val kinematics = TrackKinematics.of(track)
@@ -186,20 +190,16 @@ object TrackInterpolator {
             )
         }
 
-        val a = s[s.lastIndex - 1]
         val b = s.last()
-        val (heading, rawSpeed) = motion(a, b)
-        if (!track.active) return held(track, b, heading to rawSpeed)
-        val segmentKm = GeoMath.distanceKm(a.point, b.point)
-        if (segmentKm < 0.01) return held(track, b, heading to rawSpeed)
+        val (heading, rawSpeed) = trend(s) ?: motion(s[s.lastIndex - 1], b)
+        if (!track.active || rawSpeed < MIN_MOVING_KMH) return held(track, b, heading to rawSpeed)
         val speed = min(rawSpeed, kinematics.maxSpeedKmh)
         val elapsedMs = min(t - b.t, kinematics.maxExtrapolationMs)
-        val travelKm = speed * elapsedMs / 3_600_000.0
-        val f = travelKm / segmentKm
+        val ahead = GeoMath.destination(b.point, heading, speed * elapsedMs / 3_600_000.0)
         return InterpolatedPosition(
             trackId = track.id,
-            lat = b.lat + (b.lat - a.lat) * f,
-            lon = b.lon + (b.lon - a.lon) * f,
+            lat = ahead.lat,
+            lon = ahead.lon,
             headingDeg = heading,
             speedKmh = speed,
             mode = PositionMode.Extrapolated,
@@ -219,6 +219,38 @@ object TrackInterpolator {
 
     private fun segmentMotion(s: List<TrackSample>) = if (s.size >= 2) motion(s[s.lastIndex - 1], s.last()) else null
 
+    /** Slower than this the fitted motion is noise: the group is holding where it was last reported. */
+    private const val MIN_MOVING_KMH = 1.0
+    /** Reports [trend] fits, at most, and how far back from the newest one they may go. */
+    private const val TREND_SAMPLES = 4
+    private const val TREND_WINDOW_MS = 90 * 60_000L
+    private const val KM_PER_DEGREE = 111.2
+
+    /**
+     * Heading (degrees clockwise from north) and speed (km/h) fitted by least squares through the latest few
+     * reports. Positions are raion and settlement centres, so a single hop's direction is coarse; the fit over
+     * several averages that out and follows the group's course rather than its last zig. Null below two reports.
+     */
+    fun trend(samples: List<TrackSample>): Pair<Double, Double>? {
+        val last = samples.lastOrNull() ?: return null
+        val recent = samples.takeLast(TREND_SAMPLES).filter { last.t - it.t <= TREND_WINDOW_MS }
+        if (recent.size < 2) return null
+        val lonKm = cos(last.lat * PI / 180.0) * KM_PER_DEGREE
+        val ts = recent.map { (it.t - last.t) / 3_600_000.0 }
+        val xs = recent.map { (it.lon - last.lon) * lonKm }
+        val ys = recent.map { (it.lat - last.lat) * KM_PER_DEGREE }
+        val tMean = ts.average()
+        val variance = ts.sumOf { (it - tMean) * (it - tMean) }
+        if (variance <= 0.0) return null
+        fun slope(vs: List<Double>): Double {
+            val mean = vs.average()
+            return ts.indices.sumOf { (ts[it] - tMean) * (vs[it] - mean) } / variance
+        }
+        val vx = slope(xs)
+        val vy = slope(ys)
+        return (atan2(vx, vy) * 180.0 / PI + 360.0) % 360.0 to kotlin.math.sqrt(vx * vx + vy * vy)
+    }
+
     /** Heading in degrees clockwise from north and average speed in km/h between two samples. */
     fun motion(a: TrackSample, b: TrackSample): Pair<Double, Double> {
         val dx = (b.lon - a.lon) * cos(a.lat * PI / 180.0)
@@ -233,14 +265,12 @@ object TrackInterpolator {
  * Builds [DroneTrack]s from successive snapshots of threats that fly routes: drones and cruise
  * missiles (see [TrackKinematics.of]).
  *
- * Alerts only say which area is under threat, so movement is inferred: a newly appearing threat is
- * attached to the nearest track of the same type and kind (a Gerbera decoy group never continues a
- * Shahed track) whose latest position is within that type's hop
- * distance and which was seen within its re-acquire window. A drone track also has to be able to get
- * there at the kind's top speed (with slack for coarse alert timing), so a group appearing next to a
- * track that just moved on is not mistaken for it. Each track absorbs at most one new alert
- * per update, so a wave of simultaneous alerts spawns separate tracks rather than one zig-zagging
- * track. Region-wide (oblast) alerts carry no useful position and are not tracked.
+ * Alerts only say which area is under threat, so movement is inferred: every new alert continues the nearest
+ * track of the same type and kind (a Gerbera decoy group never continues a Shahed track) whose latest position
+ * is within the type's hop distance, reachable at its top speed (with slack for coarse alert timing), and that
+ * is still open or ended within the type's re-acquire window; otherwise it starts a track. A track stays open
+ * while any of its alerts is, takes at most one alert per update, and alerts appearing together always start
+ * separate tracks. Region-wide (oblast) alerts carry no useful position and are not tracked.
  * [maxHopKm] and [reacquireWindowMs] tune drones; missiles use [TrackKinematics.CruiseMissiles].
  */
 class DroneTracker(
@@ -278,72 +308,84 @@ class DroneTracker(
         markerToTrack.keys.retainAll(currentIds)
 
         val absorbed = HashSet<String>()
-        tracked.sortedBy { it.startedAt?.toEpochMilliseconds() ?: nowMs }.forEach { marker ->
+        tracked.sortedBy { observedAt(it, nowMs) }.forEach { marker ->
             val existing = markerToTrack[marker.id]?.let(tracks::get)
             if (existing != null) {
                 existing.lastSeen = nowMs
                 existing.markerIds += marker.id
                 return@forEach
             }
-            val observedAt = (marker.startedAt?.toEpochMilliseconds() ?: nowMs).coerceAtMost(nowMs)
             val kind = TargetClassifier.classify(marker).kind
-            val (hopKm, reacquireMs) = if (marker.type == ThreatType.Drones) {
-                maxHopKm to reacquireWindowMs
-            } else {
-                TrackKinematics.of(marker.type)!!.let { it.maxHopKm to it.reacquireWindowMs }
-            }
-            // Missile alerts are raised far ahead of the missile, so their timing says little about its speed.
-            val maxSpeedKmh = when {
-                marker.type != ThreatType.Drones -> Double.POSITIVE_INFINITY
-                kind == TargetKind.JetDrone -> TrackKinematics.JetDrones.maxSpeedKmh
-                else -> TrackKinematics.Drones.maxSpeedKmh
-            }
-            val track = tracks.values
-                .asSequence()
-                .filter { it.type == marker.type && it.kind == kind }
-                // Tracks born in this same update are excluded: simultaneous alerts are separate groups.
-                .filter { it.id !in absorbed && it.firstSeen < nowMs }
-                .filter { it.active || nowMs - it.lastSeen <= reacquireMs }
-                .map { it to GeoMath.distanceKm(it.samples.last().point, marker.point) }
-                .filter { (track, km) -> km <= hopKm && km <= reachableKm(maxSpeedKmh, observedAt - track.samples.last().t) }
-                .minByOrNull { it.second }
-                ?.first
-            if (track != null && GeoMath.distanceKm(track.samples.last().point, marker.point) < SAME_PLACE_KM) {
+            val t = observedAt(marker, nowMs)
+            val track = nearestTrack(marker, kind, t, nowMs, absorbed)
+            when {
+                track == null -> startTrack(marker, kind, t, nowMs)
                 // Re-alerted in the same area: the group is still here, which says nothing about movement.
-                track.level = marker.level
-                track.lastSeen = nowMs
-                track.markerIds += marker.id
-                absorbed += track.id
-                markerToTrack[marker.id] = track.id
-            } else if (track != null) {
-                val t = observedAt.coerceIn(track.samples.last().t + 1, maxOf(nowMs, track.samples.last().t + 1))
-                track.samples.addLast(TrackSample(t, marker.point.lat, marker.point.lon, marker.title, marker.oblastUid, marker.message))
-                while (track.samples.size > maxSamples) track.samples.removeFirst()
-                track.level = marker.level
-                track.oblastUid = marker.oblastUid
-                track.lastSeen = nowMs
-                track.markerIds += marker.id
-                absorbed += track.id
-                markerToTrack[marker.id] = track.id
-            } else {
-                val id = "$idPrefix${++sequence}"
-                tracks[id] = MutableTrack(
-                    id = id,
-                    type = marker.type,
-                    kind = kind,
-                    level = marker.level,
-                    oblastUid = marker.oblastUid,
-                    firstSeen = nowMs,
-                    lastSeen = nowMs,
-                    markerIds = mutableSetOf(marker.id),
-                    samples = ArrayDeque(listOf(TrackSample(observedAt, marker.point.lat, marker.point.lon, marker.title, marker.oblastUid, marker.message))),
-                )
-                markerToTrack[marker.id] = id
+                GeoMath.distanceKm(track.samples.last().point, marker.point) < SAME_PLACE_KM -> track.attach(marker, nowMs)
+                else -> {
+                    val last = track.samples.last()
+                    track.samples.addLast(sample(marker, t.coerceIn(last.t + 1, maxOf(nowMs, last.t + 1))))
+                    while (track.samples.size > maxSamples) track.samples.removeFirst()
+                    track.oblastUid = marker.oblastUid
+                    track.attach(marker, nowMs)
+                }
             }
+            track?.let { absorbed += it.id }
         }
 
         tracks.values.removeAll { !it.active && nowMs - it.lastSeen > retentionMs }
     }
+
+    private fun nearestTrack(marker: ThreatMarker, kind: TargetKind, t: Long, nowMs: Long, absorbed: Set<String>): MutableTrack? {
+        val (hopKm, reacquireMs) = if (marker.type == ThreatType.Drones) {
+            maxHopKm to reacquireWindowMs
+        } else {
+            TrackKinematics.of(marker.type)!!.let { it.maxHopKm to it.reacquireWindowMs }
+        }
+        // Missile alerts are raised far ahead of the missile, so their timing says little about its speed.
+        val maxSpeedKmh = when {
+            marker.type != ThreatType.Drones -> Double.POSITIVE_INFINITY
+            kind == TargetKind.JetDrone -> TrackKinematics.JetDrones.maxSpeedKmh
+            else -> TrackKinematics.Drones.maxSpeedKmh
+        }
+        return tracks.values
+            .asSequence()
+            .filter { it.type == marker.type && it.kind == kind }
+            // Tracks born in this same update are excluded: simultaneous alerts are separate groups.
+            .filter { it.id !in absorbed && it.firstSeen < nowMs }
+            .filter { it.active || nowMs - it.lastSeen <= reacquireMs }
+            .map { it to GeoMath.distanceKm(it.samples.last().point, marker.point) }
+            .filter { (track, km) -> km <= hopKm && km <= reachableKm(maxSpeedKmh, t - track.samples.last().t) }
+            .minByOrNull { it.second }
+            ?.first
+    }
+
+    private fun MutableTrack.attach(marker: ThreatMarker, nowMs: Long) {
+        level = marker.level
+        lastSeen = nowMs
+        markerIds += marker.id
+        markerToTrack[marker.id] = id
+    }
+
+    private fun startTrack(marker: ThreatMarker, kind: TargetKind, t: Long, nowMs: Long) {
+        val id = "$idPrefix${++sequence}"
+        tracks[id] = MutableTrack(
+            id = id,
+            type = marker.type,
+            kind = kind,
+            level = marker.level,
+            oblastUid = marker.oblastUid,
+            firstSeen = nowMs,
+            lastSeen = nowMs,
+            markerIds = mutableSetOf(),
+            samples = ArrayDeque(listOf(sample(marker, t))),
+        ).apply { attach(marker, nowMs) }
+    }
+
+    private fun sample(marker: ThreatMarker, t: Long) =
+        TrackSample(t, marker.point.lat, marker.point.lon, marker.title, marker.oblastUid, marker.message)
+
+    private fun observedAt(marker: ThreatMarker, nowMs: Long) = (marker.startedAt?.toEpochMilliseconds() ?: nowMs).coerceAtMost(nowMs)
 
     private companion object {
         const val SAME_PLACE_KM = 1.0
