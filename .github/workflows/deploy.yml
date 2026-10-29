@@ -136,6 +136,11 @@ jobs:
           source: mission-control/server/docker-compose.yaml,mission-control/server/Caddyfile
           target: ${{ env.APP_DIR }}
           strip_components: 2
+      # The compose file's ${CLIENT_KEYS:?} only rejects an empty value; "," or " " would still start an open API.
+      - name: Check CLIENT_KEYS holds a key
+        env:
+          CLIENT_KEYS: ${{ secrets.CLIENT_KEYS }}
+        run: '[[ "$CLIENT_KEYS" =~ [^,[:space:]] ]] || { echo "::error::CLIENT_KEYS secret holds no key"; exit 1; }'
       - id: deploy
         name: Connect to remote machine and deploy
         env:
