@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.gusak.lab.radarnebo.data.FavoriteLocation
+import com.gusak.lab.radarnebo.data.MapBackground
 import com.gusak.lab.radarnebo.data.MapMode
 import com.gusak.lab.radarnebo.data.ThemeMode
 import com.gusak.lab.radarnebo.geo.GeoPoint
@@ -30,7 +31,7 @@ import kotlin.time.Duration.Companion.seconds
 // Previews of the map in every mode and state, built from PreviewData.scenario() so each one always
 // shows what its name says. Phone previews are 420 x 860 dp, tablet ones 1100 x 760 dp.
 
-/** With [map], the street map is drawn underneath from the bundled Carto tiles (never downloaded). */
+/** With [map], the background map is drawn underneath from the bundled tiles (never downloaded). */
 @Composable
 private fun Screen(
     state: UiState,
@@ -111,6 +112,18 @@ private fun MapReconnectingPreview() = Screen(
 @Composable
 private fun MapEveryThreatTypePreview() = Screen(PreviewData.scenario(), start = MapScreenStart(camera = camera(GeoPoint(49.4, 32.6), 1.9f)))
 
+@Preview(name = "Map · satellite at night · overview", widthDp = 420, heightDp = 860)
+@Composable
+private fun MapNightSatellitePreview() = Screen(nightSatellite(PreviewData.scenario()), map = true)
+
+@Preview(name = "Map · satellite at night · Kyiv", widthDp = 420, heightDp = 860)
+@Composable
+private fun MapNightSatelliteKyivPreview() =
+    Screen(nightSatellite(PreviewData.quiet(favorites = emptyList())), start = MapScreenStart(camera = camera(city("Kyiv"), 6f)), map = true)
+
+/** The dark theme's satellite view: NASA's night imagery, the only satellite tiles bundled. */
+private fun nightSatellite(state: UiState) = state.copy(settings = state.settings.copy(mapBackground = MapBackground.Satellite))
+
 // --- Cities -------------------------------------------------------------------------------------------
 
 @Preview(name = "Cities · zoomed out, dots", widthDp = 420, heightDp = 860)
@@ -174,18 +187,18 @@ private fun MapTargetsListPreview() = Screen(PreviewData.scenario(), start = Map
 
 // --- Cards and controls ---------------------------------------------------------------------------------
 
-@Preview(name = "Map · threat card · Kinzhal", widthDp = 420, heightDp = 860)
+@Preview(name = "Map · threat panel · Kinzhal", widthDp = 420, heightDp = 860)
 @Composable
 private fun ThreatCardPreview() {
     val state = PreviewData.scenario()
-    Screen(state, start = MapScreenStart(selection = MapSelection.Threat(state.threats.first { it.id.startsWith("ballistic") })))
+    Screen(state, start = MapScreenStart(selectedThreatId = state.threats.first { it.id.startsWith("ballistic") }.id))
 }
 
-@Preview(name = "Map · threat card · region-wide, yellow", widthDp = 420, heightDp = 860)
+@Preview(name = "Map · threat panel · region-wide, yellow", widthDp = 420, heightDp = 860)
 @Composable
 private fun RegionWideThreatCardPreview() {
     val state = PreviewData.scenario(ThemeMode.Light)
-    Screen(state, start = MapScreenStart(selection = MapSelection.Threat(state.threats.first { it.id.startsWith("drones-wide") })))
+    Screen(state, start = MapScreenStart(selectedThreatId = state.threats.first { it.id.startsWith("drones-wide") }.id))
 }
 
 @Preview(name = "Map · favorite card · threat nearby", widthDp = 420, heightDp = 860)

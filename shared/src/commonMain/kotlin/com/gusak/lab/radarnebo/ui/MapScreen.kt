@@ -23,6 +23,9 @@ import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalInspectionMode
 import com.gusak.lab.radarnebo.tracking.Place
+import com.gusak.lab.radarnebo.tracking.DroneTrack
+import com.gusak.lab.radarnebo.tracking.TargetClassifier
+import com.gusak.lab.radarnebo.tracking.TrackInterpolator
 import com.gusak.lab.radarnebo.tracking.TrackPredictor
 import kotlin.time.Clock
 import androidx.compose.animation.fadeIn
@@ -60,11 +63,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameMillis
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -72,7 +78,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gusak.lab.radarnebo.data.AppSettings
 import com.gusak.lab.radarnebo.data.MapMode
-import com.gusak.lab.radarnebo.data.ThreatLevel
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -91,12 +96,11 @@ import com.gusak.lab.radarnebo.geo.Regions
 import kotlin.math.roundToInt
 import com.gusak.lab.radarnebo.ui.map.CinematicShot
 import com.gusak.lab.radarnebo.ui.map.MapCamera
+import com.gusak.lab.radarnebo.ui.map.MapProjection
+import com.gusak.lab.radarnebo.ui.map.groundUnder
 import com.gusak.lab.radarnebo.ui.map.MapSelection
 import com.gusak.lab.radarnebo.ui.map.ShotPlanner
-import com.gusak.lab.radarnebo.ui.map.TargetIcon
 import com.gusak.lab.radarnebo.ui.map.UkraineMap
-import com.gusak.lab.radarnebo.tracking.TargetClassifier
-import com.gusak.lab.radarnebo.tracking.TargetProfile
 import com.gusak.lab.radarnebo.ui.map.rememberCinematicDirector
 
 /**
@@ -107,11 +111,13 @@ data class MapScreenStart(
     val camera: MapCamera = MapCamera.Overview,
     /** Opens the targets panel on this target's details. */
     val selectedTrackId: String? = null,
+    /** Opens the targets panel on this threat, for one no track follows. */
+    val selectedThreatId: String? = null,
     val selection: MapSelection? = null,
     /** Shows the "add this place to favorites?" card for this spot. */
     val pendingFavorite: GeoPoint? = null,
     val radiusOpen: Boolean = false,
-    val targetsOpen: Boolean = selectedTrackId != null,
+    val targetsOpen: Boolean = selectedTrackId != null || selectedThreatId != null,
 )
 
 @Composable
@@ -144,11 +150,18 @@ fun MapScreen(
         radiusDraft = null
     }
     var selectedTrackId by rememberSaveable { mutableStateOf(start.selectedTrackId) }
+    // A threat picked on the map that no track follows; the targets panel shows it like a target.
+    var selectedThreatId by rememberSaveable { mutableStateOf(start.selectedThreatId) }
+    val selectedThreat = state.threats.firstOrNull { it.id == selectedThreatId }
     var staticCamera by remember { mutableStateOf(start.camera) }
     var serverInfoOpen by rememberSaveable { mutableStateOf(false) }
     // Hovering a row in the targets list previews that target; the map returns when the pointer leaves.
     var hoveredTrackId by remember { mutableStateOf<String?>(null) }
     var cameraBeforeHover by remember { mutableStateOf<MapCamera?>(null) }
+    // The camera keeps the selected target in view as it moves, until the user pans the map.
+    var followingSelection by remember { mutableStateOf(false) }
+    val currentTracks by rememberUpdatedState(state.tracks)
+    val currentClockOffset by rememberUpdatedState(state.clockOffsetMs)
     val inspectionMode = LocalInspectionMode.current
     val alertedFavoriteIds = remember(state.proximity) { state.proximity.map { it.favorite.id }.toSet() }
     // Favorites first so that, at equal distance, a favorite wins over the city it sits in.
@@ -158,8 +171,15 @@ fun MapScreen(
     val cinematic = state.settings.mapMode == MapMode.Cinematic
     val panelVisible = targetsOpen && !cinematic
     val onMapSelect: (MapSelection?) -> Unit = { picked ->
-        if (picked is MapSelection.Track) {
-            selectedTrackId = picked.track.id
+        // Threats open in the targets panel too: on their track when one follows them, on their own otherwise.
+        val trackId = when (picked) {
+            is MapSelection.Track -> picked.track.id
+            is MapSelection.Threat -> state.allTracks.firstOrNull { picked.marker.id in it.markerIds }?.id
+            else -> null
+        }
+        if (picked is MapSelection.Track || picked is MapSelection.Threat) {
+            selectedTrackId = trackId
+            selectedThreatId = if (trackId == null) (picked as MapSelection.Threat).marker.id else null
             targetsOpen = true
             selection = null
         } else {
@@ -175,24 +195,50 @@ fun MapScreen(
         val density = LocalDensity.current
         val wide = maxWidth >= 720.dp
         val panelHeight = minOf(maxHeight * 0.5f, 460.dp)
+        // The map credit sits below bottom panels and cards, clear of both the panel's content and the map's labels.
+        val creditSpace = if (tileSource(state) != null && !cinematic) CreditHeight else 0.dp
         val viewport = with(density) { Size(maxWidth.toPx(), maxHeight.toPx()) }
         // Part of the map the targets panel leaves visible, where a selected target should be framed.
         val visibleArea = with(density) {
             if (wide) {
                 Rect(0f, 120.dp.toPx(), (maxWidth - PanelWidth - 24.dp).toPx(), (maxHeight - bottomInset).toPx())
             } else {
-                Rect(0f, 120.dp.toPx(), maxWidth.toPx(), (maxHeight - bottomInset - panelHeight - 12.dp).toPx())
+                Rect(0f, 120.dp.toPx(), maxWidth.toPx(), (maxHeight - bottomInset - creditSpace - panelHeight - 12.dp).toPx())
             }
         }
 
-        // Frames a target's whole path and predicted destination in the part of the map left visible.
-        fun framing(trackId: String?): MapCamera? {
-            val track = state.tracks.firstOrNull { it.id == trackId } ?: return null
+        // Targets fly above the map and the camera's perspective pushes them out from the centre of the view:
+        // [visible] moved to where the target's ground spot must be for the target itself to show in its middle.
+        fun airFrame(track: DroneTrack, viewport: Size, visible: Rect): Rect {
+            val altitude = TargetClassifier.classify(track).kind.typicalAltitudeM
+            return visible.translate(with(density) { groundUnder(visible.center, altitude, viewport) } - visible.center)
+        }
+
+        // Frames a target's whole path and predicted destination (or a lone threat) in the part of the map left visible.
+        fun framing(trackId: String?, threatId: String? = null): MapCamera? {
             if (viewport.width <= 0f) return null
+            val track = state.tracks.firstOrNull { it.id == trackId }
+            if (track == null) {
+                val threat = state.threats.firstOrNull { it.id == threatId } ?: return null
+                return MapCamera.framing(listOf(threat.point), viewport, visibleArea)
+            }
             val now = Clock.System.now().toEpochMilliseconds() + state.clockOffsetMs
-            val points = track.samples.map { it.point } +
+            val position = TrackInterpolator.positionAt(track, now)?.point
+            val points = track.samples.map { it.point } + listOfNotNull(position) +
                 listOfNotNull(TrackPredictor.predict(track, now, predictionPlaces)?.place?.point)
-            return MapCamera.framing(points, viewport, visibleArea)
+            return MapCamera.framing(points, viewport, airFrame(track, viewport, visibleArea), focus = position)
+        }
+
+        val currentViewport by rememberUpdatedState(viewport)
+        val currentVisibleArea by rememberUpdatedState(visibleArea)
+
+        // Camera at [zoom] with the selected target, where it is now, in the middle of the visible part of the map.
+        fun following(zoom: Float): MapCamera? {
+            val track = currentTracks.firstOrNull { it.id == selectedTrackId } ?: return null
+            val now = Clock.System.now().toEpochMilliseconds() + currentClockOffset
+            val position = TrackInterpolator.positionAt(track, now) ?: return null
+            val frame = airFrame(track, currentViewport, currentVisibleArea)
+            return MapCamera.centeredOn(MapProjection.toWorld(position.point), zoom, currentViewport, frame)
         }
 
         suspend fun flyTo(target: MapCamera) {
@@ -207,10 +253,19 @@ fun MapScreen(
             }
         }
 
-        // Fly the static map to the selected target.
-        LaunchedEffect(selectedTrackId, panelVisible) {
+        // Fly the static map to the selected target, then keep it in the middle of the visible part of
+        // the map as it moves, until the user pans away. Hover previews take the camera meanwhile.
+        LaunchedEffect(selectedTrackId, selectedThreatId, panelVisible) {
+            followingSelection = false
             if (!panelVisible) return@LaunchedEffect
-            framing(selectedTrackId)?.let { flyTo(it) }
+            framing(selectedTrackId, selectedThreatId)?.let { flyTo(it) }
+            if (selectedTrackId == null || inspectionMode) return@LaunchedEffect
+            followingSelection = true
+            while (followingSelection) {
+                withFrameMillis { }
+                if (hoveredTrackId != null || cameraBeforeHover != null) continue
+                following(staticCamera.zoom)?.let { staticCamera = it }
+            }
         }
 
         // Preview the hovered target, and fly back once the pointer leaves the list. The short wait keeps
@@ -223,9 +278,10 @@ fun MapScreen(
                 if (cameraBeforeHover == null) cameraBeforeHover = staticCamera
                 flyTo(target)
             } else {
-                cameraBeforeHover?.let {
+                cameraBeforeHover?.let { before ->
+                    // A followed target has moved on meanwhile: return to where it is now.
+                    flyTo((if (followingSelection) following(before.zoom) else null) ?: before)
                     cameraBeforeHover = null
-                    flyTo(it)
                 }
             }
         }
@@ -242,10 +298,15 @@ fun MapScreen(
                     proximityRadiusKm = radiusKm,
                     modifier = Modifier.fillMaxSize(),
                     selectedTrackId = (selectedTrackId ?: hoveredTrackId).takeIf { panelVisible },
+                    highlightedThreatId = selectedThreatId.takeIf { panelVisible },
                     predictionPlaces = predictionPlaces,
                     tracks = state.tracks,
                     clockOffsetMs = state.clockOffsetMs,
-                    onCameraChange = { staticCamera = it },
+                    onCameraChange = {
+                        // Panning lets go of the followed target; zooming keeps it in the middle.
+                        if (it.zoom == staticCamera.zoom) followingSelection = false
+                        staticCamera = it
+                    },
                     onSelect = onMapSelect,
                     pendingFavorite = pendingFavorite,
                     onLongPress = {
@@ -329,7 +390,7 @@ fun MapScreen(
             } else {
                 Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(start = 12.dp, end = 12.dp, bottom = bottomInset + 12.dp)
+                    .padding(start = 12.dp, end = 12.dp, bottom = bottomInset + creditSpace + 12.dp)
                     .fillMaxWidth()
                     .height(panelHeight)
             },
@@ -342,6 +403,7 @@ fun MapScreen(
                 onSelect = {
                     // Choosing a target keeps the map on it instead of returning from the hover preview.
                     selectedTrackId = it
+                    selectedThreatId = null
                     hoveredTrackId = null
                     cameraBeforeHover = null
                 },
@@ -352,6 +414,7 @@ fun MapScreen(
                 onHover = { id, hovered ->
                     if (hovered) hoveredTrackId = id else if (hoveredTrackId == id) hoveredTrackId = null
                 },
+                selectedThreat = selectedThreat,
             )
         }
 
@@ -359,7 +422,7 @@ fun MapScreen(
             visible = selection != null && !panelVisible,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset + creditSpace),
         ) {
             selection?.let { SelectionCard(it, state, onDismiss = { selection = null }) }
         }
@@ -369,7 +432,7 @@ fun MapScreen(
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier.align(Alignment.BottomCenter)
-                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset).widthIn(max = 480.dp),
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset + creditSpace).widthIn(max = 480.dp),
         ) {
             RadiusCard(
                 radiusKm = radiusKm,
@@ -388,7 +451,7 @@ fun MapScreen(
                     .padding(start = 8.dp, bottom = bottomInset + 4.dp)
                     .background(radarColors.overlay, RoundedCornerShape(4.dp))
                     .padding(horizontal = 5.dp, vertical = 1.dp),
-                color = radarColors.onOverlay.copy(alpha = 0.8f),
+                color = radarColors.onOverlayMuted,
                 fontSize = 9.sp,
             )
         }
@@ -401,7 +464,7 @@ fun MapScreen(
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier.align(Alignment.BottomCenter).imePadding()
-                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset).widthIn(max = 480.dp),
+                .padding(start = 12.dp, end = 12.dp, bottom = 12.dp + bottomInset + creditSpace).widthIn(max = 480.dp),
         ) {
             lastPendingFavorite.point?.let { point ->
                 AddFavoriteCard(
@@ -419,6 +482,9 @@ fun MapScreen(
 }
 
 private val PanelWidth = 380.dp
+
+/** Room kept under a bottom panel for the map credit. */
+private val CreditHeight = 18.dp
 
 /** The tiles the map draws under the oblasts, when the platform provides them and the settings ask for a map. */
 @Composable
@@ -478,7 +544,7 @@ private fun CinematicMap(
             ) {
                 Text(
                     shot.title,
-                    color = if (danger) radarColors.danger else radarColors.ok,
+                    color = if (danger) radarColors.dangerText else radarColors.okText,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp,
@@ -517,7 +583,7 @@ private fun StatusStrip(state: UiState, onClick: () -> Unit = {}, onReconnect: (
         Column {
             Text(text, color = radarColors.onOverlay, fontSize = 12.sp)
             Text("${serverHost(state.settings.serverUrl)} · ${server.label}", color = server.color(), fontSize = 11.sp)
-            state.error?.let { Text(it, color = radarColors.danger, fontSize = 12.sp) }
+            state.error?.let { Text(it, color = radarColors.dangerText, fontSize = 12.sp) }
             if (server == ServerState.Offline) ReconnectRow(state, onReconnect)
         }
     }
@@ -572,10 +638,10 @@ private enum class ServerState(val label: String) {
 
     @Composable
     fun color() = when (this) {
-        Connecting -> radarColors.onOverlay.copy(alpha = 0.6f)
-        Live -> radarColors.ok
-        Degraded -> radarColors.warning
-        Offline -> radarColors.danger
+        Connecting -> radarColors.onOverlayMuted
+        Live -> radarColors.okText
+        Degraded -> radarColors.warningText
+        Offline -> radarColors.dangerText
     }
 
     companion object {
@@ -619,9 +685,9 @@ private fun ServerStatusCard(state: UiState, onOpenRequests: (() -> Unit)?, modi
                 }
                 if (health.pollIntervalSeconds > 0) StatusLine("Polled", "every ${health.pollIntervalSeconds} s")
                 health.lastAttemptAt?.let { StatusLine("Last poll", formatClock(it)) }
-                health.lastError?.let { StatusLine("Source error", it, radarColors.danger) }
+                health.lastError?.let { StatusLine("Source error", it, radarColors.dangerText) }
             }
-            state.error?.let { StatusLine("Error", it, radarColors.danger) }
+            state.error?.let { StatusLine("Error", it, radarColors.dangerText) }
             if (server == ServerState.Offline) {
                 Text(
                     "Is the server running? Start it with ./gradlew :mission-control:server:run, or change its address in Settings.",
@@ -644,7 +710,8 @@ private fun StatusLine(label: String, value: String, valueColor: Color = Materia
 
 @Composable
 private fun ProximityBanner(state: UiState) {
-    Card(colors = CardDefaults.cardColors(containerColor = radarColors.danger.copy(alpha = 0.92f))) {
+    // Darker than the alert red, so white text on it stays readable in every palette.
+    Card(colors = CardDefaults.cardColors(containerColor = lerp(radarColors.danger, Color.Black, 0.35f))) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text("Threats near your locations", fontWeight = FontWeight.Bold, color = Color.White)
             state.proximity.take(3).forEach { hit ->
@@ -664,31 +731,8 @@ private fun SelectionCard(selection: MapSelection, state: UiState, onDismiss: ()
     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
         Column(Modifier.padding(14.dp)) {
             when (selection) {
-                is MapSelection.Threat -> {
-                    val m = selection.marker
-                    val levelColor = if (m.level == ThreatLevel.Red) radarColors.danger else radarColors.warning
-                    val profile = remember(m.id) { TargetClassifier.classify(m) }
-                    Row(verticalAlignment = Alignment.Top) {
-                        TargetIcon(profile.kind, headingDeg = 0f, color = levelColor, size = 40.dp)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(m.title, style = MaterialTheme.typography.titleMedium)
-                            Text("${m.type.label} · ${m.level.name} level", color = levelColor)
-                            Text(
-                                profile.model + if (profile.source == TargetProfile.Source.Probable) " (probable)" else "",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Text(profile.role, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("${m.oblastName} · ${m.locationType}", style = MaterialTheme.typography.bodySmall)
-                            m.startedAt?.let { Text("Since ${formatTime(it)} (${formatAgo(it)})", style = MaterialTheme.typography.bodySmall) }
-                            m.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                            if (m.isRegionWide) Text("Region-wide: position shown at the oblast center", style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-                // Tracks open in the targets panel instead of this card.
-                is MapSelection.Track -> Unit
+                // Targets and threats open in the targets panel instead of this card.
+                is MapSelection.Track, is MapSelection.Threat -> Unit
                 is MapSelection.Favorite -> {
                     val f = selection.favorite
                     val hit = state.proximity.firstOrNull { it.favorite.id == f.id }
@@ -696,7 +740,7 @@ private fun SelectionCard(selection: MapSelection, state: UiState, onDismiss: ()
                     Text(
                         if (hit == null) "Clear within ${state.settings.proximityRadiusKm} km"
                         else "${hit.threat.type.label} – ${if (hit.insideRegion) "region-wide" else "${hit.distanceKm.toInt()} km away"}",
-                        color = if (hit == null) radarColors.ok else radarColors.danger,
+                        color = if (hit == null) radarColors.okText else radarColors.dangerText,
                     )
                 }
             }
@@ -735,7 +779,7 @@ private fun RadiusCard(radiusKm: Int, favoriteCount: Int, onPreview: (Int) -> Un
         Column(Modifier.padding(start = 16.dp, top = 6.dp, end = 8.dp, bottom = 10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Warning radius", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Text("$radiusKm km", style = MaterialTheme.typography.titleMedium, color = radarColors.favorite)
+                Text("$radiusKm km", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                 TextButton(onClick = onClose) { Text("Done") }
             }
             Column(Modifier.padding(end = 8.dp)) {

@@ -31,15 +31,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -50,8 +53,11 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gusak.lab.radarnebo.debug.HttpExchange
+import com.gusak.lab.radarnebo.ui.STATUS_TINT
 import com.gusak.lab.radarnebo.ui.formatClock
 import com.gusak.lab.radarnebo.ui.radarColors
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -190,15 +196,15 @@ private fun StatusBadge(exchange: HttpExchange) {
     val colors = radarColors
     val status = exchange.status
     val color = when {
-        status == null -> colors.danger
-        status >= 500 -> colors.danger
-        status >= 400 -> colors.warning
+        status == null -> colors.dangerText
+        status >= 500 -> colors.dangerText
+        status >= 400 -> colors.warningText
         status == 304 -> MaterialTheme.colorScheme.onSurfaceVariant
-        else -> colors.ok
+        else -> colors.okText
     }
     Text(
         status?.toString() ?: "ERR",
-        Modifier.background(color.copy(alpha = 0.18f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
+        Modifier.background(color.copy(alpha = STATUS_TINT), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 1.dp),
         color = color,
         fontSize = 12.sp,
         fontWeight = FontWeight.Bold,
@@ -212,7 +218,8 @@ private fun bodySize(exchange: HttpExchange) = exchange.responseBody?.length?.le
 
 @Composable
 private fun ExchangeDetail(exchange: HttpExchange, onBack: (() -> Unit)?) {
-    val body = remember(exchange.id) { exchange.responseBody?.let(::prettyJson)?.lines().orEmpty() }
+    val pretty = remember(exchange.id) { exchange.responseBody?.let(::prettyJson) }
+    val body = remember(pretty) { pretty?.lines().orEmpty() }
     val highlight = jsonHighlightColors()
     SelectionContainer {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
@@ -230,12 +237,14 @@ private fun ExchangeDetail(exchange: HttpExchange, onBack: (() -> Unit)?) {
                 exchange.userAgent?.let { Fact("User agent", it) }
                 exchange.contentType?.let { Fact("Content type", it) }
                 bodySize(exchange)?.let { Fact("Body", it) }
-                exchange.error?.let { Fact("Error", it, radarColors.danger) }
+                exchange.error?.let { Fact("Error", it, radarColors.dangerText) }
                 Section("Request headers")
                 Headers(exchange.requestHeaders)
                 Section("Response headers")
                 Headers(exchange.responseHeaders)
-                Section("Response body")
+                Section("Response body") {
+                    if (pretty != null) CopyButton(pretty)
+                }
                 if (body.isEmpty()) Text("(none)", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
             }
             itemsIndexed(body) { _, line ->
@@ -256,10 +265,33 @@ private fun Fact(label: String, value: String, color: Color = MaterialTheme.colo
 }
 
 @Composable
-private fun Section(title: String) {
+private fun Section(title: String, action: @Composable () -> Unit = {}) {
     Spacer(Modifier.padding(top = 12.dp))
-    Text(title, style = MaterialTheme.typography.titleSmall)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
+        action()
+    }
     HorizontalDivider(Modifier.padding(vertical = 4.dp))
+}
+
+/** Copies [text] to the clipboard, and says so for a moment. */
+@Composable
+private fun CopyButton(text: String) {
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    var copied by remember(text) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1500)
+            copied = false
+        }
+    }
+    TextButton(onClick = {
+        scope.launch {
+            clipboard.setClipEntry(plainTextClip(text))
+            copied = true
+        }
+    }) { Text(if (copied) "Copied ✓" else "Copy to clipboard") }
 }
 
 @Composable
@@ -294,8 +326,8 @@ private class JsonColors(val key: Color, val string: Color, val literal: Color)
 @Composable
 private fun jsonHighlightColors() = JsonColors(
     key = MaterialTheme.colorScheme.primary,
-    string = radarColors.ok,
-    literal = radarColors.warning,
+    string = radarColors.okText,
+    literal = radarColors.warningText,
 )
 
 private val jsonToken = Regex("\"(?:\\\\.|[^\"\\\\])*\"(\\s*:)?|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?|\\btrue\\b|\\bfalse\\b|\\bnull\\b")

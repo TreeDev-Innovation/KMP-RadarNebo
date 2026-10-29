@@ -68,171 +68,116 @@ internal object ApiTranscripts {
         GET /v1/alerts/active.json [Origin: https://example.org]
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         Access-Control-Allow-Origin: *
-        Access-Control-Expose-Headers: ETag, X-Data-Age-Seconds
+        Access-Control-Expose-Headers: X-Data-Age-Seconds
         {"alerts":[{"id":1,"location_title":"Харківська область","location_type":"oblast","started_at":"2026-10-19T10:00:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:00:00.000Z","alert_type":"air_raid","location_oblast":"Харківська область","location_uid":"22","notes":null,"country":null,"alert_level":"red","location_title_en":"Kharkiv Oblast","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:00:00.000Z","source_message":"Ударні БпЛА типу «Шахед»"}],"location_oblast_uid":22},{"id":3,"location_title":"м. Харків та Харківська територіальна громада","location_type":"hromada","started_at":"2026-10-19T10:00:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:00:00.000Z","alert_type":"air_raid","location_oblast":"Харківська область","location_uid":"1293","notes":null,"country":null,"alert_level":"red","location_title_en":"Kharkiv","threats":[{"threat_type":"cruise_missiles","level":"red","started_at":"2026-10-19T10:00:00.000Z","source_message":"Крилаті ракети"}],"location_oblast_uid":22},{"id":4,"location_title":"м. Київ","location_type":"city","started_at":"2026-10-19T10:20:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:20:00.000Z","alert_type":"air_raid","location_oblast":"м. Київ","location_uid":"31","notes":null,"country":null,"alert_level":"red","location_title_en":"Kyiv City","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:20:00.000Z","source_message":"Ударні БпЛА типу «Шахед»"}],"location_oblast_uid":31}],"meta":{"last_updated_at":"2026/10/19 10:20:00 +0000","type":"full"}}
 
         GET /v1/alerts/active.json [If-None-Match: "v2"]
-        304
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
+        200
+        Content-Type: application/json
         X-Data-Age-Seconds: 45
-
+        {"alerts":[{"id":1,"location_title":"Харківська область","location_type":"oblast","started_at":"2026-10-19T10:00:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:00:00.000Z","alert_type":"air_raid","location_oblast":"Харківська область","location_uid":"22","notes":null,"country":null,"alert_level":"red","location_title_en":"Kharkiv Oblast","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:00:00.000Z","source_message":"Ударні БпЛА типу «Шахед»"}],"location_oblast_uid":22},{"id":3,"location_title":"м. Харків та Харківська територіальна громада","location_type":"hromada","started_at":"2026-10-19T10:00:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:00:00.000Z","alert_type":"air_raid","location_oblast":"Харківська область","location_uid":"1293","notes":null,"country":null,"alert_level":"red","location_title_en":"Kharkiv","threats":[{"threat_type":"cruise_missiles","level":"red","started_at":"2026-10-19T10:00:00.000Z","source_message":"Крилаті ракети"}],"location_oblast_uid":22},{"id":4,"location_title":"м. Київ","location_type":"city","started_at":"2026-10-19T10:20:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:20:00.000Z","alert_type":"air_raid","location_oblast":"м. Київ","location_uid":"31","notes":null,"country":null,"alert_level":"red","location_title_en":"Kyiv City","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:20:00.000Z","source_message":"Ударні БпЛА типу «Шахед»"}],"location_oblast_uid":31}],"meta":{"last_updated_at":"2026/10/19 10:20:00 +0000","type":"full"}}
 
         GET /v1/alerts/active.json [If-Modified-Since: Mon, 19 Oct 2026 10:20:00 GMT]
-        304
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
+        200
+        Content-Type: application/json
         X-Data-Age-Seconds: 45
-
+        {"alerts":[{"id":1,"location_title":"Харківська область","location_type":"oblast","started_at":"2026-10-19T10:00:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:00:00.000Z","alert_type":"air_raid","location_oblast":"Харківська область","location_uid":"22","notes":null,"country":null,"alert_level":"red","location_title_en":"Kharkiv Oblast","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:00:00.000Z","source_message":"Ударні БпЛА типу «Шахед»"}],"location_oblast_uid":22},{"id":3,"location_title":"м. Харків та Харківська територіальна громада","location_type":"hromada","started_at":"2026-10-19T10:00:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:00:00.000Z","alert_type":"air_raid","location_oblast":"Харківська область","location_uid":"1293","notes":null,"country":null,"alert_level":"red","location_title_en":"Kharkiv","threats":[{"threat_type":"cruise_missiles","level":"red","started_at":"2026-10-19T10:00:00.000Z","source_message":"Крилаті ракети"}],"location_oblast_uid":22},{"id":4,"location_title":"м. Київ","location_type":"city","started_at":"2026-10-19T10:20:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:20:00.000Z","alert_type":"air_raid","location_oblast":"м. Київ","location_uid":"31","notes":null,"country":null,"alert_level":"red","location_title_en":"Kyiv City","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:20:00.000Z","source_message":"Ударні БпЛА типу «Шахед»"}],"location_oblast_uid":31}],"meta":{"last_updated_at":"2026/10/19 10:20:00 +0000","type":"full"}}
 
         GET /v1/iot/active_air_raid_alerts_by_oblast.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "NNNNNNNNNANNNNNNNNNNNANNNNN"
 
         GET /v1/iot/active_air_raid_alerts.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         <1296 chars, sha256 99f4aacb491bcc7ec3d2466ad0071eea4e52fcc9c58672a29c0287b9b5d4f094>
 
         GET /v1/iot/active_air_raid_alerts/22.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "A"
 
         GET /v1/iot/active_air_raid_alerts/1293.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "A"
 
         GET /v1/iot/active_air_raid_alerts/14.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "N"
 
         GET /v1/iot/active_air_raid_alerts/1100.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "N"
 
         GET /v1/iot/active_air_raid_alerts/31.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "A"
 
         GET /v1/iot/active_air_raid_alerts/7.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "N"
 
         GET /v2/iot/active_air_raid_alerts_by_oblast.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "NNNNNNNNNRNNNNNNNNNNNRNNNNN"
 
         GET /v2/iot/active_air_raid_alerts.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         <1296 chars, sha256 0d328ad15c5f11047f7fe0f7ca054ae0639bb20e65028eb98f19f6d33b62eb20>
 
         GET /v2/iot/active_air_raid_alerts/22.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "R"
 
         GET /v2/iot/active_air_raid_alerts/1293.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "R"
 
         GET /v2/iot/active_air_raid_alerts/14.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "N"
 
         GET /v2/iot/active_air_raid_alerts/1100.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "N"
 
         GET /v2/iot/active_air_raid_alerts/31.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "R"
 
         GET /v2/iot/active_air_raid_alerts/7.json
         200
         Content-Type: application/json
-        ETag: "v2"
-        Last-Modified: Mon, 19 Oct 2026 10:20:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 45
         "N"
 
@@ -264,7 +209,7 @@ internal object ApiTranscripts {
         GET /v1/drones/positions.json
         200
         Content-Type: application/json
-        {"at":1792405245000,"positions":[{"trackId":"trk-tn5fs0-1","lat":49.9935,"lon":36.2304,"headingDeg":null,"speedKmh":null,"mode":"Held","level":"Red"},{"trackId":"trk-tn5fs0-2","lat":50.447816,"lon":30.513369,"headingDeg":250.302586,"speedKmh":60.307799,"mode":"Extrapolated","level":"Red"}]}
+        {"at":1792405245000,"positions":[{"trackId":"trk-tn5fs0-1","lat":49.9935,"lon":36.2304,"headingDeg":null,"speedKmh":null,"mode":"Held","level":"Red"},{"trackId":"trk-tn5fs0-2","lat":50.447816,"lon":30.513369,"headingDeg":250.326001,"speedKmh":60.345033,"mode":"Extrapolated","level":"Red"}]}
 
         GET /v1/drones/positions.json?at=2026-10-19T10:10:00Z
         200
@@ -299,9 +244,6 @@ internal object ApiTranscripts {
         GET /v1/alerts/active.json
         200
         Content-Type: application/json
-        ETag: "v3"
-        Last-Modified: Mon, 19 Oct 2026 11:00:45 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 0
         {"alerts":[{"id":1,"location_title":"Харківська область","location_type":"oblast","started_at":"2026-10-19T10:00:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:00:00.000Z","alert_type":"air_raid","location_oblast":"Харківська область","location_uid":"22","notes":null,"country":null,"alert_level":"red","location_title_en":"Kharkiv Oblast","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:00:00.000Z","source_message":"Ударні БпЛА типу «Шахед»"}],"location_oblast_uid":22}],"meta":{"last_updated_at":"2026/10/19 11:00:45 +0000","type":"full"}}
 
@@ -313,9 +255,6 @@ internal object ApiTranscripts {
         GET /v1/alerts/active.json
         200
         Content-Type: application/json
-        ETag: "v3"
-        Last-Modified: Mon, 19 Oct 2026 11:00:45 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 15
         {"alerts":[{"id":1,"location_title":"Харківська область","location_type":"oblast","started_at":"2026-10-19T10:00:00.000Z","finished_at":null,"updated_at":"2026-10-19T10:00:00.000Z","alert_type":"air_raid","location_oblast":"Харківська область","location_uid":"22","notes":null,"country":null,"alert_level":"red","location_title_en":"Kharkiv Oblast","threats":[{"threat_type":"drones","level":"red","started_at":"2026-10-19T10:00:00.000Z","source_message":"Ударні БпЛА типу «Шахед»"}],"location_oblast_uid":22}],"meta":{"last_updated_at":"2026/10/19 11:00:45 +0000","type":"full"}}
     """.trimIndent()
@@ -422,9 +361,6 @@ internal object ApiTranscripts {
         GET /v1/iot/active_air_raid_alerts/14.json [Authorization: Bearer app-key]
         200
         Content-Type: application/json
-        ETag: "v1"
-        Last-Modified: Mon, 19 Oct 2026 10:00:00 GMT
-        Cache-Control: max-age=15
         X-Data-Age-Seconds: 0
         "P"
 

@@ -48,7 +48,8 @@ class SituationPoller(
             } catch (e: Exception) {
                 // A broken report or archive must not stop the feed; the next poll starts afresh.
                 log.error("Poll failed", e)
-                status = status.copy(lastError = "Internal error (${e::class.simpleName}); see server log")
+                // The class only: the message may hold upstream details; anonymous classes have no simple name.
+                status = status.copy(lastError = "Internal error (${e::class.simpleName ?: e::class.java.name}); see server log")
                 source.pollInterval.inWholeMilliseconds
             }
             status = status.copy(nextPollAt = clock() + waitMs)
@@ -117,7 +118,8 @@ class SituationPoller(
      * than the failure's minimum or Retry-After.
      */
     private fun failed(failure: FetchResult.Failed): Long {
-        backoffMs = (if (backoffMs == 0L) failure.minWaitMs else backoffMs * 2).coerceIn(failure.minWaitMs, maxOf(failure.minWaitMs, failure.maxWaitMs))
+        val cap = maxOf(failure.minWaitMs, failure.maxWaitMs)
+        backoffMs = (if (backoffMs == 0L) failure.minWaitMs else backoffMs * 2).coerceIn(failure.minWaitMs, cap)
         val wait = maxOf(backoffMs, failure.retryAfterMs ?: 0)
         status = status.copy(lastError = failure.message)
         log.warn("{} — next attempt in {} s", failure.message, wait / 1000)

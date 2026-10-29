@@ -10,7 +10,7 @@ import com.gusak.lab.radarnebo.tracking.DroneTracker
 
 /**
  * Tracks reconstructed from alerts alone, for sources without surveillance (alerts.in.ua): the core
- * [DroneTracker] links consecutive settlement alerts of drones and cruise missiles into tracks.
+ * [DroneTracker] links consecutive raion and settlement alerts of drones and cruise missiles into tracks.
  * Track ids carry [runId], so they stay unique in the archive across restarts.
  */
 class AlertDerivedTracking(runId: String) : TargetTracking {

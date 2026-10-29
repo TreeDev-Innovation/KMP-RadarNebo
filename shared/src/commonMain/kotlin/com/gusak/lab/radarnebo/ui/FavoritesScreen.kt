@@ -4,7 +4,17 @@ import androidx.compose.material3.Surface
 import com.gusak.lab.radarnebo.data.ThemeMode
 import com.gusak.lab.radarnebo.ui.preview.PreviewData
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -35,12 +45,13 @@ import androidx.compose.ui.unit.dp
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import com.gusak.lab.radarnebo.geo.Regions
 
+/** Favorite places: search to add one, and each saved place with its current threat status. Shown in a [GlassDialog]. */
 @Composable
 fun FavoritesScreen(
     state: UiState,
     onAdd: (String, GeoPoint) -> Unit,
     onRemove: (String) -> Unit,
-    bottomInset: Dp = 0.dp,
+    modifier: Modifier = Modifier,
 ) {
     var query by rememberSaveable { mutableStateOf("") }
     var showCustom by remember { mutableStateOf(false) }
@@ -48,63 +59,109 @@ fun FavoritesScreen(
     val savedNames = state.favorites.map { it.name }.toSet()
     val suggestions = Regions.cities.filter { it.name !in savedNames && query.isNotBlank() && it.name.contains(query.trim(), ignoreCase = true) }
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 16.dp + bottomInset), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(
+        modifier,
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         item {
-            Text("Favorite locations", style = MaterialTheme.typography.headlineSmall)
-            Text(
-                "Threats within ${state.settings.proximityRadiusKm} km, or region-wide threats in the same oblast, are flagged. " +
-                    "Tip: long-press the map to add any point.",
-                style = MaterialTheme.typography.bodySmall,
-            )
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
                 label = { Text("Search city") },
+                placeholder = { Text("e.g. Kyiv, Lviv, Odesa") },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         items(suggestions, key = { "s:" + it.name }) { city ->
-            Text(
-                "+ ${city.name} · ${Regions.oblast(city.oblastUid)?.nameEn.orEmpty()}",
-                modifier = Modifier.fillMaxWidth().clickable { onAdd(city.name, city.point); query = "" }.padding(vertical = 10.dp),
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
-        item {
-            TextButton(onClick = { showCustom = true }) { Text("Add by coordinates") }
-        }
-        if (state.favorites.isEmpty()) {
-            item { Text("No favorites yet. Add your home, family or work locations.", style = MaterialTheme.typography.bodyMedium) }
-        }
-        items(state.favorites, key = { it.id }) { favorite ->
-            val hit = hits[favorite.id]
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (hit != null) radarColors.danger.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surfaceContainer,
-                ),
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onAdd(city.name, city.point); query = "" }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(favorite.name, fontWeight = FontWeight.SemiBold)
-                        Text("${formatCoord(favorite.lat)}, ${formatCoord(favorite.lon)}", style = MaterialTheme.typography.bodySmall)
-                        Text(
-                            if (hit == null) "Clear" else "${hit.threat.type.label} · " +
-                                if (hit.insideRegion) "region-wide in ${hit.threat.oblastName}" else "${hit.distanceKm.toInt()} km – ${hit.threat.title}",
-                            color = if (hit == null) radarColors.ok else radarColors.danger,
-                            style = MaterialTheme.typography.bodySmall,
-                        )
+                Text("+", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.width(12.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(city.name, style = MaterialTheme.typography.bodyMedium)
+                    Regions.oblast(city.oblastUid)?.nameEn?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    TextButton(onClick = { onRemove(favorite.id) }) { Text("Remove") }
                 }
             }
         }
+        item {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Tip: long-press the map to add any point.",
+                    Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = { showCustom = true }) { Text("Add by coordinates") }
+            }
+        }
+        item {
+            Text(
+                "SAVED PLACES",
+                Modifier.padding(start = 4.dp, top = 8.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                letterSpacing = 1.sp,
+            )
+        }
         if (state.favorites.isEmpty()) {
             item {
-                Text("Quick add", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Regions.cities.take(4).forEach { city -> TextButton(onClick = { onAdd(city.name, city.point) }) { Text(city.name) } }
+                Column(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f)).padding(16.dp),
+                ) {
+                    Text("No favorites yet", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "Add your home, family or work locations to be warned when a threat comes near.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text("Quick add", style = MaterialTheme.typography.labelLarge)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Regions.cities.take(4).forEach { city -> TextButton(onClick = { onAdd(city.name, city.point) }) { Text(city.name) } }
+                    }
                 }
+            }
+        }
+        items(state.favorites, key = { it.id }) { favorite ->
+            val hit = hits[favorite.id]
+            val statusColor = if (hit == null) radarColors.okText else radarColors.dangerText
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        if (hit != null) radarColors.danger.copy(alpha = STATUS_TINT) else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.55f),
+                    )
+                    .padding(start = 16.dp, top = 12.dp, end = 8.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.size(10.dp).clip(CircleShape).background(statusColor))
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(favorite.name, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "${formatCoord(favorite.lat)}, ${formatCoord(favorite.lon)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        if (hit == null) "Clear" else "${hit.threat.type.label} · " +
+                            if (hit.insideRegion) "region-wide in ${hit.threat.oblastName}" else "${hit.distanceKm.toInt()} km – ${hit.threat.title}",
+                        color = statusColor,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                TextButton(onClick = { onRemove(favorite.id) }) { Text("Remove") }
             }
         }
     }
