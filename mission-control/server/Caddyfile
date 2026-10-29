@@ -11,6 +11,18 @@
       disable_http_challenge
     }
   }
+  header {
+    Strict-Transport-Security "max-age=31536000"
+    X-Content-Type-Options nosniff
+    Referrer-Policy no-referrer
+    # The status page at / has only inline styles and a meta refresh; the rest is JSON.
+    Content-Security-Policy "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
+    -Server
+  }
+  # The API is GET-only, so it never needs a request body.
+  request_body {
+    max_size 1KB
+  }
   # The server compresses its own responses.
   reverse_proxy radarnebo-server:8080
 }
