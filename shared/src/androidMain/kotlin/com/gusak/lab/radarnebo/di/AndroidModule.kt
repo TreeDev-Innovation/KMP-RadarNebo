@@ -10,10 +10,10 @@ import org.koin.dsl.module
 
 /**
  * Android storage: SharedPreferences. Needs `androidContext(...)` in the Koin setup. The server defaults to
- * the development machine as the emulator sees it.
+ * the deployed one.
  */
 val androidModule = module {
     single<KeyValueStorage> { SharedPrefsStorage(androidContext()) }
-    single { ServerDefaults(url = "http://10.0.2.2:8080") }
+    single { ServerDefaults() }
     single { MapTiles(HttpClient()) }
 }

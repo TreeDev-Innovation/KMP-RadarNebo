@@ -161,7 +161,8 @@ class AppViewModel(
     }
 
     fun updateSettings(transform: (AppSettings) -> AppSettings) {
-        if (updateSettingsUseCase(transform)) {
+        val update = updateSettingsUseCase(transform)
+        if (update.sourceChanged) {
             snapshot = null
             _state.update { it.copy(error = null, tracks = emptyList(), allTracks = emptyList(), clockOffsetMs = 0, simulated = false, serverHealth = null, lastUpdated = null, nextRetryAt = null) }
             startPolling()

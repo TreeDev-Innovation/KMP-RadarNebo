@@ -34,6 +34,11 @@ class SituationService(
     var board: AlertBoard? = null
         private set
 
+    /** The latest active-alerts body as the source sent it; null when the source sends none (the simulation). */
+    @Volatile
+    var rawAlerts: String? = null
+        private set
+
     @Volatile
     var tracks: List<DroneTrack> = emptyList()
         private set
@@ -99,6 +104,7 @@ class SituationService(
         locations.learn(report.alerts)
         val change = (board ?: AlertBoard.empty(at)).next(report.alerts, at)
         board = change.board
+        rawAlerts = report.rawAlerts
         val ended = advanceTracks(change.board.alerts, report.observations, report.observedAt)
         if (!archive) return
         unsavedTracks += ended

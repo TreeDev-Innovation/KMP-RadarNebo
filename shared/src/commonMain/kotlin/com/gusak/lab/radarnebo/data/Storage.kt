@@ -24,6 +24,9 @@ enum class MapMode { Static, Cinematic }
 
 enum class ThemeMode { System, Light, Dark }
 
+/** The app's colours; each has a light and a dark variant, picked by [ThemeMode]. */
+enum class ColorPalette { Radar, Nord, Dracula, Solarized, Catppuccin, ObsidianPlum, SmokedCopper, BlueHonor }
+
 /** What the map shows under the oblasts: nothing, a map (dark or light with the theme) or satellite imagery. */
 enum class MapBackground { None, Streets, Satellite }
 
@@ -34,6 +37,7 @@ data class AppSettings(
     val accessKey: String = "",
     val mapMode: MapMode = MapMode.Static,
     val themeMode: ThemeMode = ThemeMode.System,
+    val colorPalette: ColorPalette = ColorPalette.Radar,
     val maxMapMarkers: Int = DEFAULT_MAX_MARKERS,
     val proximityRadiusKm: Int = 50,
     val dronesOnly: Boolean = true,
@@ -51,8 +55,14 @@ data class AppSettings(
     }
 }
 
-/** Where the app looks for its server until the user sets one; the Android emulator reaches the host as 10.0.2.2. */
-data class ServerDefaults(val url: String = RadarNeboApi.DEFAULT_SERVER_URL)
+/**
+ * Where the app looks for its server, and the key it sends, until the user sets them: client.properties at build time
+ * (see [ClientConfig]), else the deployed server without a key, unless a platform overrides it.
+ */
+data class ServerDefaults(
+    val url: String = ClientConfig.SERVER_URL.ifBlank { RadarNeboApi.DEFAULT_SERVER_URL },
+    val accessKey: String = ClientConfig.ACCESS_KEY,
+)
 
 /** App settings, persisted in [KeyValueStorage] and observable as [settings]. */
 class SettingsRepository(private val storage: KeyValueStorage, private val defaults: ServerDefaults = ServerDefaults()) {
@@ -75,9 +85,10 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
         val legacyKey = if (legacyProxyUrl != null) storage.getString(K_LEGACY_TOKEN) else null
         return AppSettings(
             serverUrl = storage.getString(K_SERVER_URL)?.takeIf { it.isNotBlank() } ?: legacyProxyUrl ?: defaults.url,
-            accessKey = storage.getString(K_ACCESS_KEY) ?: legacyKey.orEmpty(),
+            accessKey = storage.getString(K_ACCESS_KEY)?.takeIf { it.isNotBlank() } ?: legacyKey ?: defaults.accessKey,
             mapMode = storage.getString(K_MODE)?.let { runCatching { MapMode.valueOf(it) }.getOrNull() } ?: MapMode.Static,
             themeMode = storage.getString(K_THEME)?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() } ?: ThemeMode.System,
+            colorPalette = storage.getString(K_PALETTE)?.let { runCatching { ColorPalette.valueOf(it) }.getOrNull() } ?: ColorPalette.Radar,
             maxMapMarkers = storage.getString(K_MAX_MARKERS)?.toIntOrNull()
                 ?.coerceIn(AppSettings.MAX_MARKERS_RANGE) ?: AppSettings.DEFAULT_MAX_MARKERS,
             proximityRadiusKm = storage.getString(K_RADIUS)?.toIntOrNull()?.coerceIn(AppSettings.RADIUS_RANGE) ?: 50,
@@ -98,6 +109,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
         storage.putString(K_ACCESS_KEY, settings.accessKey.trim())
         storage.putString(K_MODE, settings.mapMode.name)
         storage.putString(K_THEME, settings.themeMode.name)
+        storage.putString(K_PALETTE, settings.colorPalette.name)
         storage.putString(K_MAX_MARKERS, settings.maxMapMarkers.toString())
         storage.putString(K_RADIUS, settings.proximityRadiusKm.toString())
         storage.putString(K_DRONES_ONLY, settings.dronesOnly.toString())
@@ -118,6 +130,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
         const val LEGACY_UPSTREAM_HOST = "alerts.in.ua"
         const val K_MODE = "map_mode"
         const val K_THEME = "theme_mode"
+        const val K_PALETTE = "color_palette"
         const val K_MAX_MARKERS = "map_max_markers"
         const val K_RADIUS = "proximity_radius_km"
         const val K_DRONES_ONLY = "drones_only"

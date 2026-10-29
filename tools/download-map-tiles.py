@@ -10,10 +10,15 @@ desktop and phone screens, with the camera centre anywhere it may go. Keep the c
 
 The key is read from CARTO_API_KEY or `carto.apiKey` in local.properties (never commit it).
 Run: python3 -I tools/download-map-tiles.py [--dry-run]
+
+With --night it instead stores NASA's Black Marble night imagery (public domain, served by NASA GIBS, no key)
+as files/map/nasa-night/<z>/<x>/<y>.jpg, the satellite background in the dark theme. GIBS serves it up to
+zoom 8 only, as PNG; the tiles are re-encoded to JPEG with macOS `sips`, about a fifth of the size.
 """
 import math
 import os
 import shutil
+import subprocess
 import sys
 import time
 import urllib.request
@@ -35,6 +40,12 @@ SCREENS = [(1280, 800), (1920, 1080), (2560, 1440), (3456, 2160), (1080, 2400), 
 
 STYLES = {"carto-dark": "dark_nolabels", "carto-light": "light_nolabels"}
 URL = "https://basemaps.cartocdn.com/rastertiles/{style}/{z}/{x}/{y}.png?key={key}"
+
+NIGHT_DIR = "nasa-night"
+NIGHT_URL = "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Black_Marble/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png"
+# The deepest zoom GIBS has for Black Marble (NightSatellite's maxZoom in MapTiles.kt).
+NIGHT_MAX_ZOOM = 8
+NIGHT_JPEG_QUALITY = 80
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 OUT = os.path.join(ROOT, "shared/src/commonMain/composeResources/files/map")
@@ -120,9 +131,47 @@ def fetch(url, path):
             time.sleep(1 + attempt * 2)
 
 
+def to_jpeg(png):
+    jpg = png[:-4] + ".jpg"
+    subprocess.run(
+        ["sips", "-s", "format", "jpeg", "-s", "formatOptions", str(NIGHT_JPEG_QUALITY), png, "--out", jpg],
+        check=True, capture_output=True,
+    )
+    os.remove(png)
+    return os.path.getsize(jpg)
+
+
+def main_night(ranges):
+    ranges = {z: r for z, r in ranges.items() if z <= NIGHT_MAX_ZOOM}
+    print(f"{sum((x1 - x0 + 1) * (y1 - y0 + 1) for x0, x1, y0, y1 in ranges.values())} night tiles, zoom {min(ranges)}..{max(ranges)}")
+    if "--dry-run" in sys.argv:
+        return
+    if shutil.which("sips") is None:
+        sys.exit("--night needs macOS sips to convert the tiles to JPEG")
+    shutil.rmtree(os.path.join(OUT, NIGHT_DIR), ignore_errors=True)
+    jobs = [
+        (NIGHT_URL.format(z=z, x=x, y=y), os.path.join(OUT, NIGHT_DIR, str(z), str(x), f"{y}.png"))
+        for z, (x0, x1, y0, y1) in ranges.items()
+        for x in range(x0, x1 + 1)
+        for y in range(y0, y1 + 1)
+    ]
+
+    def job(url, path):
+        fetch(url, path)
+        return to_jpeg(path)
+
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        size = sum(pool.map(lambda j: job(*j), jobs))
+    print(f"Stored {len(jobs)} tiles, {size / 1e6:.1f} MB, in {os.path.relpath(os.path.join(OUT, NIGHT_DIR), ROOT)}")
+
+
 def main():
     areas = visible_areas()
     ranges = tile_ranges(areas)
+    if "--night" in sys.argv:
+        # The ranges are the street styles' own, which coverage.txt already lists.
+        main_night(ranges)
+        return
     total = 0
     for z, (x0, x1, y0, y1) in ranges.items():
         w, s, e, n = areas[z]
