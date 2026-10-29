@@ -63,6 +63,41 @@ docker build -t radarnebo-server:local mission-control/server
 docker run --rm -p 8080:8080 radarnebo-server:local
 ```
 
+## Limits
+
+Limits are per client IP (`CLIENT_REQUESTS_PER_MINUTE`, 120/min; history `HISTORY_REQUESTS_PER_MINUTE`, 2/min; track
+archive `ARCHIVE_REQUESTS_PER_MINUTE`, 10/min). With `TRUST_PROXY_HEADERS=true` the client IP is the last
+`X-Forwarded-For` entry, the one the proxy added. That is safe only when the server port isn't published and every call
+goes through the proxy, as in the compose deployment; anywhere else leave it `false`, or any client could pick its own IP.
+
+`/v1/drones/archive.json` covers a window of at most 7 days, with `limit` at most 200 (the default); more is a 400.
+
+## Backup and restore
+
+The archive is derived history (up to 45 days of alerts and finished tracks), not live data, but
+alerts.in.ua won't serve all of it again. SQLite runs in WAL mode, so a plain `cp` of the file while the server runs can
+miss committed rows or copy a torn file; use SQLite's online backup instead. Compose prefixes the volume with the project
+name (`docker volume ls | grep radarnebo-data`; normally `radarnebo-server_radarnebo-data`). A weekly snapshot that keeps
+the last four, from the VM user's crontab (`crontab -e`; `%` must be escaped there):
+
+```
+0 3 * * 0 mkdir -p $HOME/backups && docker run --rm --user "$(id -u):$(id -g)" -v radarnebo-server_radarnebo-data:/data:ro -v $HOME/backups:/out keinos/sqlite3:3.53.4 sqlite3 /data/radarnebo-archive.db ".backup /out/archive-$(date +\%F).db" && ls -1t $HOME/backups/archive-*.db | tail -n +5 | xargs -r rm --
+```
+
+The server keeps running; the snapshot includes what is still in the WAL. Copies on the same VM don't survive losing
+it, so copy them off now and then, or enable an OCI backup policy on the boot volume instead. To restore, in the
+compose directory:
+
+```
+docker compose stop radarnebo-server
+docker run --rm --user 10001:10001 -v radarnebo-server_radarnebo-data:/data -v $HOME/backups:/in:ro keinos/sqlite3:3.53.4 \
+  sh -c 'rm -f /data/radarnebo-archive.db-wal /data/radarnebo-archive.db-shm && cp /in/archive-<date>.db /data/radarnebo-archive.db'
+docker compose start radarnebo-server
+```
+
+Remove the `-wal` and `-shm` files, or SQLite would apply the old WAL to the restored file. `10001` is the server
+image's user, so the restored file stays writable for it.
+
 ## Health and monitoring
 
 `GET /health` reports `status`, the data source, freshness (`dataAgeSeconds`), the upstream budget and outcome counts
@@ -95,6 +130,7 @@ so it can't see the VM itself go down: add one more uptime check from another pr
 | `CLIENT_KEYS` | – | Comma-separated client keys (`PROXY_CLIENT_KEYS` still works) |
 | `CLIENT_REQUESTS_PER_MINUTE` | 120 | Per-IP limit for clients, at least 1 |
 | `HISTORY_REQUESTS_PER_MINUTE` | 2 | Per-IP limit for the history endpoint, at least 1 |
+| `ARCHIVE_REQUESTS_PER_MINUTE` | 10 | Per-IP limit for `/v1/drones/archive.json`, at least 1 |
 | `TRUST_PROXY_HEADERS` | false | Take the client IP from the proxy's `X-Forwarded-For` entry. Only behind a proxy that is the sole way in |
 | `PORT` | 8080 | 0–65535; 0 picks a free port |
 | `LOG_HTTP` | – | `true` logs each alerts.in.ua request and response with its JSON body (token masked) |

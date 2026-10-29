@@ -53,7 +53,10 @@ internal fun Route.trackingRoutes(situation: SituationService, pollInterval: () 
             .mapNotNull { TrackInterpolator.positionAt(it, at) }
         call.respond(DronePositionsResponse(at, positions))
     }
+}
 
+/** The track archive, on its own rate limit: each call can read a week of tracks. */
+internal fun Route.trackArchiveRoutes(situation: SituationService, clock: () -> Long) {
     /** Archived tracks in the air between `from` (default: a day ago) and `to` (default: now), optionally of one `type`. */
     get("/v1/drones/archive.json") {
         situation.requireData()
