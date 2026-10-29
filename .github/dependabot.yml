@@ -1,0 +1,31 @@
+version: 2
+# One grouped pull request per ecosystem each week.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      gradle:
+        patterns: ["*"]
+  - package-ecosystem: docker
+    directory: /mission-control/server
+    schedule:
+      interval: weekly
+    groups:
+      docker:
+        patterns: ["*"]
+  - package-ecosystem: docker-compose
+    directory: /mission-control/server
+    schedule:
+      interval: weekly
+    groups:
+      docker-compose:
+        patterns: ["*"]

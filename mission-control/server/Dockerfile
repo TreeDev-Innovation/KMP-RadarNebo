@@ -1,6 +1,6 @@
 # The fat jar is built outside Docker (`./gradlew :mission-control:server:buildFatJar`): Gradle configures every
 # module, Android included, so building it here would need the Android SDK in the image.
-FROM eclipse-temurin:21-jre
+FROM eclipse-temurin:21-jre@sha256:ff92a063dac03a29fca3987bcfc66aa5f17769542df802bbf7d2ebaba4df8ebe
 
 # State (the SQLite archive, and the single-instance lock under $HOME/.radarnebo) lives in the /data volume.
 ENV HOME=/data \
