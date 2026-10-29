@@ -23,7 +23,6 @@ import kotlinx.serialization.json.Json
 
 sealed interface FetchResult {
     data class Fresh(val alerts: List<Alert>) : FetchResult
-    data object NotModified : FetchResult
     /** [backOff]: the server asked the app to slow down (rate limit) or refused it (auth), so retrying soon won't help. */
     data class Failure(val message: String, val backOff: Boolean = false) : FetchResult
 }
@@ -53,30 +52,16 @@ data class ServerHealth(
  * Client for the RadarNebo server (`:server`), the app's only data source. The server decides where its
  * data comes from (alerts.in.ua or its simulation), tracks targets and archives history; the app only reads.
  *
- * Alerts are served in the alerts.in.ua format at the same path. The server caches them and answers
- * `If-Modified-Since` with a cheap 304 when nothing changed.
+ * Alerts are served in the alerts.in.ua format at the same path, as alerts.in.ua sent them; every poll gets
+ * the whole list.
  */
 class RadarNeboApi(
     private val client: HttpClient = defaultClient(),
 ) {
-    private var lastModified: String? = null
-    private var lastEndpoint: ServerEndpoint? = null
-
     suspend fun activeAlerts(endpoint: ServerEndpoint): FetchResult = try {
-        if (endpoint != lastEndpoint) {
-            lastModified = null
-            lastEndpoint = endpoint
-        }
-        val response = client.get(endpoint.resolve(ACTIVE_ALERTS_PATH)) {
-            authorize(endpoint)
-            lastModified?.let { header(HttpHeaders.IfModifiedSince, it) }
-        }
+        val response = client.get(endpoint.resolve(ACTIVE_ALERTS_PATH)) { authorize(endpoint) }
         when (response.status) {
-            HttpStatusCode.OK -> {
-                lastModified = response.headers[HttpHeaders.LastModified]
-                FetchResult.Fresh(response.body<ActiveAlertsResponse>().alerts)
-            }
-            HttpStatusCode.NotModified -> FetchResult.NotModified
+            HttpStatusCode.OK -> FetchResult.Fresh(response.body<ActiveAlertsResponse>().alerts)
             HttpStatusCode.Unauthorized -> FetchResult.Failure("The server needs a valid access key (401)", backOff = true)
             HttpStatusCode.TooManyRequests -> FetchResult.Failure("Too many requests, slowing down (429)", backOff = true)
             HttpStatusCode.ServiceUnavailable -> FetchResult.Failure("The server is starting up, no data yet (503)")
@@ -115,8 +100,8 @@ class RadarNeboApi(
     }
 
     companion object {
-        /** A server on the same machine; the Android emulator reaches the host as 10.0.2.2 instead. */
-        const val DEFAULT_SERVER_URL = "http://localhost:8080"
+        /** The deployed RadarNebo server. */
+        const val DEFAULT_SERVER_URL = "https://radar-nebo.worxbend.com"
 
         const val ACTIVE_ALERTS_PATH = "/v1/alerts/active.json"
         const val TRACKS_PATH = "/v1/drones/tracks.json"

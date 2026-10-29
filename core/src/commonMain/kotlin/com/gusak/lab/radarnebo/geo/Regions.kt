@@ -167,6 +167,23 @@ object Regions {
         .firstOrNull { city -> city.keywords.any { title.contains(it, ignoreCase = true) } }
 
     /**
+     * The raion named in an alert title ("Баштанський район"), preferring the one in [oblastUid]. Former names
+     * count too, since alerts.in.ua may still use them; apostrophe variants (', ’, ʼ) are treated alike.
+     */
+    fun raionForTitle(title: String, oblastUid: Int? = null): Raion? {
+        val candidates = raionsByName[normalizeName(title)] ?: return null
+        return candidates.firstOrNull { it.oblastUid == oblastUid } ?: candidates.first()
+    }
+
+    private fun normalizeName(name: String) = name.trim().lowercase().replace(Regex("[’ʼ`']"), "'")
+
+    private val raionsByName: Map<String, List<Raion>> by lazy {
+        UkraineRaions.all
+            .flatMap { raion -> raion.names.map { normalizeName(it) to raion } }
+            .groupBy({ it.first }, { it.second })
+    }
+
+    /**
      * Finds the oblast containing [point]. Kyiv city is tested first since it sits inside Kyiv oblast.
      * Points at a known settlement take that settlement's oblast: the simplified polygons can put
      * border and riverside towns (e.g. Kherson on the Dnipro) on the wrong side or outside every oblast.

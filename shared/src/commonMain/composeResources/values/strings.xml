@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- app -->
+    <string name="app_name">RadarNebo</string>
+    <string name="app_window_requests_title">RadarNebo · Requests</string>
+
+    <!-- nav -->
+    <string name="nav_map">Map</string>
+    <string name="nav_favorites">Favorites</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- common -->
+    <string name="common_cancel">Cancel</string>
+    <string name="common_add">Add</string>
+    <string name="common_close">Close</string>
+    <string name="common_done">Done</string>
+    <string name="common_remove">Remove</string>
+    <string name="common_name">Name</string>
+    <string name="common_open">Open</string>
+    <string name="common_none">(none)</string>
+    <string name="common_error">Error</string>
+
+    <!-- unit -->
+    <string name="unit_km">%1$d km</string>
+    <string name="unit_km_decimal">%1$s km</string>
+    <string name="unit_m">%1$d m</string>
+    <string name="unit_seconds">%1$d s</string>
+    <string name="unit_minutes">%1$d min</string>
+    <string name="unit_minutes_approx">~%1$d min</string>
+    <string name="unit_speed_approx">~%1$d km/h</string>
+    <string name="unit_speed_range">%1$d–%2$d km/h</string>
+    <string name="unit_motion">~%1$d km/h %2$s</string>
+    <string name="unit_heading">%1$s · %2$d°</string>
+    <string name="unit_ms">%1$d ms</string>
+    <string name="unit_bytes">%1$d B</string>
+    <string name="unit_kilobytes">%1$s KB</string>
+
+    <!-- time -->
+    <string name="time_just_now">just now</string>
+    <string name="time_minutes_ago">%1$d min ago</string>
+    <string name="time_hours_minutes_ago">%1$d h %2$d min ago</string>
+
+    <!-- coordinates -->
+    <string name="coordinates_lat_lon">%1$s° N, %2$s° E</string>
+
+    <!-- compass -->
+    <string name="compass_n">N</string>
+    <string name="compass_ne">NE</string>
+    <string name="compass_e">E</string>
+    <string name="compass_se">SE</string>
+    <string name="compass_s">S</string>
+    <string name="compass_sw">SW</string>
+    <string name="compass_w">W</string>
+    <string name="compass_nw">NW</string>
+
+    <!-- level -->
+    <string name="level_red">Red</string>
+    <string name="level_yellow">Yellow</string>
+    <string name="level_red_full">Red level</string>
+    <string name="level_yellow_full">Yellow level</string>
+
+    <!-- threat -->
+    <string name="threat_drones">Drones (Shahed/UAV)</string>
+    <string name="threat_ballistic_missiles">Ballistic missiles</string>
+    <string name="threat_cruise_missiles">Cruise missiles</string>
+    <string name="threat_missiles">Missiles</string>
+    <string name="threat_guided_bombs">Guided aerial bombs</string>
+    <string name="threat_tactical_aviation">Tactical aviation</string>
+    <string name="threat_strategic_aviation">Strategic aviation</string>
+    <string name="threat_mig31k_departure">MiG-31K departure</string>
+    <string name="threat_air_defense">Air defense active</string>
+    <string name="threat_unknown">Unknown threat</string>
+
+    <!-- location -->
+    <string name="location_type_oblast">oblast</string>
+    <string name="location_type_raion">district</string>
+    <string name="location_type_city">city</string>
+    <string name="location_type_hromada">community</string>
+
+    <!-- kind -->
+    <string name="kind_attack_drone">Attack drone</string>
+    <string name="kind_jet_drone">Jet attack drone</string>
+    <string name="kind_decoy_drone">Decoy drone</string>
+    <string name="kind_recon_drone">Reconnaissance drone</string>
+    <string name="kind_cruise_missile">Cruise missile</string>
+    <string name="kind_ballistic_missile">Ballistic missile</string>
+    <string name="kind_aeroballistic_missile">Aeroballistic missile</string>
+    <string name="kind_guided_bomb">Guided aerial bomb</string>
+    <string name="kind_tactical_aircraft">Tactical aviation</string>
+    <string name="kind_strategic_bomber">Strategic aviation</string>
+    <string name="kind_mig31k">MiG-31K</string>
+    <string name="kind_air_defense">Air defense</string>
+
+    <!-- profile -->
+    <string name="profile_missile_unreported">Missile, type not reported</string>
+    <string name="profile_shahed_make">HESA (Iran); licence-built as Geran-2 at Alabuga, Russia</string>
+    <string name="profile_shahed_role">One-way attack loitering munition, ~50 kg warhead</string>
+    <string name="profile_gerbera_role">Decoy to saturate air defence; sometimes reconnaissance or a small warhead</string>
+    <string name="profile_jet_shahed_make">HESA (Iran); built in Russia as Geran-3</string>
+    <string name="profile_jet_shahed_role">Jet-powered one-way attack drone</string>
+    <string name="profile_recon_drone_role">Reconnaissance and artillery spotting near the front</string>
+    <string name="profile_cruise_missile_make">Russia; air-launched from Tu-95MS, Kalibr from ships and submarines</string>
+    <string name="profile_cruise_missile_role">Subsonic cruise missile flying low along a winding route</string>
+    <string name="profile_ballistic_missile_make">Russia; KN-23 supplied by North Korea</string>
+    <string name="profile_ballistic_missile_role">Short-range ballistic missile, minutes from launch to impact</string>
+    <string name="profile_kinzhal_role">Air-launched aeroballistic missile carried by the MiG-31K</string>
+    <string name="profile_guided_bomb_role">Glide bomb released by aircraft 40–70 km from its target</string>
+    <string name="profile_tactical_aircraft_role">Fighter-bombers launching guided bombs and missiles near the front</string>
+    <string name="profile_strategic_bomber_role">Long-range bombers that launch Kh-101 and Kh-22 cruise missiles</string>
+    <string name="profile_mig31k_role">Interceptor modified to carry the Kinzhal; its take-off triggers a nationwide alert</string>
+    <string name="profile_air_defense_make">Ukrainian Air Force</string>
+    <string name="profile_air_defense_role">Air defense is engaging targets nearby; stay in shelter</string>
+    <string name="profile_unknown_role">Threat type not reported</string>
+    <string name="profile_make_russia">Russia</string>
+
+    <!-- favorites -->
+    <string name="favorites_title">Favorite places</string>
+    <string name="favorites_subtitle">Threats within %1$d km, or region-wide threats in the same oblast, are flagged.</string>
+    <string name="favorites_tip">Tip: long-press the map to add any point.</string>
+    <string name="favorites_saved_places">SAVED PLACES</string>
+    <string name="favorites_search_placeholder">e.g. Kyiv, Lviv, Odesa</string>
+    <string name="favorites_search_city">Search city</string>
+    <string name="favorites_add_by_coordinates">Add by coordinates</string>
+    <string name="favorites_empty_title">No favorites yet</string>
+    <string name="favorites_empty_description">Add your home, family or work locations to be warned when a threat comes near.</string>
+    <string name="favorites_status_clear">Clear</string>
+    <string name="favorites_status_region_wide">%1$s · region-wide in %2$s</string>
+    <string name="favorites_status_distance">%1$s · %2$d km – %3$s</string>
+    <string name="favorites_quick_add">Quick add</string>
+    <string name="favorites_latitude">Latitude (44–53)</string>
+    <string name="favorites_longitude">Longitude (22–41)</string>
+    <string name="favorites_default_name">Point %1$s, %2$s</string>
+
+    <!-- settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_category_appearance">Appearance</string>
+    <string name="settings_category_map">Map</string>
+    <string name="settings_category_targets">Targets</string>
+    <string name="settings_category_alerts">Alerts</string>
+    <string name="settings_category_alerts_tracking">Alerts &amp; tracking</string>
+    <string name="settings_category_server">Server</string>
+    <string name="settings_category_developer">Developer</string>
+    <string name="settings_category_about">About</string>
+    <string name="settings_category_target_types">Target types</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_description">System follows your device\'s light or dark setting.</string>
+
+    <!-- theme -->
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+
+    <!-- settings -->
+    <string name="settings_color_scheme">Color scheme</string>
+    <string name="settings_color_scheme_description">Colours of the whole app and the map. Every scheme has a light and a dark variant.</string>
+
+    <!-- palette -->
+    <string name="palette_radar">Radar</string>
+    <string name="palette_nord">Nord</string>
+    <string name="palette_dracula">Dracula</string>
+    <string name="palette_solarized">Solarized</string>
+    <string name="palette_catppuccin">Catppuccin</string>
+    <string name="palette_obsidian_plum">Obsidian Plum</string>
+    <string name="palette_smoked_copper">Smoked Copper</string>
+    <string name="palette_blue_honor">Blue Honor</string>
+
+    <!-- settings -->
+    <string name="settings_map_background">Background</string>
+    <string name="settings_map_background_description">What the map shows under the oblasts. Map and satellite tiles are downloaded from Esri.</string>
+
+    <!-- map -->
+    <string name="map_background_none">No map</string>
+    <string name="map_background_streets">Map</string>
+    <string name="map_background_satellite">Satellite</string>
+
+    <!-- settings -->
+    <string name="settings_max_drones">Drones on the map</string>
+    <string name="settings_max_drones_description">The most drones drawn at once; fewer keeps the map readable and fast.</string>
+    <string name="settings_warning_radius">Warning radius</string>
+    <string name="settings_warning_radius_description">Threats this close to a favorite place raise a warning.</string>
+    <string name="settings_drones_only">Drones only</string>
+    <string name="settings_drones_only_description">Hide missiles, aviation and other threat types.</string>
+    <string name="settings_refresh_interval">Refresh interval</string>
+    <string name="settings_refresh_interval_description">The server refreshes its data every 10–15 s; polling faster only uses more battery.</string>
+    <string name="settings_connection">Connection</string>
+    <string name="settings_server_description">RadarNebo gets alerts and tracked targets from a RadarNebo server, which keeps the history and does the tracking. Run your own and enter its address; ask its operator for an access key if it needs one.</string>
+    <string name="settings_server_url">Server URL</string>
+    <string name="settings_access_key">Access key (optional)</string>
+    <string name="settings_save_reconnect">Save &amp; reconnect</string>
+    <string name="settings_request_inspector">Request inspector</string>
+    <string name="settings_request_inspector_description">Every request the app sends to its server and the JSON it gets back.</string>
+    <string name="settings_target_types_description">How each threat is drawn on the map. Red is a red-level alert, amber a yellow-level one.</string>
+
+    <!-- map -->
+    <string name="map_cinematic_shot">SHOT %1$d/%2$d · %3$s</string>
+    <string name="map_cinematic_patrol">PATROL</string>
+
+    <!-- status -->
+    <string name="status_simulated">SIMULATED DATA · not the real situation</string>
+    <string name="status_showing">(showing %1$d)</string>
+    <string name="status_updated_at">updated %1$s</string>
+    <string name="status_reconnecting">Reconnecting…</string>
+    <string name="status_retrying_in">Retrying in %1$ds</string>
+    <string name="status_not_connected">Not connected</string>
+    <string name="status_reconnect">Reconnect</string>
+
+    <!-- server -->
+    <string name="server_state_connecting">connecting…</string>
+    <string name="server_state_live">server live</string>
+    <string name="server_state_degraded">server up, its data source is failing</string>
+    <string name="server_state_offline">no data from the server</string>
+
+    <!-- status -->
+    <string name="status_address">Address</string>
+    <string name="status_status">Status</string>
+    <string name="status_last_data">Last data</string>
+    <string name="status_source">Source</string>
+    <string name="status_source_simulation">Simulation (not the real situation)</string>
+    <string name="status_upstream">Upstream</string>
+    <string name="status_upstream_value">%1$d of %2$d requests in the last minute</string>
+    <string name="status_polled">Polled</string>
+    <string name="status_polled_value">every %1$d s</string>
+    <string name="status_last_poll">Last poll</string>
+    <string name="status_source_error">Source error</string>
+    <string name="status_server_hint">Is the server running? Start it with ./gradlew :mission-control:server:run, or change its address in Settings.</string>
+    <string name="status_show_requests">Show requests</string>
+
+    <!-- error -->
+    <string name="error_unauthorized">The server needs a valid access key (401)</string>
+    <string name="error_rate_limited">Too many requests, slowing down (429)</string>
+    <string name="error_server_starting">The server is starting up, no data yet (503)</string>
+    <string name="error_unexpected_response">Unexpected response %1$d</string>
+    <string name="error_network">Network error</string>
+
+    <!-- map -->
+    <string name="map_threats_near_you">Threats near your locations</string>
+    <string name="map_proximity_region_wide">%1$s: %2$s – region-wide alert</string>
+    <string name="map_proximity_distance">%1$s: %2$s – %3$d km</string>
+    <string name="map_favorite_clear_within">Clear within %1$d km</string>
+    <string name="map_favorite_hit_region_wide">%1$s – region-wide</string>
+    <string name="map_favorite_hit_distance">%1$s – %2$d km away</string>
+
+    <!-- place -->
+    <string name="place_in_city">In %1$s</string>
+    <string name="place_near_city">Near %1$s</string>
+    <string name="place_offset_from_city">%1$d km %2$s of %3$s</string>
+
+    <!-- map -->
+    <string name="map_warning_radius_hint_none">Threats this close to a favorite place raise a warning. Long-press the map to add one.</string>
+    <string name="map_warning_radius_hint_one">You\'re warned when a threat comes this close to your favorite place.</string>
+    <string name="map_add_favorite_title">Add this place to favorites?</string>
+    <string name="map_outside_ukraine">Outside Ukraine: no alerts are tracked here.</string>
+    <string name="map_add_favorite_hint">You\'ll be warned when a threat comes within %1$d km.</string>
+    <string name="map_add_to_favorites">Add to favorites</string>
+    <string name="map_route_stop_label">%1$d. %2$s · ~%3$d min</string>
+    <string name="map_prediction_label">%1$s · ~%2$d min</string>
+    <string name="map_attribution_carto">Map © CARTO, © OpenStreetMap contributors</string>
+    <string name="map_attribution_esri">Imagery © Esri, Maxar, Earthstar Geographics</string>
+    <string name="map_attribution_nasa">Imagery: NASA Black Marble, via NASA GIBS</string>
+
+    <!-- cd -->
+    <string name="cd_exit_cinematic">Exit cinematic mode</string>
+    <string name="cd_enter_cinematic">Enter cinematic mode</string>
+    <string name="cd_hide_targets">Hide targets</string>
+    <string name="cd_show_targets">Show tracked targets</string>
+    <string name="cd_warning_radius">Warning radius, %1$d km</string>
+    <string name="cd_server_requests">Requests to the server</string>
+
+    <!-- cinematic -->
+    <string name="cinematic_threat_near">THREAT NEAR %1$s</string>
+    <string name="cinematic_region_wide">region-wide (%1$s)</string>
+    <string name="cinematic_distance">%1$d km – %2$s</string>
+    <string name="cinematic_favorite_clear">%1$s · CLEAR</string>
+    <string name="cinematic_no_threats_within">No threats within %1$d km</string>
+    <string name="cinematic_tracking">TRACKING · %1$s</string>
+    <string name="cinematic_overview">UKRAINE · OVERVIEW</string>
+
+    <!-- targets -->
+    <string name="targets_title">Targets</string>
+    <string name="targets_summary">%1$d active · %2$d tracked</string>
+    <string name="targets_summary_hidden">%1$d hidden</string>
+    <string name="targets_filter_active">Active (%1$d)</string>
+    <string name="targets_filter_all">All (%1$d)</string>
+    <string name="targets_filter">Filter</string>
+    <string name="targets_filter_count">Filter · %1$d</string>
+    <string name="targets_all_hidden">Every target here is hidden by the filter.</string>
+    <string name="targets_empty">No drone targets tracked yet. Targets appear when a drone alert is followed by another one nearby.</string>
+    <string name="targets_filter_probable">Probable types (%1$d)</string>
+    <string name="targets_filter_kind">%1$s (%2$d)</string>
+    <string name="targets_show_all">Show all</string>
+    <string name="targets_model_probable">%1$s (probable)</string>
+    <string name="targets_row_prediction">→ %1$s in ~%2$d min (%3$d km)</string>
+    <string name="targets_detail_title">Target %1$s</string>
+    <string name="targets_state_active">active</string>
+    <string name="targets_state_cleared">cleared</string>
+    <string name="targets_back_all">‹ All targets</string>
+    <string name="targets_track_id">%1$s · track %2$s</string>
+    <string name="targets_stat_speed">Speed</string>
+    <string name="targets_stat_direction">Direction</string>
+    <string name="targets_stat_distance_flown">Distance flown</string>
+    <string name="targets_stat_tracked_for">Tracked for</string>
+    <string name="targets_stat_altitude">Altitude (typical for its class)</string>
+    <string name="targets_altitude_approx">~%1$s</string>
+    <string name="targets_prediction">Prediction</string>
+    <string name="targets_prediction_eta">%1$s in ~%2$d min</string>
+    <string name="targets_prediction_detail">%1$d km ahead at ~%2$d km/h</string>
+    <string name="targets_prediction_favorite">one of your favorites</string>
+    <string name="targets_no_settlement">No settlement within %1$d km on its current heading</string>
+    <string name="targets_cleared">Target cleared</string>
+    <string name="targets_predicted_route">Predicted route</string>
+    <string name="targets_timeline">Timeline</string>
+    <string name="targets_disclaimer">Positions are inferred from area alerts, not radar. Predictions assume the target keeps its current heading and speed.</string>
+    <string name="targets_stat_since">Since</string>
+    <string name="targets_stat_reported">Reported</string>
+    <string name="targets_location">Location</string>
+    <string name="targets_region_wide_position">Region-wide: position shown at the oblast center</string>
+    <string name="targets_message">Message</string>
+    <string name="targets_not_tracked_yet">Not tracked yet: a target gets a path and predictions once another alert follows nearby.</string>
+    <string name="targets_now">Now · %1$s</string>
+    <string name="targets_position_interpolated">Estimated between reports</string>
+    <string name="targets_position_extrapolated">Estimated past the last report</string>
+    <string name="targets_position_held">At the last reported area</string>
+    <string name="targets_latest_report">latest report</string>
+    <string name="targets_badge_active">ACTIVE</string>
+    <string name="targets_badge_cleared">CLEARED</string>
+    <string name="targets_badge_reported">REPORTED</string>
+    <string name="targets_badge_probable">PROBABLE</string>
+    <string name="targets_label_class">Class</string>
+    <string name="targets_label_make">Make</string>
+    <string name="targets_label_role">Role</string>
+    <string name="targets_label_typical_speed">Typical speed</string>
+    <string name="targets_label_id">ID</string>
+    <string name="targets_label_alerts">Alerts</string>
+    <string name="targets_probable_note">alerts.in.ua doesn\'t identify models; inferred from the threat class and speed.</string>
+    <string name="targets_km_ahead">%1$d km ahead</string>
+    <string name="targets_at_time">at %1$s</string>
+
+    <!-- inspector -->
+    <string name="inspector_title">Requests</string>
+    <string name="inspector_description">Every request this app made to its server, newest first, with the response.</string>
+    <string name="inspector_filter_by_url">Filter by URL</string>
+    <string name="inspector_clear">Clear</string>
+    <string name="inspector_from_clients">From clients (%1$d)</string>
+    <string name="inspector_upstream">Upstream (%1$d)</string>
+    <string name="inspector_empty">No requests yet.</string>
+    <string name="inspector_no_match">No requests match.</string>
+    <string name="inspector_select_hint">Select a request to see its details.</string>
+    <string name="inspector_status_error">ERR</string>
+    <string name="inspector_back">← Requests</string>
+    <string name="inspector_time">Time</string>
+    <string name="inspector_duration">Duration</string>
+    <string name="inspector_direction">Direction</string>
+    <string name="inspector_direction_incoming">Incoming (a client called)</string>
+    <string name="inspector_direction_outgoing">Outgoing</string>
+    <string name="inspector_client">Client</string>
+    <string name="inspector_user_agent">User agent</string>
+    <string name="inspector_content_type">Content type</string>
+    <string name="inspector_body">Body</string>
+    <string name="inspector_request_headers">Request headers</string>
+    <string name="inspector_response_headers">Response headers</string>
+    <string name="inspector_response_body">Response body</string>
+
+    <!-- plurals -->
+    <plurals name="targets_reports">
+        <item quantity="one">%1$d report</item>
+        <item quantity="other">%1$d reports</item>
+    </plurals>
+    <plurals name="status_threat_count">
+        <item quantity="one">%1$d threat</item>
+        <item quantity="other">%1$d threats</item>
+    </plurals>
+    <plurals name="status_drone_threat_count">
+        <item quantity="one">%1$d drone threat</item>
+        <item quantity="other">%1$d drone threats</item>
+    </plurals>
+    <plurals name="map_cinematic_poi_alerts">
+        <item quantity="one">%1$d POI ALERT</item>
+        <item quantity="other">%1$d POI ALERTS</item>
+    </plurals>
+    <plurals name="cinematic_active_threats">
+        <item quantity="one">%1$d active threat</item>
+        <item quantity="other">%1$d active threats</item>
+    </plurals>
+    <plurals name="map_warning_radius_hint_many">
+        <item quantity="one">You\'re warned when a threat comes this close to any of your %1$d favorite places.</item>
+        <item quantity="other">You\'re warned when a threat comes this close to any of your %1$d favorite places.</item>
+    </plurals>
+</resources>

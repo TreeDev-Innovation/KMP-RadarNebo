@@ -1,0 +1,401 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- app -->
+    <string name="app_name">RadarNebo</string>
+    <string name="app_window_requests_title">RadarNebo · Запити</string>
+
+    <!-- nav -->
+    <string name="nav_map">Мапа</string>
+    <string name="nav_favorites">Обране</string>
+    <string name="nav_settings">Налаштування</string>
+
+    <!-- common -->
+    <string name="common_cancel">Скасувати</string>
+    <string name="common_add">Додати</string>
+    <string name="common_close">Закрити</string>
+    <string name="common_done">Готово</string>
+    <string name="common_remove">Видалити</string>
+    <string name="common_name">Назва</string>
+    <string name="common_open">Відкрити</string>
+    <string name="common_none">(немає)</string>
+    <string name="common_error">Помилка</string>
+
+    <!-- unit -->
+    <string name="unit_km">%1$d км</string>
+    <string name="unit_km_decimal">%1$s км</string>
+    <string name="unit_m">%1$d м</string>
+    <string name="unit_seconds">%1$d с</string>
+    <string name="unit_minutes">%1$d хв</string>
+    <string name="unit_minutes_approx">~%1$d хв</string>
+    <string name="unit_speed_approx">~%1$d км/год</string>
+    <string name="unit_speed_range">%1$d–%2$d км/год</string>
+    <string name="unit_motion">~%1$d км/год %2$s</string>
+    <string name="unit_heading">%1$s · %2$d°</string>
+    <string name="unit_ms">%1$d мс</string>
+    <string name="unit_bytes">%1$d Б</string>
+    <string name="unit_kilobytes">%1$s КБ</string>
+
+    <!-- time -->
+    <string name="time_just_now">щойно</string>
+    <string name="time_minutes_ago">%1$d хв тому</string>
+    <string name="time_hours_minutes_ago">%1$d год %2$d хв тому</string>
+
+    <!-- coordinates -->
+    <string name="coordinates_lat_lon">%1$s° пн. ш., %2$s° сх. д.</string>
+
+    <!-- compass -->
+    <string name="compass_n">Пн</string>
+    <string name="compass_ne">ПнСх</string>
+    <string name="compass_e">Сх</string>
+    <string name="compass_se">ПдСх</string>
+    <string name="compass_s">Пд</string>
+    <string name="compass_sw">ПдЗх</string>
+    <string name="compass_w">Зх</string>
+    <string name="compass_nw">ПнЗх</string>
+
+    <!-- level -->
+    <string name="level_red">Червоний</string>
+    <string name="level_yellow">Жовтий</string>
+    <string name="level_red_full">Червоний рівень</string>
+    <string name="level_yellow_full">Жовтий рівень</string>
+
+    <!-- threat -->
+    <string name="threat_drones">Ударні БпЛА (Shahed)</string>
+    <string name="threat_ballistic_missiles">Балістичні ракети</string>
+    <string name="threat_cruise_missiles">Крилаті ракети</string>
+    <string name="threat_missiles">Ракети</string>
+    <string name="threat_guided_bombs">Керовані авіабомби</string>
+    <string name="threat_tactical_aviation">Тактична авіація</string>
+    <string name="threat_strategic_aviation">Стратегічна авіація</string>
+    <string name="threat_mig31k_departure">Зліт МіГ-31К</string>
+    <string name="threat_air_defense">Працює ППО</string>
+    <string name="threat_unknown">Невідома загроза</string>
+
+    <!-- location -->
+    <string name="location_type_oblast">область</string>
+    <string name="location_type_raion">район</string>
+    <string name="location_type_city">місто</string>
+    <string name="location_type_hromada">громада</string>
+
+    <!-- kind -->
+    <string name="kind_attack_drone">Ударний БпЛА</string>
+    <string name="kind_jet_drone">Реактивний ударний БпЛА</string>
+    <string name="kind_decoy_drone">БпЛА-імітатор</string>
+    <string name="kind_recon_drone">Розвідувальний БпЛА</string>
+    <string name="kind_cruise_missile">Крилата ракета</string>
+    <string name="kind_ballistic_missile">Балістична ракета</string>
+    <string name="kind_aeroballistic_missile">Аеробалістична ракета</string>
+    <string name="kind_guided_bomb">Керована авіабомба</string>
+    <string name="kind_tactical_aircraft">Тактична авіація</string>
+    <string name="kind_strategic_bomber">Стратегічна авіація</string>
+    <string name="kind_mig31k">МіГ-31К</string>
+    <string name="kind_air_defense">ППО</string>
+
+    <!-- profile -->
+    <string name="profile_missile_unreported">Ракета, тип не повідомлено</string>
+    <string name="profile_shahed_make">HESA (Іран); ліцензійно виробляється як «Герань-2» в Алабузі (рф)</string>
+    <string name="profile_shahed_role">Баражувальний боєприпас-камікадзе, БЧ ~50 кг</string>
+    <string name="profile_gerbera_role">Імітатор для перевантаження ППО; іноді веде розвідку або несе невелику БЧ</string>
+    <string name="profile_jet_shahed_make">HESA (Іран); виробляється в рф як «Герань-3»</string>
+    <string name="profile_jet_shahed_role">Реактивний ударний БпЛА-камікадзе</string>
+    <string name="profile_recon_drone_role">Розвідка та коригування артилерії поблизу фронту</string>
+    <string name="profile_cruise_missile_make">рф; запускаються з Ту-95МС, «Калібр» — з кораблів і підводних човнів</string>
+    <string name="profile_cruise_missile_role">Дозвукова крилата ракета, летить низько звивистим маршрутом</string>
+    <string name="profile_ballistic_missile_make">рф; KN-23 постачає КНДР</string>
+    <string name="profile_ballistic_missile_role">Балістична ракета малої дальності, від пуску до удару — лічені хвилини</string>
+    <string name="profile_kinzhal_role">Аеробалістична ракета повітряного базування, носій — МіГ-31К</string>
+    <string name="profile_guided_bomb_role">Планувальна бомба, яку скидають з літака за 40–70 км від цілі</string>
+    <string name="profile_tactical_aircraft_role">Винищувачі-бомбардувальники, що запускають КАБи та ракети поблизу фронту</string>
+    <string name="profile_strategic_bomber_role">Далекі бомбардувальники — носії крилатих ракет Х-101 та Х-22</string>
+    <string name="profile_mig31k_role">Перехоплювач, модифікований під «Кинджал»; його зліт означає тривогу по всій країні</string>
+    <string name="profile_air_defense_make">Повітряні сили ЗСУ</string>
+    <string name="profile_air_defense_role">Поблизу працює ППО — залишайтеся в укритті</string>
+    <string name="profile_unknown_role">Тип загрози не повідомлено</string>
+    <string name="profile_make_russia">рф</string>
+
+    <!-- favorites -->
+    <string name="favorites_title">Обрані місця</string>
+    <string name="favorites_subtitle">Позначаються загрози в радіусі %1$d км, а також тривоги на всю область, де розташоване місце.</string>
+    <string name="favorites_tip">Порада: щоб додати будь-яку точку, утримуйте палець на мапі.</string>
+    <string name="favorites_saved_places">ЗБЕРЕЖЕНІ МІСЦЯ</string>
+    <string name="favorites_search_placeholder">напр., Kyiv, Lviv, Odesa</string>
+    <string name="favorites_search_city">Пошук міста</string>
+    <string name="favorites_add_by_coordinates">Додати за координатами</string>
+    <string name="favorites_empty_title">Обраних місць ще немає</string>
+    <string name="favorites_empty_description">Додайте свій дім, адреси рідних або роботу, щоб отримувати попередження, коли поруч загроза.</string>
+    <string name="favorites_status_clear">Загроз немає</string>
+    <string name="favorites_status_region_wide">%1$s · по всій області: %2$s</string>
+    <string name="favorites_status_distance">%1$s · %2$d км – %3$s</string>
+    <string name="favorites_quick_add">Швидко додати</string>
+    <string name="favorites_latitude">Широта (44–53)</string>
+    <string name="favorites_longitude">Довгота (22–41)</string>
+    <string name="favorites_default_name">Точка %1$s, %2$s</string>
+
+    <!-- settings -->
+    <string name="settings_title">Налаштування</string>
+    <string name="settings_category_appearance">Вигляд</string>
+    <string name="settings_category_map">Мапа</string>
+    <string name="settings_category_targets">Цілі</string>
+    <string name="settings_category_alerts">Тривоги</string>
+    <string name="settings_category_alerts_tracking">Тривоги та відстеження</string>
+    <string name="settings_category_server">Сервер</string>
+    <string name="settings_category_developer">Для розробників</string>
+    <string name="settings_category_about">Про застосунок</string>
+    <string name="settings_category_target_types">Типи цілей</string>
+    <string name="settings_theme">Тема</string>
+    <string name="settings_theme_description">«Системна» повторює світлу чи темну тему пристрою.</string>
+
+    <!-- theme -->
+    <string name="theme_system">Системна</string>
+    <string name="theme_light">Світла</string>
+    <string name="theme_dark">Темна</string>
+
+    <!-- settings -->
+    <string name="settings_color_scheme">Колірна схема</string>
+    <string name="settings_color_scheme_description">Кольори всього застосунку та мапи. Кожна схема має світлий і темний варіант.</string>
+
+    <!-- palette -->
+    <string name="palette_radar">Радар</string>
+    <string name="palette_nord">Nord</string>
+    <string name="palette_dracula">Dracula</string>
+    <string name="palette_solarized">Solarized</string>
+    <string name="palette_catppuccin">Catppuccin</string>
+    <string name="palette_obsidian_plum">Обсидіанова слива</string>
+    <string name="palette_smoked_copper">Димчаста мідь</string>
+    <string name="palette_blue_honor">Blue Honor</string>
+
+    <!-- settings -->
+    <string name="settings_map_background">Підкладка</string>
+    <string name="settings_map_background_description">Що показувати під областями. Тайли мапи та супутникових знімків завантажуються з Esri.</string>
+
+    <!-- map -->
+    <string name="map_background_none">Без мапи</string>
+    <string name="map_background_streets">Мапа</string>
+    <string name="map_background_satellite">Супутник</string>
+
+    <!-- settings -->
+    <string name="settings_max_drones">Дронів на мапі</string>
+    <string name="settings_max_drones_description">Найбільша кількість дронів, що показуються одночасно; що менше — то мапа читабельніша й швидша.</string>
+    <string name="settings_warning_radius">Радіус попередження</string>
+    <string name="settings_warning_radius_description">Загрози на такій відстані від обраного місця викликають попередження.</string>
+    <string name="settings_drones_only">Лише дрони</string>
+    <string name="settings_drones_only_description">Приховати ракети, авіацію та інші типи загроз.</string>
+    <string name="settings_refresh_interval">Інтервал оновлення</string>
+    <string name="settings_refresh_interval_description">Сервер оновлює дані кожні 10–15 с; частіші запити лише витрачають більше заряду.</string>
+    <string name="settings_connection">Підключення</string>
+    <string name="settings_server_description">RadarNebo отримує тривоги та відстежувані цілі із сервера RadarNebo, який зберігає історію та виконує відстеження. Запустіть власний сервер і введіть його адресу; якщо потрібен ключ доступу, попросіть його в адміністратора сервера.</string>
+    <string name="settings_server_url">URL сервера</string>
+    <string name="settings_access_key">Ключ доступу (необов\'язково)</string>
+    <string name="settings_save_reconnect">Зберегти й перепідключитися</string>
+    <string name="settings_request_inspector">Інспектор запитів</string>
+    <string name="settings_request_inspector_description">Усі запити застосунку до сервера та JSON-відповіді на них.</string>
+    <string name="settings_target_types_description">Як кожна загроза позначається на мапі. Червоний — тривога червоного рівня, бурштиновий — жовтого.</string>
+
+    <!-- map -->
+    <string name="map_cinematic_shot">КАДР %1$d/%2$d · %3$s</string>
+    <string name="map_cinematic_patrol">ПАТРУЛЬ</string>
+
+    <!-- status -->
+    <string name="status_simulated">ІМІТАЦІЯ ДАНИХ · не реальна ситуація</string>
+    <string name="status_showing">(показано %1$d)</string>
+    <string name="status_updated_at">оновлено о %1$s</string>
+    <string name="status_reconnecting">Повторне підключення…</string>
+    <string name="status_retrying_in">Повтор через %1$d с</string>
+    <string name="status_not_connected">Немає з\'єднання</string>
+    <string name="status_reconnect">Перепідключитися</string>
+
+    <!-- server -->
+    <string name="server_state_connecting">підключення…</string>
+    <string name="server_state_live">сервер працює</string>
+    <string name="server_state_degraded">сервер працює, але джерело даних збоїть</string>
+    <string name="server_state_offline">немає даних від сервера</string>
+
+    <!-- status -->
+    <string name="status_address">Адреса</string>
+    <string name="status_status">Стан</string>
+    <string name="status_last_data">Останні дані</string>
+    <string name="status_source">Джерело</string>
+    <string name="status_source_simulation">Імітація (не реальна ситуація)</string>
+    <string name="status_upstream">Зовнішнє джерело</string>
+    <string name="status_upstream_value">%1$d з %2$d запитів за останню хвилину</string>
+    <string name="status_polled">Опитування</string>
+    <string name="status_polled_value">кожні %1$d с</string>
+    <string name="status_last_poll">Останнє опитування</string>
+    <string name="status_source_error">Помилка джерела</string>
+    <string name="status_server_hint">Чи запущено сервер? Запустіть його командою ./gradlew :mission-control:server:run або змініть адресу в налаштуваннях.</string>
+    <string name="status_show_requests">Показати запити</string>
+
+    <!-- error -->
+    <string name="error_unauthorized">Сервер вимагає дійсний ключ доступу (401)</string>
+    <string name="error_rate_limited">Забагато запитів, сповільнюємося (429)</string>
+    <string name="error_server_starting">Сервер запускається, даних ще немає (503)</string>
+    <string name="error_unexpected_response">Неочікувана відповідь %1$d</string>
+    <string name="error_network">Помилка мережі</string>
+
+    <!-- map -->
+    <string name="map_threats_near_you">Загрози поблизу ваших місць</string>
+    <string name="map_proximity_region_wide">%1$s: %2$s – тривога по всій області</string>
+    <string name="map_proximity_distance">%1$s: %2$s – %3$d км</string>
+    <string name="map_favorite_clear_within">У радіусі %1$d км загроз немає</string>
+    <string name="map_favorite_hit_region_wide">%1$s – по всій області</string>
+    <string name="map_favorite_hit_distance">%1$s – за %2$d км</string>
+
+    <!-- place -->
+    <string name="place_in_city">У місті %1$s</string>
+    <string name="place_near_city">Поблизу: %1$s</string>
+    <string name="place_offset_from_city">%1$d км на %2$s від: %3$s</string>
+
+    <!-- map -->
+    <string name="map_warning_radius_hint_none">Загрози на такій відстані від обраного місця викликають попередження. Утримуйте палець на мапі, щоб додати місце.</string>
+    <string name="map_warning_radius_hint_one">Ви отримаєте попередження, коли загроза наблизиться на таку відстань до вашого обраного місця.</string>
+    <string name="map_add_favorite_title">Додати це місце до обраного?</string>
+    <string name="map_outside_ukraine">За межами України: тривоги тут не відстежуються.</string>
+    <string name="map_add_favorite_hint">Ви отримаєте попередження, коли загроза наблизиться на %1$d км.</string>
+    <string name="map_add_to_favorites">Додати до обраного</string>
+    <string name="map_route_stop_label">%1$d. %2$s · ~%3$d хв</string>
+    <string name="map_prediction_label">%1$s · ~%2$d хв</string>
+    <string name="map_attribution_carto">Мапа © CARTO, © учасники OpenStreetMap</string>
+    <string name="map_attribution_esri">Знімки © Esri, Maxar, Earthstar Geographics</string>
+    <string name="map_attribution_nasa">Знімки: NASA Black Marble, через NASA GIBS</string>
+
+    <!-- cd -->
+    <string name="cd_exit_cinematic">Вийти з кінорежиму</string>
+    <string name="cd_enter_cinematic">Увімкнути кінорежим</string>
+    <string name="cd_hide_targets">Приховати цілі</string>
+    <string name="cd_show_targets">Показати відстежувані цілі</string>
+    <string name="cd_warning_radius">Радіус попередження, %1$d км</string>
+    <string name="cd_server_requests">Запити до сервера</string>
+
+    <!-- cinematic -->
+    <string name="cinematic_threat_near">ЗАГРОЗА ПОБЛИЗУ: %1$s</string>
+    <string name="cinematic_region_wide">по всій області (%1$s)</string>
+    <string name="cinematic_distance">%1$d км – %2$s</string>
+    <string name="cinematic_favorite_clear">%1$s · ЗАГРОЗ НЕМАЄ</string>
+    <string name="cinematic_no_threats_within">У радіусі %1$d км загроз немає</string>
+    <string name="cinematic_tracking">ВІДСТЕЖЕННЯ · %1$s</string>
+    <string name="cinematic_overview">УКРАЇНА · ОГЛЯД</string>
+
+    <!-- targets -->
+    <string name="targets_title">Цілі</string>
+    <string name="targets_summary">%1$d активних · %2$d відстежується</string>
+    <string name="targets_summary_hidden">%1$d приховано</string>
+    <string name="targets_filter_active">Активні (%1$d)</string>
+    <string name="targets_filter_all">Усі (%1$d)</string>
+    <string name="targets_filter">Фільтр</string>
+    <string name="targets_filter_count">Фільтр · %1$d</string>
+    <string name="targets_all_hidden">Усі цілі тут приховано фільтром.</string>
+    <string name="targets_empty">Поки що жодної цілі не відстежується. Ціль з\'являється, коли після тривоги про БпЛА поруч надходить наступна.</string>
+    <string name="targets_filter_probable">Імовірні типи (%1$d)</string>
+    <string name="targets_filter_kind">%1$s (%2$d)</string>
+    <string name="targets_show_all">Показати всі</string>
+    <string name="targets_model_probable">%1$s (імовірно)</string>
+    <string name="targets_row_prediction">→ %1$s за ~%2$d хв (%3$d км)</string>
+    <string name="targets_detail_title">Ціль %1$s</string>
+    <string name="targets_state_active">активна</string>
+    <string name="targets_state_cleared">відбій</string>
+    <string name="targets_back_all">‹ Усі цілі</string>
+    <string name="targets_track_id">%1$s · трек %2$s</string>
+    <string name="targets_stat_speed">Швидкість</string>
+    <string name="targets_stat_direction">Напрямок</string>
+    <string name="targets_stat_distance_flown">Пролетіла</string>
+    <string name="targets_stat_tracked_for">Відстежується</string>
+    <string name="targets_stat_altitude">Висота (типова для класу)</string>
+    <string name="targets_altitude_approx">~%1$s</string>
+    <string name="targets_prediction">Прогноз</string>
+    <string name="targets_prediction_eta">%1$s за ~%2$d хв</string>
+    <string name="targets_prediction_detail">%1$d км попереду, ~%2$d км/год</string>
+    <string name="targets_prediction_favorite">одне з ваших обраних місць</string>
+    <string name="targets_no_settlement">Немає населених пунктів у межах %1$d км за поточним курсом</string>
+    <string name="targets_cleared">Відбій щодо цілі</string>
+    <string name="targets_predicted_route">Прогнозований маршрут</string>
+    <string name="targets_timeline">Хронологія</string>
+    <string name="targets_disclaimer">Позиції визначено за тривогами в районах, а не радаром. Прогноз припускає, що ціль зберігає поточні курс і швидкість.</string>
+    <string name="targets_stat_since">Від</string>
+    <string name="targets_stat_reported">Повідомлено</string>
+    <string name="targets_location">Місце</string>
+    <string name="targets_region_wide_position">На всю область: позицію показано в центрі області</string>
+    <string name="targets_message">Повідомлення</string>
+    <string name="targets_not_tracked_yet">Ще не відстежується: ціль отримає маршрут і прогноз, щойно поруч надійде наступна тривога.</string>
+    <string name="targets_now">Зараз · %1$s</string>
+    <string name="targets_position_interpolated">Оцінка між повідомленнями</string>
+    <string name="targets_position_extrapolated">Оцінка після останнього повідомлення</string>
+    <string name="targets_position_held">В останньому повідомленому районі</string>
+    <string name="targets_latest_report">останнє повідомлення</string>
+    <string name="targets_badge_active">АКТИВНА</string>
+    <string name="targets_badge_cleared">ВІДБІЙ</string>
+    <string name="targets_badge_reported">ПІДТВЕРДЖЕНО</string>
+    <string name="targets_badge_probable">ІМОВІРНО</string>
+    <string name="targets_label_class">Клас</string>
+    <string name="targets_label_make">Виробник</string>
+    <string name="targets_label_role">Призначення</string>
+    <string name="targets_label_typical_speed">Типова швидкість</string>
+    <string name="targets_label_id">ID</string>
+    <string name="targets_label_alerts">Тривоги</string>
+    <string name="targets_probable_note">alerts.in.ua не визначає моделі; тип визначено за класом загрози та швидкістю.</string>
+    <string name="targets_km_ahead">%1$d км попереду</string>
+    <string name="targets_at_time">о %1$s</string>
+
+    <!-- inspector -->
+    <string name="inspector_title">Запити</string>
+    <string name="inspector_description">Усі запити цього застосунку до сервера, від найновіших, разом із відповідями.</string>
+    <string name="inspector_filter_by_url">Фільтр за URL</string>
+    <string name="inspector_clear">Очистити</string>
+    <string name="inspector_from_clients">Від клієнтів (%1$d)</string>
+    <string name="inspector_upstream">До джерела (%1$d)</string>
+    <string name="inspector_empty">Запитів ще немає.</string>
+    <string name="inspector_no_match">Немає відповідних запитів.</string>
+    <string name="inspector_select_hint">Виберіть запит, щоб переглянути подробиці.</string>
+    <string name="inspector_status_error">ПОМ</string>
+    <string name="inspector_back">← Запити</string>
+    <string name="inspector_time">Час</string>
+    <string name="inspector_duration">Тривалість</string>
+    <string name="inspector_direction">Напрямок</string>
+    <string name="inspector_direction_incoming">Вхідний (звернувся клієнт)</string>
+    <string name="inspector_direction_outgoing">Вихідний</string>
+    <string name="inspector_client">Клієнт</string>
+    <string name="inspector_user_agent">User agent</string>
+    <string name="inspector_content_type">Тип вмісту</string>
+    <string name="inspector_body">Тіло</string>
+    <string name="inspector_request_headers">Заголовки запиту</string>
+    <string name="inspector_response_headers">Заголовки відповіді</string>
+    <string name="inspector_response_body">Тіло відповіді</string>
+
+    <!-- plurals -->
+    <plurals name="targets_reports">
+        <item quantity="one">%1$d повідомлення</item>
+        <item quantity="few">%1$d повідомлення</item>
+        <item quantity="many">%1$d повідомлень</item>
+        <item quantity="other">%1$d повідомлення</item>
+    </plurals>
+    <plurals name="status_threat_count">
+        <item quantity="one">%1$d загроза</item>
+        <item quantity="few">%1$d загрози</item>
+        <item quantity="many">%1$d загроз</item>
+        <item quantity="other">%1$d загрози</item>
+    </plurals>
+    <plurals name="status_drone_threat_count">
+        <item quantity="one">%1$d загроза БпЛА</item>
+        <item quantity="few">%1$d загрози БпЛА</item>
+        <item quantity="many">%1$d загроз БпЛА</item>
+        <item quantity="other">%1$d загрози БпЛА</item>
+    </plurals>
+    <plurals name="map_cinematic_poi_alerts">
+        <item quantity="one">%1$d ТРИВОГА БІЛЯ МІСЦЬ</item>
+        <item quantity="few">%1$d ТРИВОГИ БІЛЯ МІСЦЬ</item>
+        <item quantity="many">%1$d ТРИВОГ БІЛЯ МІСЦЬ</item>
+        <item quantity="other">%1$d ТРИВОГИ БІЛЯ МІСЦЬ</item>
+    </plurals>
+    <plurals name="cinematic_active_threats">
+        <item quantity="one">%1$d активна загроза</item>
+        <item quantity="few">%1$d активні загрози</item>
+        <item quantity="many">%1$d активних загроз</item>
+        <item quantity="other">%1$d активної загрози</item>
+    </plurals>
+    <plurals name="map_warning_radius_hint_many">
+        <item quantity="one">Ви отримаєте попередження, коли загроза наблизиться на таку відстань до будь-якого з ваших %1$d обраних місць.</item>
+        <item quantity="few">Ви отримаєте попередження, коли загроза наблизиться на таку відстань до будь-якого з ваших %1$d обраних місць.</item>
+        <item quantity="many">Ви отримаєте попередження, коли загроза наблизиться на таку відстань до будь-якого з ваших %1$d обраних місць.</item>
+        <item quantity="other">Ви отримаєте попередження, коли загроза наблизиться на таку відстань до будь-якого з ваших %1$d обраних місць.</item>
+    </plurals>
+</resources>

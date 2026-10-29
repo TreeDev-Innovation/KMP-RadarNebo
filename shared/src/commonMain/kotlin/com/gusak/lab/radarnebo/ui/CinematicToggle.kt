@@ -148,15 +148,7 @@ fun TargetsButton(open: Boolean, activeCount: Int, onClick: () -> Unit, modifier
             Canvas(Modifier.size(24.dp)) { drawCrosshair(lerp(primary, onPrimary, progress)) }
         }
         if (activeCount > 0) {
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .size(18.dp)
-                    .background(radarColors.danger, CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(activeCount.coerceAtMost(99).toString(), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-            }
+            CountBadge(activeCount.coerceAtMost(99), radarColors.danger, Modifier.align(Alignment.TopEnd), size = 18.dp)
         }
     }
 }
@@ -185,11 +177,11 @@ fun RadiusButton(open: Boolean, radiusKm: Int, onClick: () -> Unit, modifier: Mo
                 .align(Alignment.BottomCenter)
                 // Hangs just below the button so the ring icon stays clear.
                 .offset(y = 11.dp)
-                .background(radarColors.favorite, CircleShape)
+                .background(primary, CircleShape)
                 .padding(horizontal = 5.dp, vertical = 1.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text("$radiusKm km", color = radarColors.mapBackground, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+            Text("$radiusKm km", color = onPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
         }
     }
 }

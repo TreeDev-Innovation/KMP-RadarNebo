@@ -1,7 +1,6 @@
 package com.gusak.lab.radarnebo.server
 
 import com.gusak.lab.radarnebo.debug.TrafficRecorder
-import com.gusak.lab.radarnebo.server.api.bootId
 import com.gusak.lab.radarnebo.server.api.radarApi
 import com.gusak.lab.radarnebo.server.application.AlertsDataSource
 import com.gusak.lab.radarnebo.server.application.SituationPoller
@@ -60,8 +59,6 @@ class ServerComponents(
     val clock: () -> Long,
     /** Receives the server's HTTP traffic, both ways; the server console sets it. */
     val traffic: TrafficRecorder? = null,
-    /** This process's id in ETags and derived track ids, so neither repeats after a restart. */
-    val bootId: String,
 ) : AutoCloseable {
     /** The alerts.in.ua budget `/health` reports; null for the simulation. Follows the source actually in use. */
     val upstreamBudgetPerMinute: Int?
@@ -85,8 +82,7 @@ class ServerComponents(
             source: AlertsDataSource = defaultSource(config, clock, traffic, upstreamLimiter),
         ): ServerComponents {
             // A source with air surveillance gives real flight paths; otherwise tracks are inferred from alerts.
-            val boot = bootId(clock())
-            val tracking = if (source.providesObservations) ObservationTracking() else AlertDerivedTracking(runId = boot)
+            val tracking = if (source.providesObservations) ObservationTracking() else AlertDerivedTracking(runId = (clock() / 1000).toString(36))
             val situation = SituationService(
                 tracking = tracking,
                 alertArchive = archives.alerts,
@@ -94,7 +90,7 @@ class ServerComponents(
                 locations = LocationDirectory(source.locations),
                 simulated = source.kind == DataSourceKind.Simulation,
             )
-            return ServerComponents(config, situation, SituationPoller(source, situation, config.archive.retention, clock), clock, traffic, boot)
+            return ServerComponents(config, situation, SituationPoller(source, situation, config.archive.retention, clock), clock, traffic)
         }
 
         private fun defaultSource(
@@ -122,7 +118,6 @@ fun Application.radarServer(components: ServerComponents, startPoller: Boolean =
         clients = config.clients,
         upstreamBudgetPerMinute = components.upstreamBudgetPerMinute,
         clock = components.clock,
-        bootId = components.bootId,
         traffic = components.traffic,
     )
     monitor.subscribe(ApplicationStopped) { components.close() }
