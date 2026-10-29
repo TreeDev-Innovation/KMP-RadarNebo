@@ -22,6 +22,7 @@ import com.gusak.lab.radarnebo.server.infrastructure.CompositeAlertsSource
 import com.gusak.lab.radarnebo.server.infrastructure.tracking.AlertDerivedTracking
 import com.gusak.lab.radarnebo.server.infrastructure.tracking.FusedTracking
 import com.gusak.lab.radarnebo.server.infrastructure.upstream.AlertsInUaSource
+import com.gusak.lab.radarnebo.server.infrastructure.upstream.TelegramChannelSource
 import com.gusak.lab.radarnebo.server.infrastructure.upstream.UpstreamRateLimiter
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopped
@@ -84,7 +85,7 @@ class ServerComponents(
             archives: Archives = Archives.create(config),
             source: AlertsDataSource = defaultSource(config, clock, traffic, upstreamLimiter),
             /** Further feeds fused into tracking only (see [CompositeAlertsSource]); clients are served [source]. */
-            extraSources: List<AlertsDataSource> = emptyList(),
+            extraSources: List<AlertsDataSource> = config.telegramChannels.map { TelegramChannelSource(it, clock = clock) },
         ): ServerComponents {
             val polled = if (extraSources.isEmpty()) source else CompositeAlertsSource(source, extraSources)
             // A source with air surveillance gives real flight paths; otherwise tracks are inferred from alerts.

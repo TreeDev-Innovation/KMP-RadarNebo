@@ -45,6 +45,8 @@ data class ServerConfig(
     /** Logs every alerts.in.ua request and response, body included, with the token masked. */
     val logHttp: Boolean = false,
     val tracking: TrackingMode = TrackingMode.Auto,
+    /** Public Telegram warning channels read as extra sources for tracking (`TELEGRAM_CHANNELS`, e.g. `kpszsu`). */
+    val telegramChannels: List<String> = emptyList(),
 ) {
     init {
         // 0 asks for any free port, as the tests do.
@@ -101,6 +103,7 @@ data class ServerConfig(
                 tracking = parse("TRACKING", "auto, alerts, sightings or fused") { value ->
                     TrackingMode.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
                 } ?: defaults.tracking,
+                telegramChannels = text("TELEGRAM_CHANNELS").orEmpty().split(',').map { it.trim().removePrefix("@") }.filter { it.isNotEmpty() },
             )
             require(errors.isEmpty()) { "Invalid configuration: ${errors.joinToString("; ")}" }
             return config

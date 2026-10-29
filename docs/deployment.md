@@ -120,6 +120,7 @@ so it can't see the VM itself go down: add one more uptime check from another pr
 | `ALERTS_API_TOKEN` | – | alerts.in.ua token. If unset, the server runs the simulation and makes no upstream requests. |
 | `DATA_SOURCE` | – | `simulation` or `alerts_in_ua`, to choose explicitly |
 | `TRACKING` | `auto` | How tracks are built: `auto` (sightings when the source has them, else alerts), `alerts`, `sightings`, or `fused` (both into one picture; see [trajectory tracking](./trajectory-tracking.md) §2.6) |
+| `TELEGRAM_CHANNELS` | – | Public Telegram warning channels to fuse into tracking, comma-separated (e.g. `kpszsu`, the Air Force). Read from `t.me/s/<channel>`, no key; their alerts feed tracks only and are never served as alerts |
 | `UPSTREAM_MAX_PER_MINUTE` | 6 | Upstream budget, clamped to 1–8 |
 | `POLL_INTERVAL_SECONDS` | 15 | Never faster than the budget allows |
 | `SIM_STRIKE_PERIOD_MINUTES` | 360 | Time between combined strikes (at least 180) |

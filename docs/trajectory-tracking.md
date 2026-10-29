@@ -209,14 +209,20 @@ All of §2–§4 is implemented (`core/.../tracking/Trajectory.kt`, `DroneTracke
    with a 1 km error; reports that overlap in time and place merge into the most precise; a sighting behind an
    alert-built track (whose alerts run ahead of the target) corrects it rather than counting as a reversal; alerts
    are gated where the filter fuses them, moved back by their warning lead.
+   **Live second source**: `TelegramChannelSource` reads a public warning channel from its web preview
+   (`t.me/s/<channel>`, no key); `TELEGRAM_CHANNELS=kpszsu` adds the Ukrainian Air Force's. `AirForceMessages`
+   turns each message into an alert: the weapon from its name, "через <місто>" as a red alert at the city, an oblast
+   ("Сумщина") as an oblast-wide one, "курсом на / в напрямку <місто>" as a yellow one (where it is heading). Run
+   against the live channel on 2026-10-29, the server built four jet-drone tracks from it (Brovary, Dnipro,
+   Poltava, Kryvyi Rih).
    Simulation replay, median error / active tracks per flying drone: alerts alone 40.8 km / 0.62; with sparse
    surveillance (half the targets, every 15 min) 39.0 km / 0.69; with a fix on every target every 5 min
    34.6 km / 0.92. Fewer tracks than drones means groups are missed or merged, not split.
 
 Limits:
 
-- No second provider ships with the server: alerts.in.ua is the only upstream it has an account for. Adding one
-  means writing its `AlertsDataSource` (like `AlertsInUaSource`) and passing it as an extra source.
+- The Telegram reader depends on the channel's wording and on Telegram's web preview markup; a message it cannot
+  read is skipped, not guessed. Places outside the map's city list (Березань) fall back to the oblast, if named.
 - Coverage is not settled. With alerts alone there are 0.62 active tracks per drone in the air, but that counts
   drones over Russia or the sea that no alert covers yet; counted only over drones with a "target is here" alert
   it is about 2, since alerts raised far ahead start tracks of their own. The truth is between; a coverage metric
