@@ -26,7 +26,7 @@ data class TrackQuery(
         require(fromMs <= toMs) { "'from' must not be after 'to'" }
         require(limit in 1..MAX_LIMIT) { "'limit' must be between 1 and $MAX_LIMIT" }
         // Bounds the rows one call can read and decode; `in` also rejects a difference that overflowed.
-        require(toMs - fromMs in 0..MAX_WINDOW.inWholeMilliseconds) { "the 'from'..'to' window must be at most 7 days" }
+        require(toMs - fromMs in 0..MAX_WINDOW.inWholeMilliseconds) { "the 'from'..'to' window must be at most ${MAX_WINDOW.inWholeDays} days" }
     }
 
     fun overlaps(track: DroneTrack) = track.firstSeen <= toMs && track.lastSeen >= fromMs && (type == null || track.type == type)

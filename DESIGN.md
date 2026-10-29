@@ -173,11 +173,11 @@ UC5 operator demos the system offline (simulation); UC6 query history.
 | 4 | Operability | Source: operator. Stimulus: changes port or data source in the console. Response: server and built-in client follow. Measure: zero manual reconfiguration. |
 
 Freshness and upstream safety conflict: faster polling breaks the rate limit. Resolved in favor of upstream safety
-(rank 1); freshness is met through `If-Modified-Since` and ETags rather than more requests.
+(rank 1); freshness is met through the server's `If-Modified-Since` polls of alerts.in.ua rather than more requests.
 
 **Constraints:** Kotlin everywhere; Compose Multiplatform; single developer; zero budget; alerts.in.ua limits.
 
-**Capacity (one line):** 50 clients × 2 req/min = 100 req/min ≈ 1.7 req/s, mostly 304s; upstream fixed at ≤ 6 req/min;
+**Capacity (one line):** 50 clients × 2 req/min = 100 req/min ≈ 1.7 req/s, small gzipped JSON answered from memory; upstream fixed at ≤ 6 req/min;
 archive ≈ 2,000 alert records/day × 1 KB ≈ 2 MB/day ≈ 60 MB/month at 30-day retention. One JVM and SQLite suffice.
 
 ## 8. Options & trade-offs
@@ -224,7 +224,7 @@ flowchart TB
   end
   db[(SQLite archive)]
   up[(alerts.in.ua)]
-  android & ios & desktop -- "HTTP JSON, bearer key, ETag" --> srv
+  android & ios & desktop -- "HTTP JSON, bearer key" --> srv
   embedded -- "HTTP localhost:port" --> srv
   ui -- "in-process: state, traffic, clients" --> srv
   srv -- Exposed --> db
@@ -281,7 +281,7 @@ sequenceDiagram
   U-->>P: 429 Retry-After: 60
   P->>P: back off (exponential, ≤ 60 s; ≤ 10 min on 429/401/403)
   Cl->>P: GET /v1/alerts/active.json
-  P-->>Cl: last known alerts (304 or 200); /health shows lastError
+  P-->>Cl: last known alerts (200); /health shows lastError
 ```
 
 ### Data
@@ -299,7 +299,8 @@ move to versioned migrations when the first column is renamed or dropped (deferr
 
 - Sync HTTP everywhere; the only async boundary is the server's internal poller.
 - Contract-first: the alerts.in.ua JSON is the contract; RadarNebo extensions live under `/v1/drones/*`.
-- Idempotency: all client calls are GETs. Conditional requests (`ETag`, `If-Modified-Since`) keep polls cheap.
+- Idempotency: all client calls are GETs. Responses are not cached (no `ETag`/`Last-Modified`): every poll gets the
+  latest data in full, answered from memory and gzipped over 1 KB; `X-Data-Age-Seconds` tells its age.
 - Backpressure: upstream limiter; per-client limits on history (`HISTORY_REQUESTS_PER_MINUTE`) and the track archive (`ARCHIVE_REQUESTS_PER_MINUTE`, at most 200 tracks over 7 days per call).
 - Versioning: path prefix (`/v1`, `/v2`) as upstream does.
 
@@ -311,7 +312,7 @@ move to versioned migrations when the first column is renamed or dropped (deferr
 
 | Trust boundary | STRIDE concern | Mitigation |
 |---|---|---|
-| Client → server | Spoofing (no key), DoS | Bearer keys when exposed; per-IP rate limits, applied before the key check; gzip and 304s |
+| Client → server | Spoofing (no key), DoS | Bearer keys when exposed; per-IP rate limits, applied before the key check; gzip |
 | Server → alerts.in.ua | Information disclosure (token in logs) | Token masked when `LOG_HTTP=true` |
 | Internet → Caddy → server | Tampering/eavesdropping; IP spoofing to dodge limits | Public deployment (ADR-6): Caddy terminates TLS on 443 and is the only published port; the server port is unpublished, so `TRUST_PROXY_HEADERS=true` takes each client's IP from the `X-Forwarded-For` entry Caddy adds and the per-IP limits stay per client. `CLIENT_KEYS` is required there. A server run on a LAN without the proxy is plain HTTP and keeps `TRUST_PROXY_HEADERS=false`. |
 | Console's own client | Elevation via a stored key | Key copied from server config in memory, saved to the user's home only |
@@ -336,7 +337,7 @@ a previous commit's sha.
 
 Backups: the archive is derived history (45 days of alerts and tracks), not live data. SQLite runs in WAL mode, so
 committed rows can sit in the `-wal` file: take a consistent snapshot with SQLite's online backup (`sqlite3 .backup`),
-never a plain `cp` while the server runs. The README's Deployment section has the weekly VM cron entry and the restore
+never a plain `cp` while the server runs. `docs/deployment.md` has the weekly VM cron entry and the restore
 steps; the OCI volume backup policy is the alternative.
 
 ### Technology stack
@@ -359,8 +360,9 @@ Ktor process; domain/application/infrastructure/api packages; ports for data sou
 *Consequences:* + simple ops; − module rules are by convention only (see fitness functions). *Alternatives:* option C.
 *Door:* two-way (packages can be extracted later).
 
-**ADR-3: Polling with conditional requests, not push** — Accepted. *Context:* freshness target 45 s, A1 scale.
-*Decision:* clients poll every 30 s (10–300 configurable) with ETags. *Consequences:* + stateless server; − up to 30 s
+**ADR-3: Polling, not push** — Accepted. *Context:* freshness target 45 s, A1 scale.
+*Decision:* clients poll every 30 s (10–300 configurable) and get full responses (conditional requests were dropped:
+the server answers from memory, so they saved little). *Consequences:* + stateless server; − up to 30 s
 extra latency. *Revisit:* Q2 yes. *Door:* two-way.
 
 **ADR-4: Optional static bearer keys** — Accepted. *Context:* LAN use, alerts.in.ua-compatible clients.
