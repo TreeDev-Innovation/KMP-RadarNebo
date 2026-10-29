@@ -35,10 +35,10 @@ class AlertsRepository(
     private var clockOffsetMs = 0L
     private var simulated = false
 
+    /** Polls [endpoint] once. */
     suspend fun refresh(endpoint: ServerEndpoint): AlertsUpdate {
         when (val result = api.activeAlerts(endpoint)) {
             is FetchResult.Fresh -> alerts = result.alerts
-            FetchResult.NotModified -> Unit
             is FetchResult.Failure -> return AlertsUpdate.Failed(result.message, result.backOff)
         }
         // Tracks move even when alerts don't, so they are fetched on every poll. A failed request keeps the

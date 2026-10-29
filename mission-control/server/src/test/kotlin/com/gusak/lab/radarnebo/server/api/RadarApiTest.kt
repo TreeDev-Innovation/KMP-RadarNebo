@@ -54,11 +54,13 @@ private class ScriptedSource(var clock: () -> Long) : AlertsDataSource {
     var alerts: List<AirAlert> = emptyList()
     var failure: FetchResult.Failed? = null
     var closed = false
+    /** The body alerts.in.ua would have sent for [alerts]; null for a source that sends none. */
+    var raw: String? = null
     override val kind = DataSourceKind.AlertsInUa
     override val description = "scripted"
     override val pollInterval: Duration = 15.seconds
     override val providesObservations = false
-    override suspend fun fetch(lastModified: String?): FetchResult = failure ?: FetchResult.Fresh(SituationReport(clock(), alerts))
+    override suspend fun fetch(lastModified: String?): FetchResult = failure ?: FetchResult.Fresh(SituationReport(clock(), alerts, rawAlerts = raw))
     override fun close() {
         closed = true
     }
@@ -160,8 +162,17 @@ class RadarApiTest {
         assertEquals(HttpStatusCode.TooManyRequests, from("203.0.113.2"), "a spoofed header must not reset the limit")
     }
 
+    fun alertsInUaBodyIsServedExactlyAsReceived() = testApplication {
+        val server = server()
+        // Unknown keys, alerts.in.ua's own meta and its key order all pass through.
+        val upstream = """{"alerts":[],"meta":{"last_updated_at":"2026/10/26 21:58:07 +0000","type":"full"},"disclaimer":"x","new_key":1}"""
+        source.raw = upstream
+        server.poll()
+        assertEquals(upstream, client.get(RadarNeboApi.ACTIVE_ALERTS_PATH).bodyAsText())
+    }
+
     @Test
-    fun activeAlertsAreServedInTheAlertsInUaFormatWithConditionalRequests() = testApplication {
+    fun activeAlertsAreServedInTheAlertsInUaFormatWithoutCaching() = testApplication {
         val server = server()
         source.alerts = listOf(alert(42, Fixtures.brovary))
         server.poll()
@@ -178,34 +189,24 @@ class RadarApiTest {
         // The app's own client reads it.
         assertEquals(42, RadarNeboApi.json.decodeFromString(ActiveAlertsResponse.serializer(), body).alerts.single().id)
 
-        val etag = response.headers[HttpHeaders.ETag]!!
-        assertEquals(HttpStatusCode.NotModified, client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfNoneMatch, etag) }.status)
-        assertEquals(
-            HttpStatusCode.NotModified,
-            client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfNoneMatch, "\"v0\", $etag") }.status,
-            "any ETag in the list matches",
-        )
-        val lastModified = response.headers[HttpHeaders.LastModified]!!
-        assertEquals(HttpStatusCode.NotModified, client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfModifiedSince, lastModified) }.status)
+        // No validators, and conditional requests still get the whole list.
+        assertEquals(null, response.headers[HttpHeaders.ETag])
+        assertEquals(null, response.headers[HttpHeaders.LastModified])
+        assertEquals(null, response.headers[HttpHeaders.CacheControl])
+        val conditional = client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) {
+            header(HttpHeaders.IfNoneMatch, "\"v1\"")
+            header(HttpHeaders.IfModifiedSince, "Mon, 19 Oct 2026 10:00:00 GMT")
+        }
+        assertEquals(HttpStatusCode.OK, conditional.status)
+        assertEquals(body, conditional.bodyAsText())
 
         now += 30.seconds.inWholeMilliseconds
         assertEquals("30", client.get(RadarNeboApi.ACTIVE_ALERTS_PATH).headers[DATA_AGE_HEADER], "seconds since the source confirmed the data")
-
         now += 30.seconds.inWholeMilliseconds
-        server.poll()
-        assertEquals(HttpStatusCode.NotModified, client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfNoneMatch, etag) }.status, "same content, same version")
         source.alerts = emptyList()
         server.poll()
-        val changed = client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) { header(HttpHeaders.IfNoneMatch, etag) }
+        val changed = client.get(RadarNeboApi.ACTIVE_ALERTS_PATH)
         assertEquals(HttpStatusCode.OK, changed.status)
-        assertEquals(
-            HttpStatusCode.OK,
-            client.get(RadarNeboApi.ACTIVE_ALERTS_PATH) {
-                header(HttpHeaders.IfNoneMatch, etag)
-                header(HttpHeaders.IfModifiedSince, changed.headers[HttpHeaders.LastModified]!!)
-            }.status,
-            "If-None-Match takes precedence over If-Modified-Since (RFC 9110 13.2.2)",
-        )
         // Like alerts.in.ua: the alerts and when they last changed (now, in the test's clock).
         assertEquals("""{"alerts":[],"meta":{"last_updated_at":"2026/10/19 10:01:00 +0000","type":"full"}}""", changed.bodyAsText())
     }

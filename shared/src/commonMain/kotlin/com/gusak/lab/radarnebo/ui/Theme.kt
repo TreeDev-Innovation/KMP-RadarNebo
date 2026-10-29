@@ -1,6 +1,7 @@
 package com.gusak.lab.radarnebo.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -11,7 +12,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
+import com.gusak.lab.radarnebo.data.ColorPalette
 import com.gusak.lab.radarnebo.data.ThemeMode
+import kotlin.math.max
+import kotlin.math.min
 
 /** Map and overlay colours that Material's colour scheme doesn't cover. Read via [LocalRadarColors]. */
 @Immutable
@@ -28,6 +35,15 @@ data class RadarColors(
     val favorite: Color,
     /** "All clear" / healthy state. */
     val ok: Color,
+    /**
+     * [danger], [ok] and [warning] for text: the same hues, darkened (light) or lightened (dark) just enough
+     * for WCAG AA contrast on surfaces and on [overlay]. The plain colours are for icons and fills.
+     */
+    val dangerText: Color,
+    val okText: Color,
+    val warningText: Color,
+    /** Text on a [warning] fill, such as the predicted-route chips. */
+    val onWarning: Color,
     /** Translucent chip behind text drawn over the map, and the colours on it. */
     val overlay: Color,
     val onOverlay: Color,
@@ -38,7 +54,10 @@ data class RadarColors(
     /** City dots and the city names shown once zoomed in. */
     val cityDot: Color,
     val cityLabel: Color,
-    /** Liquid glass: tint over the blurred backdrop, rim highlight and the selected-item lens. */
+    /**
+     * Liquid glass: tint over the blurred backdrop, rim highlight and the selected-item lens. The tint is strong
+     * enough that text on the glass reads at WCAG AA over the darkest or lightest backdrop.
+     */
     val glassTint: Color,
     val glassRimLight: Color,
     val glassRimShade: Color,
@@ -57,17 +76,21 @@ data class RadarColors(
             warning = Color(0xFFFFB020),
             favorite = Color(0xFF3DD9EB),
             ok = Color(0xFF3DEB8A),
-            overlay = Color(0x8C000000),
+            dangerText = Color(0xFFFF7879),
+            okText = Color(0xFF3DEB8A),
+            warningText = Color(0xFFFFB020),
+            onWarning = Color.Black,
+            overlay = Color(0xCC000000),
             onOverlay = Color.White,
-            onOverlayMuted = Color(0x99FFFFFF),
+            onOverlayMuted = Color(0xB3FFFFFF),
             mapLabel = Color.White,
             glyphOutline = Color(0x99000000),
             cityDot = Color(0xB39FB8CF),
             cityLabel = Color(0xCCC8D6E4),
-            glassTint = Color(0x1FFFFFFF),
+            glassTint = Color(0xB8000000),
             glassRimLight = Color(0x80FFFFFF),
             glassRimShade = Color(0x14FFFFFF),
-            glassSelection = Color(0x26FFFFFF),
+            glassSelection = Color(0x1AFFFFFF),
         )
 
         val Light = RadarColors(
@@ -79,20 +102,24 @@ data class RadarColors(
             oblastAlertFull = Color(0x59E5484D),
             oblastAlertPartial = Color(0x52F5A524),
             danger = Color(0xFFE03B40),
-            warning = Color(0xFFD98200),
+            warning = Color(0xFFBB7000),
             favorite = Color(0xFF0B93A6),
-            ok = Color(0xFF1E9E58),
-            overlay = Color(0xD9FFFFFF),
+            ok = Color(0xFF1C9553),
+            dangerText = Color(0xFFA12A2E),
+            okText = Color(0xFF14683A),
+            warningText = Color(0xFF834E00),
+            onWarning = Color.Black,
+            overlay = Color(0xEBFFFFFF),
             onOverlay = Color(0xFF0E1822),
-            onOverlayMuted = Color(0x990E1822),
+            onOverlayMuted = Color(0xBF0E1822),
             mapLabel = Color(0xFF0E1822),
             glyphOutline = Color(0xB3FFFFFF),
-            cityDot = Color(0xFF8396A9),
+            cityDot = Color(0xFF76879A),
             cityLabel = Color(0xFF3A4D60),
-            glassTint = Color(0x73FFFFFF),
+            glassTint = Color(0xCCFFFFFF),
             glassRimLight = Color(0xF2FFFFFF),
             glassRimShade = Color(0x1A0E1822),
-            glassSelection = Color(0x14000000),
+            glassSelection = Color(0x66FFFFFF),
         )
     }
 }
@@ -117,7 +144,8 @@ private val darkScheme = darkColorScheme(
 )
 
 private val lightScheme = lightColorScheme(
-    primary = RadarColors.Light.favorite,
+    // The map's teal, darkened for text and buttons: the brighter one reads at only 3.6:1 on light surfaces.
+    primary = Color(0xFF08707E),
     onPrimary = Color.White,
     primaryContainer = Color(0xFFCDEFF4),
     onPrimaryContainer = Color(0xFF00363D),
@@ -134,12 +162,235 @@ private val lightScheme = lightColorScheme(
 )
 
 /**
- * App theme. [ThemeMode.System] follows the OS setting. [onApplied] lets the platform host match
+ * The few tones a [ColorPalette] variant is made of; [radarColors] and [materialScheme] derive the rest the way
+ * the hand-tuned Radar palette does. Colours used for text are nudged, where a palette's own falls short, until
+ * they meet WCAG AA (4.5:1) on every surface and map chip they appear on; icons and fills need 3:1.
+ */
+private class PaletteTones(
+    val isDark: Boolean,
+    /** Behind the map, and the app's background. */
+    val background: Color,
+    /** Cards, sheets and bars. */
+    val surface: Color,
+    /** Oblasts with no alert. */
+    val land: Color,
+    /** Oblast borders and outlines. */
+    val border: Color,
+    val text: Color,
+    val mutedText: Color,
+    /** Primary colour: buttons, selection, favorites. */
+    val accent: Color,
+    val onAccent: Color,
+    val ok: Color,
+    val danger: Color,
+    val warning: Color,
+) {
+    private val overlay = if (isDark) lerp(background, Color.Black, 0.5f).copy(alpha = 0.8f) else surface.copy(alpha = 0.92f)
+    private val glassTint = if (isDark) Color(0xB8000000) else Color(0xCCFFFFFF)
+
+    // Where text is read: surfaces and containers, glass dialogs and their cards, and the map chips, each over
+    // the darkest, lightest and plain map.
+    private val backdrops = listOf(Color.Black, Color.White, background)
+    private val glass = backdrops.map { surface.copy(alpha = GlassDialogTint).compositeOver(glassTint.compositeOver(it)) }
+    private val surfaces = listOf(background, surface, lerp(surface, text, 0.07f), lerp(surface, text, 0.1f)) +
+        glass + glass.map { lerp(surface, text, 0.07f).copy(alpha = 0.55f).compositeOver(it) }
+    private val chips = backdrops.map { overlay.compositeOver(it) }
+    private val map = listOf(background, land)
+
+    private val readableMuted = mutedText.readableOn(surfaces + chips + map, isDark)
+
+    // Status colours for icons and map marks, which need 3:1 on the map.
+    private val dangerMark = danger.readableOn(map, isDark, GRAPHIC_CONTRAST)
+    private val okMark = ok.readableOn(map, isDark, GRAPHIC_CONTRAST)
+    private val warningMark = warning.readableOn(map, isDark, GRAPHIC_CONTRAST)
+
+    /** [status] for text, also on tags and rows tinted with it (see [STATUS_TINT]). */
+    private fun statusText(status: Color) =
+        status.readableOn(surfaces + chips + glass.map { status.copy(alpha = STATUS_TINT).compositeOver(it) }, isDark)
+    private val readableAccent = accent.readableOn(surfaces, isDark)
+
+    fun radarColors() = RadarColors(
+        isDark = isDark,
+        mapBackground = background,
+        grid = lerp(background, border, 0.3f),
+        oblastIdle = land,
+        oblastBorder = border,
+        oblastAlertFull = danger.copy(alpha = if (isDark) 0.4f else 0.35f),
+        oblastAlertPartial = warning.copy(alpha = if (isDark) 0.25f else 0.32f),
+        danger = dangerMark,
+        warning = warningMark,
+        favorite = accent,
+        ok = okMark,
+        dangerText = statusText(dangerMark),
+        okText = statusText(okMark),
+        warningText = statusText(warningMark),
+        onWarning = if (contrast(Color.Black, warningMark) >= contrast(Color.White, warningMark)) Color.Black else Color.White,
+        overlay = overlay,
+        onOverlay = text,
+        onOverlayMuted = readableMuted,
+        mapLabel = text,
+        glyphOutline = if (isDark) Color(0x99000000) else Color(0xB3FFFFFF),
+        cityDot = mutedText.readableOn(map, isDark, GRAPHIC_CONTRAST),
+        cityLabel = readableMuted,
+        glassTint = glassTint,
+        glassRimLight = if (isDark) Color(0x80FFFFFF) else Color(0xF2FFFFFF),
+        glassRimShade = if (isDark) Color(0x14FFFFFF) else text.copy(alpha = 0.1f),
+        glassSelection = if (isDark) Color(0x1AFFFFFF) else Color(0x66FFFFFF),
+    )
+
+    fun materialScheme(): ColorScheme {
+        val primaryContainer = lerp(surface, accent, if (isDark) 0.35f else 0.2f)
+        val onPrimaryContainer = if (isDark) lerp(accent, Color.White, 0.6f) else lerp(accent, Color.Black, 0.55f)
+        // The palette's own on-accent colour, unless nudging the accent left it too close.
+        val onPrimary = onAccent.takeIf { contrast(it, readableAccent) >= TEXT_CONTRAST }
+            ?: listOf(background, text).maxBy { contrast(it, readableAccent) }
+        val base = if (isDark) darkColorScheme() else lightColorScheme()
+        return base.copy(
+            primary = readableAccent,
+            onPrimary = onPrimary,
+            primaryContainer = primaryContainer,
+            onPrimaryContainer = onPrimaryContainer,
+            inversePrimary = lerp(accent, if (isDark) Color.Black else Color.White, 0.4f),
+            secondary = ok,
+            onSecondary = if (isDark) background else Color.White,
+            secondaryContainer = primaryContainer,
+            onSecondaryContainer = onPrimaryContainer,
+            tertiary = warning,
+            error = danger,
+            background = background,
+            onBackground = text,
+            surface = surface,
+            onSurface = text,
+            surfaceVariant = lerp(surface, text, 0.08f),
+            onSurfaceVariant = readableMuted,
+            surfaceTint = accent,
+            surfaceBright = lerp(surface, text, 0.1f),
+            surfaceDim = lerp(surface, background, 0.6f),
+            surfaceContainerLowest = lerp(surface, background, 0.6f),
+            surfaceContainerLow = lerp(surface, text, 0.02f),
+            surfaceContainer = lerp(surface, text, 0.04f),
+            surfaceContainerHigh = lerp(surface, text, 0.07f),
+            surfaceContainerHighest = lerp(surface, text, 0.1f),
+            outline = border,
+            outlineVariant = lerp(surface, border, 0.5f),
+            inverseSurface = text,
+            inverseOnSurface = surface,
+        )
+    }
+}
+
+/** WCAG 2.1 contrast ratio of two opaque colours, from 1 to 21. */
+internal fun contrast(a: Color, b: Color): Float {
+    val la = a.luminance() + 0.05f
+    val lb = b.luminance() + 0.05f
+    return max(la, lb) / min(la, lb)
+}
+
+/** Opacity of a status colour behind tags and rows that carry it, such as REPORTED or a threatened favorite. */
+internal const val STATUS_TINT = 0.18f
+
+/** WCAG AA minimums: body text, and large text, icons and controls. */
+internal const val TEXT_CONTRAST = 4.5f
+internal const val GRAPHIC_CONTRAST = 3f
+
+/**
+ * This colour, moved towards white ([dark] themes) or black just far enough to reach [ratio]:1 on every one of
+ * [backgrounds]; unchanged if it already does.
+ */
+internal fun Color.readableOn(backgrounds: List<Color>, dark: Boolean, ratio: Float = TEXT_CONTRAST): Color {
+    val toward = if (dark) Color.White else Color.Black
+    var t = 0f
+    while (t < 1f) {
+        val candidate = lerp(this, toward, t)
+        if (backgrounds.all { contrast(candidate, it) >= ratio }) return candidate
+        t += 0.02f
+    }
+    return toward
+}
+
+private class PaletteVariants(val dark: PaletteTones, val light: PaletteTones)
+
+private fun dark(
+    background: Long, surface: Long, land: Long, border: Long, text: Long, mutedText: Long,
+    accent: Long, onAccent: Long, ok: Long, danger: Long, warning: Long,
+) = PaletteTones(
+    true, Color(background), Color(surface), Color(land), Color(border), Color(text), Color(mutedText),
+    Color(accent), Color(onAccent), Color(ok), Color(danger), Color(warning),
+)
+
+private fun light(
+    background: Long, surface: Long, land: Long, border: Long, text: Long, mutedText: Long,
+    accent: Long, onAccent: Long, ok: Long, danger: Long, warning: Long,
+) = dark(background, surface, land, border, text, mutedText, accent, onAccent, ok, danger, warning).let {
+    PaletteTones(false, it.background, it.surface, it.land, it.border, it.text, it.mutedText, it.accent, it.onAccent, it.ok, it.danger, it.warning)
+}
+
+/**
+ * Tones of every palette but [ColorPalette.Radar], which keeps its hand-tuned colours. The popular ones follow
+ * their published palettes (light variants: Nord's Snow Storm, Dracula's Alucard, Solarized Light, Catppuccin
+ * Latte), with danger and warning kept a clear red and amber so alerts read the same in every palette.
+ */
+private val paletteVariants: Map<ColorPalette, PaletteVariants> = mapOf(
+    ColorPalette.Nord to PaletteVariants(
+        dark = dark(0xFF242933, 0xFF2E3440, 0xFF3B4252, 0xFF616E88, 0xFFECEFF4, 0xFFD8DEE9, 0xFF88C0D0, 0xFF2E3440, 0xFFA3BE8C, 0xFFBF616A, 0xFFEBCB8B),
+        light = light(0xFFE5E9F0, 0xFFECEFF4, 0xFFF8F9FB, 0xFFA5B1C2, 0xFF2E3440, 0xFF4C566A, 0xFF5E81AC, 0xFFFFFFFF, 0xFF6E8F55, 0xFFBF616A, 0xFFC9922E),
+    ),
+    ColorPalette.Dracula to PaletteVariants(
+        dark = dark(0xFF1E1F29, 0xFF282A36, 0xFF343746, 0xFF6272A4, 0xFFF8F8F2, 0xFFBFC3D9, 0xFFBD93F9, 0xFF282A36, 0xFF50FA7B, 0xFFFF5555, 0xFFFFB86C),
+        light = light(0xFFEFEDDC, 0xFFFFFBEB, 0xFFFFFDF4, 0xFFA9A6C4, 0xFF1F1F1F, 0xFF635D97, 0xFF644AC9, 0xFFFFFFFF, 0xFF14710A, 0xFFCB3A2A, 0xFFA34D14),
+    ),
+    ColorPalette.Solarized to PaletteVariants(
+        dark = dark(0xFF00212B, 0xFF002B36, 0xFF073642, 0xFF4F6B73, 0xFFEEE8D5, 0xFF93A1A1, 0xFF268BD2, 0xFFFDF6E3, 0xFF859900, 0xFFDC322F, 0xFFB58900),
+        light = light(0xFFEEE8D5, 0xFFFDF6E3, 0xFFFFFBF0, 0xFF93A1A1, 0xFF073642, 0xFF586E75, 0xFF268BD2, 0xFFFFFFFF, 0xFF859900, 0xFFDC322F, 0xFFB58900),
+    ),
+    ColorPalette.Catppuccin to PaletteVariants(
+        dark = dark(0xFF11111B, 0xFF1E1E2E, 0xFF313244, 0xFF6C7086, 0xFFCDD6F4, 0xFFA6ADC8, 0xFF89B4FA, 0xFF1E1E2E, 0xFFA6E3A1, 0xFFF38BA8, 0xFFFAB387),
+        light = light(0xFFDCE0E8, 0xFFEFF1F5, 0xFFFFFFFF, 0xFF9CA0B0, 0xFF4C4F69, 0xFF6C6F85, 0xFF1E66F5, 0xFFFFFFFF, 0xFF40A02B, 0xFFD20F39, 0xFFDF8E1D),
+    ),
+    // Near-black violet with a plum accent.
+    ColorPalette.ObsidianPlum to PaletteVariants(
+        dark = dark(0xFF0D0A10, 0xFF16111B, 0xFF221A2A, 0xFF5A4468, 0xFFEFE6F4, 0xFFB8A6C4, 0xFFB565D9, 0xFF1A0F20, 0xFF6FD3A0, 0xFFFF5470, 0xFFF2B44B),
+        light = light(0xFFEEE8F1, 0xFFFAF7FC, 0xFFFFFFFF, 0xFFB9A6C6, 0xFF22162A, 0xFF5E4B6B, 0xFF7E3A9E, 0xFFFFFFFF, 0xFF24875A, 0xFFD02F4E, 0xFFB9770E),
+    ),
+    // Warm charcoal with burnished copper.
+    ColorPalette.SmokedCopper to PaletteVariants(
+        dark = dark(0xFF0F0D0C, 0xFF1A1614, 0xFF26201C, 0xFF6B5446, 0xFFF2E9E2, 0xFFC2AFA2, 0xFFD08452, 0xFF2A140A, 0xFF8CC084, 0xFFFF5A4E, 0xFFF0B840),
+        light = light(0xFFEDE6E0, 0xFFFAF6F2, 0xFFFFFFFF, 0xFFC3AE9E, 0xFF2A1E17, 0xFF6A5546, 0xFFA0522D, 0xFFFFFFFF, 0xFF3E7D3A, 0xFFC9302C, 0xFFB57A0A),
+    ),
+    // Deep navy with royal blue and a gold warning.
+    ColorPalette.BlueHonor to PaletteVariants(
+        dark = dark(0xFF070B18, 0xFF0E1530, 0xFF17224A, 0xFF3D4E8A, 0xFFEAF0FF, 0xFFA9B6DA, 0xFF5B8CFF, 0xFF0A1430, 0xFF4CD98F, 0xFFFF5263, 0xFFF5C542),
+        light = light(0xFFE6ECF7, 0xFFF7F9FE, 0xFFFFFFFF, 0xFFA3B3D6, 0xFF0E1838, 0xFF45547E, 0xFF1F4FC8, 0xFFFFFFFF, 0xFF1E8A52, 0xFFD3283A, 0xFFB8860B),
+    ),
+)
+
+private class ResolvedTheme(val radar: RadarColors, val material: ColorScheme)
+
+private val radarDark = ResolvedTheme(RadarColors.Dark, darkScheme)
+private val radarLight = ResolvedTheme(RadarColors.Light, lightScheme)
+private val resolvedPalettes: Map<Pair<ColorPalette, Boolean>, ResolvedTheme> = paletteVariants.flatMap { (palette, variants) ->
+    listOf(variants.dark, variants.light).map { tones -> (palette to tones.isDark) to ResolvedTheme(tones.radarColors(), tones.materialScheme()) }
+}.toMap()
+
+private fun resolve(palette: ColorPalette, dark: Boolean): ResolvedTheme =
+    resolvedPalettes[palette to dark] ?: if (dark) radarDark else radarLight
+
+/** The colours [RadarTheme] resolves [palette] to, for tests that check their contrast. */
+internal fun themeColors(palette: ColorPalette, dark: Boolean): Pair<RadarColors, ColorScheme> =
+    resolve(palette, dark).let { it.radar to it.material }
+
+/** Accent and background of [palette], for swatches that preview it. */
+fun paletteSwatch(palette: ColorPalette, dark: Boolean): Pair<Color, Color> =
+    resolve(palette, dark).radar.let { it.favorite to it.mapBackground }
+
+/**
+ * App theme in [palette]. [ThemeMode.System] follows the OS setting. [onApplied] lets the platform host match
  * system chrome (status bar icons, window appearance) to the resolved theme.
  */
 @Composable
 fun RadarTheme(
     mode: ThemeMode = ThemeMode.System,
+    palette: ColorPalette = ColorPalette.Radar,
     onApplied: (mode: ThemeMode, dark: Boolean) -> Unit = { _, _ -> },
     content: @Composable () -> Unit,
 ) {
@@ -149,8 +400,9 @@ fun RadarTheme(
         ThemeMode.Dark -> true
     }
     LaunchedEffect(mode, dark) { onApplied(mode, dark) }
-    CompositionLocalProvider(LocalRadarColors provides if (dark) RadarColors.Dark else RadarColors.Light) {
-        MaterialTheme(colorScheme = if (dark) darkScheme else lightScheme, content = content)
+    val theme = resolve(palette, dark)
+    CompositionLocalProvider(LocalRadarColors provides theme.radar) {
+        MaterialTheme(colorScheme = theme.material, content = content)
     }
 }
 
