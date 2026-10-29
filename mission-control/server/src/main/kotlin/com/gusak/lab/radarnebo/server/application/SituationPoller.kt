@@ -48,7 +48,8 @@ class SituationPoller(
             } catch (e: Exception) {
                 // A broken report or archive must not stop the feed; the next poll starts afresh.
                 log.error("Poll failed", e)
-                status = status.copy(lastError = "Internal error: ${e.message}")
+                // The class only: the message may hold upstream details; anonymous classes have no simple name.
+                status = status.copy(lastError = "Internal error (${e::class.simpleName ?: e::class.java.name}); see server log")
                 source.pollInterval.inWholeMilliseconds
             }
             status = status.copy(nextPollAt = clock() + waitMs)
@@ -112,9 +113,13 @@ class SituationPoller(
         }
     }
 
-    /** Exponential backoff, capped at 10 minutes, never shorter than the failure's minimum or Retry-After. */
+    /**
+     * Exponential backoff, capped per failure (60 s for transient errors, 10 min for 429/401/403), never shorter
+     * than the failure's minimum or Retry-After.
+     */
     private fun failed(failure: FetchResult.Failed): Long {
-        backoffMs = (if (backoffMs == 0L) failure.minWaitMs else backoffMs * 2).coerceIn(failure.minWaitMs, MAX_BACKOFF_MS)
+        val cap = maxOf(failure.minWaitMs, failure.maxWaitMs)
+        backoffMs = (if (backoffMs == 0L) failure.minWaitMs else backoffMs * 2).coerceIn(failure.minWaitMs, cap)
         val wait = maxOf(backoffMs, failure.retryAfterMs ?: 0)
         status = status.copy(lastError = failure.message)
         log.warn("{} — next attempt in {} s", failure.message, wait / 1000)
@@ -122,7 +127,6 @@ class SituationPoller(
     }
 
     private companion object {
-        const val MAX_BACKOFF_MS = 10 * 60_000L
         val PRUNE_EVERY = 1.hours
     }
 }

@@ -126,6 +126,14 @@ class RadarApiTest {
     }
 
     @Test
+    fun theHealthCheckIsRateLimitedButNeedsNoKey() = testApplication {
+        val server = server(ClientApiConfig(keys = setOf("app-key"), requestsPerMinute = 2))
+        server.poll()
+        val statuses = listOf("/health", "/", "/health").map { client.get(it).status }
+        assertEquals(listOf(HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.TooManyRequests), statuses)
+    }
+
+    @Test
     fun behindAProxyEachClientIpHasItsOwnLimitAndTheProxysEntryWins() = testApplication {
         val server = server(ClientApiConfig(requestsPerMinute = 1, trustProxyHeaders = true))
         server.poll()

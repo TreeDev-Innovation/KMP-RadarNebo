@@ -23,8 +23,16 @@ sealed interface FetchResult {
     /** The content is unchanged since the `lastModified` passed to [AlertsDataSource.fetch]. */
     data object NotModified : FetchResult
 
-    /** Wait at least [minWaitMs] (or the source's [retryAfterMs]) before trying again. */
-    data class Failed(val message: String, val minWaitMs: Long, val retryAfterMs: Long? = null) : FetchResult
+    /**
+     * Wait at least [minWaitMs] (or the source's [retryAfterMs]) before trying again.
+     * [maxWaitMs] caps the exponential backoff, so a transient outage doesn't delay recovery for long.
+     */
+    data class Failed(
+        val message: String,
+        val minWaitMs: Long,
+        val retryAfterMs: Long? = null,
+        val maxWaitMs: Long = 60_000,
+    ) : FetchResult
 }
 
 /**

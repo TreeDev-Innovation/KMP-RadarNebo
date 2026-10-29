@@ -83,7 +83,10 @@ fun Application.radarApi(
 
     val pollInterval = { poller.source.pollInterval }
     routing {
-        healthRoutes(situation, poller, upstreamBudgetPerMinute)
+        // Throttled like everything else but never authenticated, so container health checks and monitors work.
+        rateLimit(CLIENTS) {
+            healthRoutes(situation, poller, upstreamBudgetPerMinute)
+        }
         // The limits wrap authentication, so callers guessing keys are throttled too.
         rateLimit(CLIENTS) {
             clientRoute(authRequired) {

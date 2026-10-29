@@ -23,7 +23,7 @@ section 11 keeps an explicit "not an official warning system" risk, but nothing 
 - Modules: `:core` (pure KMP logic), `:shared` (Compose UI, Koin), `:mission-control:server` (Ktor CIO, Exposed/SQLite),
   `:mission-control:ui` (desktop console that hosts the server and, since `b2e443c`, the client app), `:app:*` launchers.
 - The server polls alerts.in.ua every 15 s, capped at `UPSTREAM_MAX_PER_MINUTE` (default 6, never above 8) by a
-  sliding-window limiter, and backs off up to 10 min.
+  sliding-window limiter, and backs off up to 60 s on transient failures (10 min on 429/401/403).
 - The server's API re-publishes the alerts.in.ua format plus `/v1/drones/*` extensions. Optional bearer keys
   (`CLIENT_KEYS`).
 - Archive: SQLite, partitioned by data source, pruned by `ARCHIVE_RETENTION_DAYS`.
@@ -279,7 +279,7 @@ sequenceDiagram
   L-->>P: ok
   P->>U: GET active.json (If-Modified-Since)
   U-->>P: 429 Retry-After: 60
-  P->>P: back off (exponential, ≤ 10 min)
+  P->>P: back off (exponential, ≤ 60 s; ≤ 10 min on 429/401/403)
   Cl->>P: GET /v1/alerts/active.json
   P-->>Cl: last known alerts (304 or 200); /health shows lastError
 ```

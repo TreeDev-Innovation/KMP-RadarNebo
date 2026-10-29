@@ -60,5 +60,10 @@ docker run --rm -p 8080:8080 radarnebo-server:local
 | `PORT` | 8080 | 0–65535; 0 picks a free port |
 | `LOG_HTTP` | – | `true` logs each alerts.in.ua request and response with its JSON body (token masked) |
 
-A value that isn't a number falls back to the default. A number outside the range above stops the server at startup
-with a message naming the variable (the console shows it in a dialog), since falling back would hide the mistake.
+Unset or blank means the default. A malformed value (a number that doesn't parse, a boolean other than `true` or
+`false`, an unknown `DATA_SOURCE`) or a number outside the range above stops the server at startup with a message
+naming the variable (the console shows it in a dialog), since falling back would hide the mistake.
+
+`/health` needs no key but is rate limited per IP like the other routes. The poller backs off exponentially on
+failures: up to 60 s on server or network errors, so the board recovers within a minute, and up to 10 min on
+429/401/403.

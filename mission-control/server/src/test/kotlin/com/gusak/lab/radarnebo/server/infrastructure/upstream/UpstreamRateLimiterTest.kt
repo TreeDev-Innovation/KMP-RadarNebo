@@ -35,6 +35,17 @@ class UpstreamRateLimiterTest {
     }
 
     @Test
+    fun aClockSteppedBackDoesNotStallTheNextRequest() = runTest {
+        var offset = 0L
+        val limiter = UpstreamRateLimiter(maxPerWindow = 6, clock = { testScheduler.currentTime + offset })
+        limiter.acquire()
+        offset = -3_600_000
+        val started = testScheduler.currentTime
+        limiter.acquire()
+        assertTrue(testScheduler.currentTime - started <= 10_000, "waited ${testScheduler.currentTime - started} ms")
+    }
+
+    @Test
     fun aBudgetOfNoRequestsIsRejected() {
         assertFailsWith<IllegalArgumentException> { UpstreamRateLimiter(0) }
     }

@@ -71,9 +71,14 @@ class AlertsInUaSource(
                     "Upstream rate limit hit (429)",
                     minWaitMs = RATE_LIMITED_WAIT_MS,
                     retryAfterMs = response.headers[HttpHeaders.RetryAfter]?.toLongOrNull()?.times(1000),
+                    maxWaitMs = PENALTY_MAX_WAIT_MS,
                 )
                 HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden ->
-                    FetchResult.Failed("Upstream rejected credentials or IP (${response.status.value})", minWaitMs = REJECTED_WAIT_MS)
+                    FetchResult.Failed(
+                        "Upstream rejected credentials or IP (${response.status.value})",
+                        minWaitMs = REJECTED_WAIT_MS,
+                        maxWaitMs = PENALTY_MAX_WAIT_MS,
+                    )
                 else -> FetchResult.Failed("Upstream returned ${response.status.value}", minWaitMs = intervalMs)
             }
         } catch (e: CancellationException) {
@@ -90,6 +95,9 @@ class AlertsInUaSource(
         const val ACTIVE_ALERTS_PATH = "/v1/alerts/active.json"
         private const val RATE_LIMITED_WAIT_MS = 60_000L
         private const val REJECTED_WAIT_MS = 5 * 60_000L
+
+        // Only a rate limit or a rejection warrants backing off this far; other failures stop at the default 60 s.
+        private const val PENALTY_MAX_WAIT_MS = 10 * 60_000L
         private const val REQUEST_TIMEOUT_MS = 15_000L
         private const val CONNECT_TIMEOUT_MS = 10_000L
 

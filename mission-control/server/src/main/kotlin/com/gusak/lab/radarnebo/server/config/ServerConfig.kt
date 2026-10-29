@@ -40,11 +40,15 @@ data class ServerConfig(
 
     companion object {
         fun fromEnv(env: Map<String, String> = System.getenv()): ServerConfig {
-            fun int(name: String) = env[name]?.trim()?.toIntOrNull()
+            val errors = mutableListOf<String>()
             fun text(name: String) = env[name]?.trim()?.takeIf { it.isNotEmpty() }
-            // Unset or malformed values fall back to the data-class defaults, the only place defaults are written.
+            // Unset or blank means the data-class default; a set value that doesn't parse is reported below.
+            fun <T : Any> parse(name: String, kind: String, parse: (String) -> T?): T? =
+                text(name)?.let { value -> parse(value).also { if (it == null) errors += "$name='$value' is not $kind" } }
+            fun int(name: String) = parse(name, "an integer", String::toIntOrNull)
+            fun bool(name: String) = parse(name, "true or false") { it.lowercase().toBooleanStrictOrNull() } ?: false
             val defaults = ServerConfig()
-            return ServerConfig(
+            val config = ServerConfig(
                 port = int("PORT") ?: defaults.port,
                 upstream = UpstreamConfig(
                     token = text("ALERTS_API_TOKEN"),
@@ -53,7 +57,7 @@ data class ServerConfig(
                     pollInterval = int("POLL_INTERVAL_SECONDS")?.seconds ?: defaults.upstream.pollInterval,
                 ),
                 simulation = SimulationConfig(
-                    seed = text("SIM_SEED")?.toLongOrNull() ?: defaults.simulation.seed,
+                    seed = parse("SIM_SEED", "an integer", String::toLongOrNull) ?: defaults.simulation.seed,
                     strikePeriod = int("SIM_STRIKE_PERIOD_MINUTES")?.minutes ?: defaults.simulation.strikePeriod,
                     tick = int("SIM_TICK_SECONDS")?.seconds ?: defaults.simulation.tick,
                     warmUp = int("SIM_WARM_UP_MINUTES")?.minutes ?: defaults.simulation.warmUp,
@@ -67,15 +71,19 @@ data class ServerConfig(
                         .split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
                     requestsPerMinute = int("CLIENT_REQUESTS_PER_MINUTE") ?: defaults.clients.requestsPerMinute,
                     historyRequestsPerMinute = int("HISTORY_REQUESTS_PER_MINUTE") ?: defaults.clients.historyRequestsPerMinute,
-                    trustProxyHeaders = text("TRUST_PROXY_HEADERS").toBoolean(),
+                    trustProxyHeaders = bool("TRUST_PROXY_HEADERS"),
                 ),
-                dataSourceOverride = when (text("DATA_SOURCE")?.lowercase()) {
-                    "simulation" -> DataSourceKind.Simulation
-                    "alerts_in_ua", "alerts.in.ua", "upstream" -> DataSourceKind.AlertsInUa
-                    else -> null
+                dataSourceOverride = parse("DATA_SOURCE", "simulation, alerts_in_ua, alerts.in.ua or upstream") {
+                    when (it.lowercase()) {
+                        "simulation" -> DataSourceKind.Simulation
+                        "alerts_in_ua", "alerts.in.ua", "upstream" -> DataSourceKind.AlertsInUa
+                        else -> null
+                    }
                 },
-                logHttp = text("LOG_HTTP").toBoolean(),
+                logHttp = bool("LOG_HTTP"),
             )
+            require(errors.isEmpty()) { "Invalid configuration: ${errors.joinToString("; ")}" }
+            return config
         }
     }
 }
