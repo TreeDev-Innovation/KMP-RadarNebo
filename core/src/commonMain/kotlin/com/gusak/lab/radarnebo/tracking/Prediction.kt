@@ -81,6 +81,25 @@ object TrackPredictor {
             .map(ahead::arrival)
     }
 
+    /** Like [route], from a known position, heading and speed; the server uses it with its [TrackEstimate]. */
+    fun routeFrom(
+        trackId: String,
+        from: GeoPoint,
+        headingDeg: Double,
+        speedKmh: Double,
+        places: List<Place> = cityPlaces,
+        horizonKm: Double = ROUTE_HORIZON_KM,
+        maxStops: Int = 5,
+    ): List<ArrivalPrediction> {
+        val ahead = ahead(trackId, from, headingDeg, speedKmh, places, horizonKm)
+        val (minHalfWidth, slope) = corridors.first()
+        return ahead.candidates
+            .filter { it.inCorridor(minHalfWidth, slope) }
+            .sortedBy { it.along }
+            .take(maxStops)
+            .map(ahead::arrival)
+    }
+
     /** End of the predicted course after [horizonKm] (or the time it takes), for drawing the route line. */
     fun courseEnd(track: DroneTrack, now: Long, horizonKm: Double = ROUTE_HORIZON_KM): GeoPoint? {
         if (!track.active || track.samples.size < 2) return null
@@ -116,9 +135,15 @@ object TrackPredictor {
         if (!track.active || s.size < 2) return null
         val position = TrackInterpolator.positionAt(track, now) ?: return null
         val heading = position.headingDeg ?: return null
-        val (_, rawSpeed) = TrackInterpolator.trend(s) ?: TrackInterpolator.motion(s[s.lastIndex - 1], s.last())
+        // The server's estimate already holds the speed to what the target can fly.
+        val rawSpeed = track.estimate?.speedKmh
+            ?: (TrackInterpolator.trend(s) ?: TrackInterpolator.motion(s[s.lastIndex - 1], s.last())).second
         val speed = rawSpeed.coerceIn(MIN_SPEED_KMH, TrackKinematics.of(track).maxSpeedKmh)
+        return ahead(track.id, position.point, heading, speed, places, rangeKm)
+    }
 
+    private fun ahead(trackId: String, from: GeoPoint, heading: Double, speed: Double, places: List<Place>, rangeKm: Double): Ahead {
+        val position = from
         val h = heading * PI / 180.0
         val hx = sin(h)
         val hy = cos(h)
@@ -127,9 +152,9 @@ object TrackPredictor {
             val dx = (place.point.lon - position.lon) * lonScale
             val dy = (place.point.lat - position.lat) * KM_PER_DEGREE
             val along = dx * hx + dy * hy
-            val distance = GeoMath.distanceKm(position.point, place.point)
+            val distance = GeoMath.distanceKm(position, place.point)
             if (along > 0 && distance in ARRIVED_KM..rangeKm) Candidate(place, along, abs(dx * hy - dy * hx), distance) else null
         }
-        return Ahead(track.id, position.point, speed, candidates)
+        return Ahead(trackId, position, speed, candidates)
     }
 }

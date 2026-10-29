@@ -177,6 +177,21 @@ object Regions {
 
     private fun normalizeName(name: String) = name.trim().lowercase().replace(Regex("[’ʼ`']"), "'")
 
+    /**
+     * The hromada named in an alert title ("Червоногригорівська територіальна громада", "м. Харків та Харківська
+     * територіальна громада"), in [oblastUid] when given. OSM and alerts.in.ua word the kind differently
+     * ("сільська" vs "територіальна"), so hromadas are found by the stem of their name.
+     */
+    fun hromadaForTitle(title: String, oblastUid: Int? = null): Hromada? {
+        val stem = hromadaStem.find(title.trim())?.groupValues?.get(1)?.substringAfterLast(" та ") ?: return null
+        val candidates = hromadasByStem[normalizeName(stem)] ?: return null
+        return candidates.firstOrNull { it.oblastUid == oblastUid } ?: candidates.takeIf { oblastUid == null }?.first()
+    }
+
+    private val hromadaStem = Regex("""^(.+?)\s+(?:міська|селищна|сільська|територіальна)\s+(?:територіальна\s+)?громада$""")
+
+    private val hromadasByStem: Map<String, List<Hromada>> by lazy { UkraineHromadas.all.groupBy { normalizeName(it.stem) } }
+
     private val raionsByName: Map<String, List<Raion>> by lazy {
         UkraineRaions.all
             .flatMap { raion -> raion.names.map { normalizeName(it) to raion } }
@@ -199,6 +214,52 @@ object Regions {
     fun nearestCity(point: GeoPoint): Pair<MapCity, Double> = UkraineCities.all
         .map { it to GeoMath.distanceKm(point, GeoPoint(it.lat.toDouble(), it.lon.toDouble())) }
         .minBy { it.second }
+
+    /**
+     * How far [point] is from region [uid], in km: 0 inside it. Kyiv city and Sevastopol, which have no polygon
+     * of their own, count as a circle of [CITY_REGION_RADIUS_KM]. Null for an unknown region.
+     */
+    fun distanceToRegionKm(uid: Int, point: GeoPoint): Double? = nearestInRegion(uid, point)?.second
+
+    /** The point of region [uid] closest to [point]: [point] itself when inside, else on the border. */
+    fun nearestPointInRegion(uid: Int, point: GeoPoint): GeoPoint? = nearestInRegion(uid, point)?.first
+
+    private fun nearestInRegion(uid: Int, point: GeoPoint): Pair<GeoPoint, Double>? {
+        if (uid == KYIV_CITY_UID || uid == SEVASTOPOL_UID) {
+            val center = center(uid) ?: return null
+            val km = GeoMath.distanceKm(center, point)
+            if (km <= CITY_REGION_RADIUS_KM) return point to 0.0
+            return GeoMath.destination(center, GeoMath.bearingDeg(center, point), CITY_REGION_RADIUS_KM) to km - CITY_REGION_RADIUS_KM
+        }
+        val shape = UkraineGeometry.oblasts.firstOrNull { it.uid == uid } ?: return null
+        if (GeoMath.contains(shape.lonLat, point)) return point to 0.0
+        // Flat-earth km around [point]: plenty for distances to a neighbouring border.
+        val lonKm = kotlin.math.cos(point.lat * kotlin.math.PI / 180.0) * 111.2
+        var best: Pair<GeoPoint, Double>? = null
+        val n = shape.lonLat.size / 2
+        for (i in 0 until n) {
+            val j = (i + 1) % n
+            val ax = (shape.lonLat[i * 2] - point.lon) * lonKm
+            val ay = (shape.lonLat[i * 2 + 1] - point.lat) * 111.2
+            val bx = (shape.lonLat[j * 2] - point.lon) * lonKm
+            val by = (shape.lonLat[j * 2 + 1] - point.lat) * 111.2
+            val lengthSq = (bx - ax) * (bx - ax) + (by - ay) * (by - ay)
+            val f = if (lengthSq == 0.0) 0.0 else (-(ax * (bx - ax) + ay * (by - ay)) / lengthSq).coerceIn(0.0, 1.0)
+            val cx = ax + (bx - ax) * f
+            val cy = ay + (by - ay) * f
+            val km = kotlin.math.sqrt(cx * cx + cy * cy)
+            if (best == null || km < best.second) best = GeoPoint(point.lat + cy / 111.2, point.lon + cx / lonKm) to km
+        }
+        return best
+    }
+
+    private const val CITY_REGION_RADIUS_KM = 15.0
+
+    /**
+     * Oblasts no drone is launched from or enters first: away from Russia, Belarus, the front line and the sea.
+     * Khmelnytskyi, Vinnytsia, Zakarpattia, Ivano-Frankivsk, Kirovohrad, Poltava, Ternopil, Cherkasy, Chernivtsi, Lviv.
+     */
+    val INLAND_OBLAST_UIDS = setOf(3, 4, 11, 13, 15, 19, 21, 24, 26, 27)
 
     /** Polygon-only lookup, without the settlement shortcut. */
     fun oblastByPolygon(point: GeoPoint): Int? = UkraineGeometry.oblasts.firstOrNull { GeoMath.contains(it.lonLat, point) }?.uid

@@ -1,5 +1,8 @@
 package com.gusak.lab.radarnebo.server.api
 
+import kotlin.test.assertNotNull
+import com.gusak.lab.radarnebo.geo.GeoMath
+import com.gusak.lab.radarnebo.tracking.PositionMode
 import com.gusak.lab.radarnebo.data.ActiveAlertsResponse
 import com.gusak.lab.radarnebo.data.RadarNeboApi
 import com.gusak.lab.radarnebo.data.ThreatLevel
@@ -299,7 +302,10 @@ class RadarApiTest {
         val midpoint = (track.samples[0].t + track.samples[1].t) / 2
         val positions = RadarNeboApi.json.decodeFromString(DronePositionsResponse.serializer(), text("${RadarNeboApi.POSITIONS_PATH}?at=$midpoint").second)
         val p = positions.positions.single()
-        assertEquals((track.samples[0].lat + track.samples[1].lat) / 2, p.lat, 1e-9)
+        // Between reports the target follows the server's smoothed path, not a straight line through them.
+        assertEquals(PositionMode.Interpolated, p.mode)
+        assertTrue(track.path.size > 2 && track.path.minOf { GeoMath.distanceKm(it.point, p.point) } < 3.0, "on the smoothed path")
+        assertNotNull(track.estimate)
         assertEquals(HttpStatusCode.BadRequest, client.get("${RadarNeboApi.POSITIONS_PATH}?at=yesterday").status)
 
         // Once the alert clears the track ends; the archive keeps it.

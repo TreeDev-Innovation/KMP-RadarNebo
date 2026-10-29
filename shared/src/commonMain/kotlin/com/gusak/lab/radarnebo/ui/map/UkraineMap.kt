@@ -476,7 +476,7 @@ fun UkraineMap(
         }
         // The selected target's course over the ground, under everything in the air.
         visibleTracks.firstOrNull { it.first.id == selectedTrackId }?.let { (track, position) ->
-            drawTrail(track, position, camera)
+            drawTrail(track, position, now, camera)
             drawTrackTimestamps(track, camera, colors, textMeasurer)
         }
 
@@ -558,18 +558,67 @@ private fun trackPositions(tracks: List<DroneTrack>, now: Long): List<Pair<Drone
     .mapNotNull { track -> TrackInterpolator.positionAt(track, now)?.let { track to it } }
 
 /**
- * The selected target's trail over the ground through the reported positions up to where it is now: a dashed
- * white line that fades out towards the oldest report, so the recent course reads first.
+ * The selected target's trail over the ground up to where it is now: a dashed white line that fades out towards
+ * the oldest report, so the recent course reads first, with a dot at every reported position. The line follows
+ * the server's smoothed path when it sends one, else the reports themselves.
  */
-private fun DrawScope.drawTrail(track: DroneTrack, position: InterpolatedPosition, camera: MapCamera) {
-    val points = track.samples.map { camera.toScreen(MapProjection.toWorld(it.point), size) }
-    val trail = points + camera.toScreen(MapProjection.toWorld(position.point), size)
-    val fade = trailFade(trail)
-    if (trail.size >= 2) drawFadingDashes(trail, fade)
-    points.forEachIndexed { i, p ->
+private fun DrawScope.drawTrail(track: DroneTrack, position: InterpolatedPosition, now: Long, camera: MapCamera) {
+    fun screen(point: GeoPoint) = camera.toScreen(MapProjection.toWorld(point), size)
+    val reports = track.samples.filter { it.t <= now }.map { screen(it.point) }
+    val head = screen(position.point)
+    val path = track.path.filter { it.t <= now }
+    val line = if (path.size >= 2) catmullRom(path.map { screen(it.point) } + head) else reports + head
+    if (line.size >= 2) drawFadingDashes(line, trailFade(line))
+    val fade = trailFade(reports + head)
+    reports.forEachIndexed { i, p ->
         drawCircle(Color.Black.copy(alpha = 0.35f * fade[i]), 3.5.dp.toPx(), p)
         drawCircle(Color.White.copy(alpha = fade[i]), 2.5.dp.toPx(), p)
     }
+}
+
+/**
+ * A Catmull-Rom curve through [points], [steps] pieces per segment. Purely cosmetic: it runs through the server's
+ * points, so it rounds off the corners between them without inventing a turn.
+ */
+private fun catmullRom(points: List<Offset>, steps: Int = 4): List<Offset> {
+    if (points.size < 3) return points
+    val out = ArrayList<Offset>(points.size * steps)
+    for (i in 0 until points.lastIndex) {
+        val p0 = points[maxOf(i - 1, 0)]
+        val p1 = points[i]
+        val p2 = points[i + 1]
+        val p3 = points[minOf(i + 2, points.lastIndex)]
+        for (j in 0 until steps) {
+            val t = j.toFloat() / steps
+            val t2 = t * t
+            val t3 = t2 * t
+            out += (p1 * 2f + (p2 - p0) * t + (p0 * 2f - p1 * 5f + p2 * 4f - p3) * t2 + (p1 * 3f - p0 - p2 * 3f + p3) * t3) * 0.5f
+        }
+    }
+    out += points.last()
+    return out
+}
+
+/**
+ * The server's forecast as a cone that widens with the growing uncertainty ([com.gusak.lab.radarnebo.tracking.ForecastPoint.sigmaKm]),
+ * so the course ahead reads as a likely corridor rather than a promise.
+ */
+private fun DrawScope.drawForecastCone(track: DroneTrack, camera: MapCamera, color: Color) {
+    val forecast = track.forecast
+    if (forecast.size < 2) return
+    val heading = GeoMath.bearingDeg(forecast.first().point, forecast.last().point)
+    fun side(sign: Int) = forecast.map { f ->
+        camera.toScreen(MapProjection.toWorld(GeoMath.destination(f.point, heading + 90.0 * sign, f.sigmaKm)), size)
+    }
+    val left = side(-1)
+    val right = side(1)
+    val cone = Path().apply {
+        moveTo(left.first().x, left.first().y)
+        left.drop(1).forEach { lineTo(it.x, it.y) }
+        right.asReversed().forEach { lineTo(it.x, it.y) }
+        close()
+    }
+    drawPath(cone, color.copy(alpha = 0.14f), style = Fill)
 }
 
 /** The target's icon, up in the air at its class's typical altitude, as the camera above the map sees it (see [elevate]). */
@@ -707,6 +756,7 @@ private fun DrawScope.drawPredictedRoute(
     colors: RadarColors,
     textMeasurer: TextMeasurer,
 ) {
+    drawForecastCone(track, camera, colors.warning)
     val route = TrackPredictor.route(track, now, places)
     val horizon = (route.lastOrNull()?.distanceKm?.plus(25.0) ?: 60.0).coerceAtMost(TrackPredictor.ROUTE_HORIZON_KM)
     val end = TrackPredictor.courseEnd(track, now, horizon) ?: return

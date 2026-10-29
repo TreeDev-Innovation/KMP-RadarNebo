@@ -7,6 +7,7 @@ import com.gusak.lab.radarnebo.geo.GeoPoint
 import com.gusak.lab.radarnebo.geo.Regions
 import com.gusak.lab.radarnebo.server.domain.alert.AirAlert
 import com.gusak.lab.radarnebo.tracking.DroneTrack
+import com.gusak.lab.radarnebo.tracking.SamplePrecision
 import com.gusak.lab.radarnebo.tracking.TrackOutcome
 import com.gusak.lab.radarnebo.tracking.TrackSample
 import kotlin.math.roundToInt
@@ -113,6 +114,7 @@ class ObservationTracking(
         title = placeNamer.describe(observation.position),
         oblastUid = Regions.oblastAt(observation.position),
         message = observation.message,
+        precision = SamplePrecision.Exact,
     )
 
     /** Drops every other sample from the older half, keeping the first and the newest ones. */

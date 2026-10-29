@@ -13,6 +13,11 @@ data class SituationReport(
     val observations: List<TargetObservation> = emptyList(),
     /** The active-alerts body exactly as the source sent it, served to clients unchanged; null for the simulation. */
     val rawAlerts: String? = null,
+    /**
+     * Alerts from further sources ([com.gusak.lab.radarnebo.server.infrastructure.CompositeAlertsSource]): they feed
+     * tracking only and are never served as alerts, so `/v1/alerts/active.json` stays the primary source's.
+     */
+    val trackingAlerts: List<AirAlert> = emptyList(),
 )
 
 /** What one fetch from an [AlertsDataSource] produced. */

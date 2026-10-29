@@ -180,8 +180,12 @@ object TargetClassifier {
         listOf("х-101", "kh-101", "х-555", "kh-555", "калібр", "kalibr", "крилат", "cruise") to CruiseMissile,
     )
 
-    fun classify(track: DroneTrack, speedKmh: Double? = null): TargetProfile =
-        classify(track.type, track.samples.mapNotNull { it.message }, speedKmh)
+    /** The server's [DroneTrack.kind] wins over the text; the model still comes from the text when it agrees. */
+    fun classify(track: DroneTrack, speedKmh: Double? = null): TargetProfile {
+        val fromText = classify(track.type, track.samples.mapNotNull { it.message }, speedKmh)
+        val kind = track.kind ?: return fromText
+        return if (fromText.kind == kind) fromText else profile(kind).copy(source = TargetProfile.Source.Probable)
+    }
 
     fun classify(marker: ThreatMarker): TargetProfile = classify(marker.type, listOfNotNull(marker.message))
 

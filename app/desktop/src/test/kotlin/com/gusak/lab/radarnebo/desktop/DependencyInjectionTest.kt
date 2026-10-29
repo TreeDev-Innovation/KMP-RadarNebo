@@ -158,7 +158,8 @@ class DependencyInjectionTest {
             putString("api_token", "alerts-in-ua-secret")
             putString("api_base_url", "https://api.alerts.in.ua")
         }
-        val settings = SettingsRepository(old, com.gusak.lab.radarnebo.data.ServerDefaults("http://10.0.2.2:8080"))
+        // No baked-in key: a developer's client.properties may set one, which the default would pick up.
+        val settings = SettingsRepository(old, com.gusak.lab.radarnebo.data.ServerDefaults("http://10.0.2.2:8080", accessKey = ""))
         assertEquals("http://10.0.2.2:8080", settings.settings.value.serverUrl)
         assertEquals("", settings.settings.value.accessKey, "an alerts.in.ua token is not a server key")
         settings.update { it.copy(pollSeconds = 60) }

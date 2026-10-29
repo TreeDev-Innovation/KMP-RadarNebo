@@ -7,6 +7,7 @@ import com.gusak.lab.radarnebo.data.ThreatType
 import com.gusak.lab.radarnebo.geo.GeoMath
 import com.gusak.lab.radarnebo.geo.GeoPoint
 import com.gusak.lab.radarnebo.geo.Regions
+import com.gusak.lab.radarnebo.tracking.SamplePrecision
 import kotlin.time.Instant
 
 /** A single threat placed on the map. One API alert can carry several threats. */
@@ -21,6 +22,10 @@ data class ThreatMarker(
     val point: GeoPoint,
     val startedAt: Instant?,
     val message: String?,
+    /** How precisely [point] places the threat; null when not known (taken as a raion). */
+    val precision: SamplePrecision? = null,
+    /** How far from [point] the threat may be, in km, when the area's size is known; else [precision] decides. */
+    val errorKm: Double? = null,
 ) {
     /** Oblast-wide threats cover the whole region rather than a specific spot. */
     val isRegionWide get() = locationType == "oblast"
@@ -38,7 +43,8 @@ object ThreatMapper {
 
     fun toMarkers(alerts: List<Alert>, dronesOnly: Boolean): List<ThreatMarker> = alerts
         .flatMap { alert ->
-            val point = locate(alert) ?: return@flatMap emptyList()
+            val location = locateWithPrecision(alert) ?: return@flatMap emptyList()
+            val point = location.point
             val oblastUid = oblastUid(alert)
             alert.threats
                 .filter { !dronesOnly || it.threatType == ThreatType.Drones.apiValue }
@@ -54,6 +60,8 @@ object ThreatMapper {
                         point = point,
                         startedAt = parseInstant(threat.startedAt ?: alert.startedAt),
                         message = threat.sourceMessage ?: alert.notes?.takeIf { it.isNotBlank() },
+                        precision = location.precision,
+                        errorKm = location.errorKm,
                     )
                 }
         }
@@ -73,20 +81,42 @@ object ThreatMapper {
         ?: listOfNotNull(alert.locationOblastUid, alert.locationUid.toIntOrNull().takeIf { alert.locationType == "oblast" })
             .firstOrNull { Regions.oblast(it) != null }
 
+    /** Where to show [alert]; see [locateWithPrecision]. */
+    fun locate(alert: Alert): GeoPoint? = locateWithPrecision(alert)?.point
+
+    /** Where an alert is placed, how precisely, and the one-sigma error when the area's size is known. */
+    data class MappedLocation(val point: GeoPoint, val precision: SamplePrecision, val errorKm: Double? = null)
+
     /**
-     * Where to show [alert]. Oblasts sit at their centre and named cities and hromadas at the city; raions, like
-     * any other place without coordinates, at a stable pseudo-random spot in their oblast.
+     * Where to show [alert], and how precisely that places it. Oblasts sit at their centre, named cities and
+     * hromadas at the city, raions at their centre; any other place without coordinates at a stable pseudo-random
+     * spot in its oblast, which says no more than the oblast does.
      */
-    fun locate(alert: Alert): GeoPoint? {
+    fun locateWithPrecision(alert: Alert): MappedLocation? {
         val oblastUid = oblastUid(alert)
-        if (alert.locationType == "oblast" || oblastUid == Regions.KYIV_CITY_UID || oblastUid == Regions.SEVASTOPOL_UID) {
-            return oblastUid?.let(Regions::center)
+        if (oblastUid == Regions.KYIV_CITY_UID || oblastUid == Regions.SEVASTOPOL_UID) {
+            return Regions.center(oblastUid)?.let { MappedLocation(it, SamplePrecision.Hromada) }
         }
+        if (alert.locationType == "oblast") return oblastUid?.let(Regions::center)?.let { MappedLocation(it, SamplePrecision.Oblast) }
         // Raion names often share a city's stem ("Харківський район"), so only cities/hromadas snap to a city.
         if (alert.locationType == "city" || alert.locationType == "hromada") {
-            Regions.cityForTitle(alert.locationTitle, oblastUid)?.let { return it.point }
+            Regions.cityForTitle(alert.locationTitle, oblastUid)?.let {
+                return MappedLocation(it.point, if (alert.locationType == "city") SamplePrecision.City else SamplePrecision.Hromada)
+            }
         }
-        return oblastUid?.let { GeoMath.scatterInOblast(it, alert.locationUid.ifBlank { alert.id.toString() }) }
+        // Bounding-box radii overstate an area's size; half of one is a fair one-sigma error.
+        if (alert.locationType == "hromada") {
+            Regions.hromadaForTitle(alert.locationTitle, oblastUid)
+                ?.let { return MappedLocation(it.point, SamplePrecision.Hromada, it.radiusKm / 2) }
+        }
+        if (alert.locationType == "raion") {
+            Regions.raionForTitle(alert.locationTitle, oblastUid)
+                ?.takeIf { oblastUid == null || it.oblastUid == oblastUid }
+                ?.let { return MappedLocation(it.point, SamplePrecision.Raion, it.radiusKm / 2) }
+        }
+        return oblastUid
+            ?.let { GeoMath.scatterInOblast(it, alert.locationUid.ifBlank { alert.id.toString() }) }
+            ?.let { MappedLocation(it, SamplePrecision.Oblast) }
     }
 
     fun proximity(

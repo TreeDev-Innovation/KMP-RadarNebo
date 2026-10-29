@@ -6,6 +6,7 @@ import com.gusak.lab.radarnebo.server.application.AlertsDataSource
 import com.gusak.lab.radarnebo.server.application.SituationPoller
 import com.gusak.lab.radarnebo.server.application.SituationService
 import com.gusak.lab.radarnebo.server.config.DataSourceKind
+import com.gusak.lab.radarnebo.server.config.TrackingMode
 import com.gusak.lab.radarnebo.server.config.ServerConfig
 import com.gusak.lab.radarnebo.server.domain.alert.AlertArchive
 import com.gusak.lab.radarnebo.server.domain.alert.LocationDirectory
@@ -17,7 +18,9 @@ import com.gusak.lab.radarnebo.server.infrastructure.persistence.ExposedTrackArc
 import com.gusak.lab.radarnebo.server.infrastructure.persistence.InMemoryAlertArchive
 import com.gusak.lab.radarnebo.server.infrastructure.persistence.InMemoryTrackArchive
 import com.gusak.lab.radarnebo.server.infrastructure.simulation.SimulatedAlertsSource
+import com.gusak.lab.radarnebo.server.infrastructure.CompositeAlertsSource
 import com.gusak.lab.radarnebo.server.infrastructure.tracking.AlertDerivedTracking
+import com.gusak.lab.radarnebo.server.infrastructure.tracking.FusedTracking
 import com.gusak.lab.radarnebo.server.infrastructure.upstream.AlertsInUaSource
 import com.gusak.lab.radarnebo.server.infrastructure.upstream.UpstreamRateLimiter
 import io.ktor.server.application.Application
@@ -80,9 +83,22 @@ class ServerComponents(
             // Defaults are evaluated in order: the archive opens first, so a failure there can't leak the source's HttpClient.
             archives: Archives = Archives.create(config),
             source: AlertsDataSource = defaultSource(config, clock, traffic, upstreamLimiter),
+            /** Further feeds fused into tracking only (see [CompositeAlertsSource]); clients are served [source]. */
+            extraSources: List<AlertsDataSource> = emptyList(),
         ): ServerComponents {
+            val polled = if (extraSources.isEmpty()) source else CompositeAlertsSource(source, extraSources)
             // A source with air surveillance gives real flight paths; otherwise tracks are inferred from alerts.
-            val tracking = if (source.providesObservations) ObservationTracking() else AlertDerivedTracking(runId = (clock() / 1000).toString(36))
+            val runId = (clock() / 1000).toString(36)
+            val tracking = when (config.tracking) {
+                TrackingMode.Auto -> when {
+                    extraSources.isNotEmpty() -> FusedTracking(runId)
+                    polled.providesObservations -> ObservationTracking()
+                    else -> AlertDerivedTracking(runId)
+                }
+                TrackingMode.Alerts -> AlertDerivedTracking(runId)
+                TrackingMode.Sightings -> ObservationTracking()
+                TrackingMode.Fused -> FusedTracking(runId)
+            }
             val situation = SituationService(
                 tracking = tracking,
                 alertArchive = archives.alerts,
@@ -90,7 +106,7 @@ class ServerComponents(
                 locations = LocationDirectory(source.locations),
                 simulated = source.kind == DataSourceKind.Simulation,
             )
-            return ServerComponents(config, situation, SituationPoller(source, situation, config.archive.retention, clock), clock, traffic)
+            return ServerComponents(config, situation, SituationPoller(polled, situation, config.archive.retention, clock), clock, traffic)
         }
 
         private fun defaultSource(

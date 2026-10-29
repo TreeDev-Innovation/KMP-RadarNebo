@@ -79,8 +79,9 @@ state `[x, y, vx, vy]`, covariance `P`. Kept small on purpose; four states, no m
 
 - **Predict** to the observation time `t` with process noise `q` from the kind's manoeuvrability
   (Shahed `q` low, cruise missile higher at waypoints, Gerbera decoys highest).
-- **Update** with the area centre as the measurement and `R = sigmaKm² · I`. A yellow ("ahead") report is
-  shifted back along the current velocity by about one warning lead time before the update.
+- **Update** with the area centre as the measurement and `R = sigmaKm² · I`. Alerts are raised for areas the
+  target is about to reach, so once the course is known the area is shifted back along it by the level's lead
+  time (`TrackKinematics.warningLeadMs` for yellow, `redLeadMs` for red; drones 20 and 4 min).
 - **Constrain** after every update (this is what keeps trajectories realistic, see §4): clamp speed into the
   kind's band and limit the heading change since the last update to the kind's turn rate.
 
@@ -90,7 +91,8 @@ For each new point observation (oldest first), against each open track of the sa
 
 ```
 predicted = track.filter.predictedAt(obs.t)
-gate:     distance(predicted, obs.point) <= 3 * sqrt(predicted.sigma² + obs.sigma²)
+gate:     distance(predicted, obs.point) <= 3 * sqrt(predicted.sigma² + obs.sigma²)   (drones; missile
+          alerts run far ahead of the missile, so missiles are gated by hop distance only)
           and distance(track.last, obs.point) <= reachableKm(kind.maxSpeed, obs.t - track.lastT)
 cost      = normalised distance (Mahalanobis) + turn penalty (heading change / kind.maxTurn)
 ```
@@ -111,12 +113,13 @@ candidates = open tracks of the same type/kind whose predicted position at t is 
 case 1 candidate (or several, take the lowest cost):
     keep it alive (lastSeen = t) — the target is still flying
     if its predicted position is outside the polygon:
-        project it onto the polygon edge along its course (the entry point) and apply it as a
-        weak measurement (sigma = oblast radius / 2); otherwise no position update
+        take the nearest point of the oblast border as the entry point and apply it as a weak
+        measurement (sigma = oblast radius / 2); otherwise no position update
 case none:
     keep a PendingRegionThreat(type, kind, oblast, t) for the re-acquire window, shown as the oblast area
     marker (as today); when the first raion/hromada/city observation in or next to that oblast arrives,
     the new track starts there with firstSeen = the oblast report's t
+    (a pending report outlives its alert: the target may have flown on into the next oblast)
 case it expires unexplained:
     nothing is drawn but the area marker
 ```
@@ -171,28 +174,52 @@ Checks: consecutive `path` points never imply a speed outside the band (with 25 
 stays within 2σ of every city/hromada/raion sample it used; a track's flown distance stays under the
 kind's range; a track never reverses (> 150°) between two consecutive samples unless the kind loiters.
 
-## 5. Improvements, in order
+## 5. Status
 
-1. **Place raions at their centre.** `ThreatMapper.locate` uses `Regions.raionForTitle` for `raion` alerts and
-   keeps the scatter only for area markers that have no table entry. Biggest accuracy gain for one small change.
-2. **Add raion and hromada extents.** Extend `tools/download-raions.py` to write each raion's radius (half the
-   bounding-box diagonal); add a hromada table (OSM `admin_level=7`, ~1 470 entries) the same way, so hromada
-   alerts stop falling back to the scatter.
-3. **Observation model in `core`.** `Observation(t, point?, polygonOblastUid?, sigmaKm, level, source)`, built
-   once from alerts and from the simulation; the tracker consumes only observations.
-4. **Per-track constant-velocity Kalman filter** with kind-specific noise, speed band and turn limit (§2.2),
-   replacing the least-squares `trend` for heading and speed.
-5. **Gated, cost-based association** (§2.3) instead of nearest-within-hop; re-acquire before starting a track.
-6. **Oblast-only reports** (§2.4): keep-alive, entry-point constraint, pending region threats.
-7. **Yellow-level handling**: larger sigma and a backward shift along the course.
-8. **Server-side smoothing and forecast**: publish `estimate`, `path`, `forecast`, `kind` on `DroneTrack`
-   (new optional fields; old clients ignore them) and in `/v1/drones/positions.json`.
-9. **Thin client**: draw from the new fields, Catmull-Rom the `path`, drop the client-side tracking rules
-   behind a "server sends estimates" check.
-10. **Truth-scored replay harness.** The simulation knows the true flights (`Flight.positionAt`) and raises the
-    alerts they cause (`WarningSystem`). A test feeds only those alerts to `AlertDerivedTracking` and scores the
-    result against the truth: position error, heading error, wrongly merged / split tracks, forecast error at
-    +10 / +30 min. Every change above is tuned against this score instead of by eye.
-11. **Replay of real data.** Record live alerts.in.ua responses (the archive already keeps 45 days) and replay
-    them through the tracker, checking the realism rules of §4 on every resulting track.
-12. **Further sources** (§2.6): merge step and heading hints from text feeds.
+All of §2–§4 is implemented (`core/.../tracking/Trajectory.kt`, `DroneTracker`, `ThreatMapper.locateWithPrecision`,
+`Regions`, `SituationService.advanceTracks`, the map's trail and forecast cone):
+
+1. **Placement**: raions at their centre and hromadas at theirs (`UkraineHromadas.kt`, 1 469 hromadas, generated by
+   `tools/download-raions.py` with the raions); each report's error is half its area's bounding-box radius
+   (raions 10–39 km, median 23). Places that cannot be located count as oblast-only.
+2. **Observations** carry precision, error and alert level; reports of one target within 2 min and within their
+   error of each other (two sources, or a hromada and its raion) merge into the most precise one.
+3. **Filter**: constant-velocity Kalman filter per track, with speed band, turn limit and a lead-time correction per
+   alert level; "курсом на <місто>" in the alert text steers the course towards that city (`HeadingHints`).
+4. **Association**: gated (drones), cost-based, over each update's reports at once. Realism rules: no reversal over
+   150° (decoys excepted), no track longer than the kind's range, and a drone first reported in an inland oblast
+   re-acquires a track lost within twice the window before it may start a new one.
+5. **Oblast-only reports**: keep-alive, border entry point, pending reports that date the track starting there.
+6. **Server output**: `kind`, `estimate`, `path` (RTS-smoothed, Hermite-densified), `forecast` and `arrivals` on every
+   `DroneTrack`; `/v1/drones/positions.json` uses the estimate. New fields are optional; old clients ignore them.
+7. **Client**: `TrackInterpolator` follows the server's estimate and path when present (old servers fall back to the
+   previous behaviour); the map draws the path as a Catmull-Rom curve and the forecast as a widening cone.
+8. **Simulation replay** (`TrajectoryReplayTest`): the simulation's alerts in, its surveillance sightings as truth.
+   Median position error of active drone tracks: **40.8 km fused vs 43.4 km for the raw reports**; single-report
+   tracks are about 30 km off on their own, near the floor for area alerts. Drone process noise was tuned here.
+9. **Real replay** (`RealAlertsReplayTest`): every drone and missile alert open on 2026-10-26, from the server's
+   archive (621 alerts, 227 drone tracks, 91 with two or more reports); every track passes the §4 rules, and none
+   of the 42 drone tracks first reported inland started while a lost track could have flown there.
+10. **Several sources** (§2.6): `CompositeAlertsSource` polls a primary source and any number of extra ones on each
+   poll. Clients are served the primary's alerts unchanged; the extra sources' alerts (with ids moved into a range
+   of their own) and sightings go to tracking only (`SituationReport.trackingAlerts`, `observations`). An extra
+   source that fails three polls in a row is left out until it recovers. `ServerComponents.create(extraSources = …)`
+   wires it, and tracking then defaults to fused.
+   `FusedTracking` (also `TRACKING=fused`) feeds alerts and sightings into one tracker: sightings are point reports
+   with a 1 km error; reports that overlap in time and place merge into the most precise; a sighting behind an
+   alert-built track (whose alerts run ahead of the target) corrects it rather than counting as a reversal; alerts
+   are gated where the filter fuses them, moved back by their warning lead.
+   Simulation replay, median error / active tracks per flying drone: alerts alone 40.8 km / 0.62; with sparse
+   surveillance (half the targets, every 15 min) 39.0 km / 0.69; with a fix on every target every 5 min
+   34.6 km / 0.92. Fewer tracks than drones means groups are missed or merged, not split.
+
+Limits:
+
+- No second provider ships with the server: alerts.in.ua is the only upstream it has an account for. Adding one
+  means writing its `AlertsDataSource` (like `AlertsInUaSource`) and passing it as an extra source.
+- Coverage is not settled. With alerts alone there are 0.62 active tracks per drone in the air, but that counts
+  drones over Russia or the sea that no alert covers yet; counted only over drones with a "target is here" alert
+  it is about 2, since alerts raised far ahead start tracks of their own. The truth is between; a coverage metric
+  that counts every drone any alert (yellow included) was raised for is the next thing to build.
+- Long tracks (4+ reports) are still the weakest case in the simulation replay; association across groups flying
+  close together is where to look next.

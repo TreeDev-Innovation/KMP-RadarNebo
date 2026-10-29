@@ -94,6 +94,14 @@ class ServerConfigTest {
     }
 
     @Test
+    fun theTrackingModeIsChosenByName() {
+        assertEquals(TrackingMode.Auto, ServerConfig.fromEnv(emptyMap()).tracking)
+        assertEquals(TrackingMode.Fused, ServerConfig.fromEnv(mapOf("TRACKING" to "FUSED")).tracking)
+        assertEquals(TrackingMode.Alerts, ServerConfig.fromEnv(mapOf("TRACKING" to "alerts")).tracking)
+        assertFailsWith<IllegalArgumentException> { ServerConfig.fromEnv(mapOf("TRACKING" to "telepathy")) }
+    }
+
+    @Test
     fun everyDataSourceAliasIsRecognised() {
         val aliases = mapOf(
             "simulation" to DataSourceKind.Simulation,

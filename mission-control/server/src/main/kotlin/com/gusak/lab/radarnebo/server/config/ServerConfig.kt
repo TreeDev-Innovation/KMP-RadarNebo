@@ -18,6 +18,21 @@ enum class DataSourceKind(val key: String) {
     Simulation("Simulation"),
 }
 
+/** How the server builds tracks from what its source reports (`TRACKING`). */
+enum class TrackingMode {
+    /** Sightings when the source has surveillance, alerts otherwise. */
+    Auto,
+
+    /** From alerts alone, even when the source also sights targets. */
+    Alerts,
+
+    /** From sightings alone. */
+    Sightings,
+
+    /** Alerts and sightings fused into one picture. */
+    Fused,
+}
+
 /** Everything the server is configured with; built from the environment by [fromEnv]. */
 data class ServerConfig(
     val port: Int = 8080,
@@ -29,6 +44,7 @@ data class ServerConfig(
     val dataSourceOverride: DataSourceKind? = null,
     /** Logs every alerts.in.ua request and response, body included, with the token masked. */
     val logHttp: Boolean = false,
+    val tracking: TrackingMode = TrackingMode.Auto,
 ) {
     init {
         // 0 asks for any free port, as the tests do.
@@ -82,6 +98,9 @@ data class ServerConfig(
                     }
                 },
                 logHttp = bool("LOG_HTTP"),
+                tracking = parse("TRACKING", "auto, alerts, sightings or fused") { value ->
+                    TrackingMode.entries.firstOrNull { it.name.equals(value, ignoreCase = true) }
+                } ?: defaults.tracking,
             )
             require(errors.isEmpty()) { "Invalid configuration: ${errors.joinToString("; ")}" }
             return config

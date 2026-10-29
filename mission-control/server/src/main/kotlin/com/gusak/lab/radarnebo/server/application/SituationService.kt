@@ -10,6 +10,7 @@ import com.gusak.lab.radarnebo.server.domain.tracking.TargetTracking
 import com.gusak.lab.radarnebo.server.domain.tracking.TrackArchive
 import com.gusak.lab.radarnebo.server.domain.tracking.TrackQuery
 import com.gusak.lab.radarnebo.tracking.DroneTrack
+import com.gusak.lab.radarnebo.tracking.TrajectoryEstimator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -59,6 +60,9 @@ class SituationService(
      */
     private var failedTracks = 0
 
+    /** The latest report's [SituationReport.trackingAlerts], kept for polls that confirm nothing changed. */
+    private var trackingAlerts: List<AirAlert> = emptyList()
+
     /** Applies a fresh report and archives what changed. */
     suspend fun publish(report: SituationReport) = mutex.withLock { apply(report, archive = true) }
 
@@ -69,7 +73,7 @@ class SituationService(
     suspend fun confirm(atMs: Long) = mutex.withLock {
         val current = board ?: return@withLock
         board = current.confirmed(Instant.fromEpochMilliseconds(atMs))
-        unsavedTracks += advanceTracks(current.alerts, emptyList(), atMs)
+        unsavedTracks += advanceTracks(current.alerts + trackingAlerts, emptyList(), atMs)
         saveUnsavedTracks()
     }
 
@@ -105,7 +109,8 @@ class SituationService(
         val change = (board ?: AlertBoard.empty(at)).next(report.alerts, at)
         board = change.board
         rawAlerts = report.rawAlerts
-        val ended = advanceTracks(change.board.alerts, report.observations, report.observedAt)
+        trackingAlerts = report.trackingAlerts
+        val ended = advanceTracks(change.board.alerts + trackingAlerts, report.observations, report.observedAt)
         if (!archive) return
         unsavedTracks += ended
 
@@ -142,11 +147,14 @@ class SituationService(
         }
     }
 
-    /** Feeds the report into tracking, serves the new tracks and returns those that ended, for the archive. */
+    /**
+     * Feeds the report into tracking, serves the new tracks and returns those that ended, for the archive. Every
+     * track goes out with its estimate, smoothed path and forecast ([TrajectoryEstimator]), so clients only draw.
+     */
     private fun advanceTracks(alerts: List<AirAlert>, observations: List<TargetObservation>, atMs: Long): List<DroneTrack> {
         val update = tracking.update(alerts, observations, atMs)
-        tracks = update.tracks
-        return update.ended
+        tracks = update.tracks.map { TrajectoryEstimator.enrich(it, atMs) }
+        return update.ended.map { TrajectoryEstimator.enrich(it, atMs) }
     }
 
     /**
