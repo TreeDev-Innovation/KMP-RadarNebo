@@ -33,7 +33,11 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
@@ -45,6 +49,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -53,6 +58,7 @@ import kotlin.time.Instant
 private class ScriptedSource(var clock: () -> Long) : AlertsDataSource {
     var alerts: List<AirAlert> = emptyList()
     var failure: FetchResult.Failed? = null
+    var hang = false
     var closed = false
     /** The body alerts.in.ua would have sent for [alerts]; null for a source that sends none. */
     var raw: String? = null
@@ -60,7 +66,10 @@ private class ScriptedSource(var clock: () -> Long) : AlertsDataSource {
     override val description = "scripted"
     override val pollInterval: Duration = 15.seconds
     override val providesObservations = false
-    override suspend fun fetch(lastModified: String?): FetchResult = failure ?: FetchResult.Fresh(SituationReport(clock(), alerts, rawAlerts = raw))
+    override suspend fun fetch(lastModified: String?): FetchResult {
+        if (hang) awaitCancellation()
+        return failure ?: FetchResult.Fresh(SituationReport(clock(), alerts, rawAlerts = raw))
+    }
     override fun close() {
         closed = true
     }
@@ -82,6 +91,14 @@ class RadarApiTest {
     }
 
     private suspend fun ServerComponents.poll() = poller.pollOnce()
+
+    /** Runs the poll loop, as the server does, until it has scheduled a poll, then [block], then stops it. */
+    private suspend fun ServerComponents.whilePolling(block: suspend () -> Unit) = coroutineScope {
+        val loop = launch { poller.run() }
+        withTimeout(5_000) { while (poller.status.nextPollAt == null) delay(10) }
+        block()
+        loop.cancel()
+    }
 
     private suspend fun ApplicationTestBuilder.health() =
         RadarNeboApi.json.decodeFromString(Health.serializer(), client.get("/health").bodyAsText())
@@ -296,6 +313,20 @@ class RadarApiTest {
     }
 
     @Test
+    fun theTrackArchiveIsBoundedAndHasItsOwnLimit() = testApplication {
+        val server = server(ClientApiConfig(requestsPerMinute = 10_000, archiveRequestsPerMinute = 3))
+        server.poll()
+        val archive = RadarNeboApi.TRACK_ARCHIVE_PATH
+        assertEquals(HttpStatusCode.BadRequest, client.get("$archive?limit=201").status)
+        val (status, body) = text("$archive?from=${now - 8.days.inWholeMilliseconds}&to=$now")
+        assertEquals(HttpStatusCode.BadRequest, status)
+        assertTrue("at most 7 days" in body, body)
+        assertEquals(HttpStatusCode.OK, client.get("$archive?limit=200").status)
+        assertEquals(HttpStatusCode.TooManyRequests, client.get(archive).status, "the archive has its own limit")
+        assertEquals(HttpStatusCode.OK, client.get(RadarNeboApi.TRACKS_PATH).status, "which leaves the other endpoints alone")
+    }
+
+    @Test
     fun largeResponsesAreCompressed() = testApplication {
         val server = server()
         source.alerts = (1L..40L).map { alert(it, Fixtures.region(listOf(3, 4, 5, 8, 9, 10, 11, 12)[(it % 8).toInt()]).copy(uid = "region-$it")) }
@@ -370,5 +401,45 @@ class RadarApiTest {
             assertFalse(source.closed)
         }
         assertTrue(source.closed, "the HTTP client of a real source would be released")
+    }
+
+    @Test
+    fun healthIsStaleWhenTheDataIsOldButStill200() = testApplication {
+        val server = server()
+        server.poll()
+        assertEquals(0, health().dataAgeSeconds)
+        now += 10.minutes.inWholeMilliseconds
+        val response = client.get("/health")
+        assertEquals(HttpStatusCode.OK, response.status, "liveness stays 200, so container health checks pass")
+        val health = RadarNeboApi.json.decodeFromString(Health.serializer(), response.bodyAsText())
+        assertEquals("stale", health.status)
+        assertEquals(600, health.dataAgeSeconds)
+    }
+
+    @Test
+    fun healthIsStaleWhenThePollerIsOverdue() = testApplication {
+        val server = server()
+        server.whilePolling {
+            assertEquals("ok", health().status)
+            // The next fetch never returns: the poller is hung.
+            source.hang = true
+            // 50 s: under the 60 s age limit, but more than two intervals past the scheduled poll.
+            now += 50.seconds.inWholeMilliseconds
+            val health = health()
+            assertEquals("stale", health.status)
+            assertEquals(50, health.dataAgeSeconds)
+        }
+    }
+
+    @Test
+    fun anUpstreamOutageWithAKnownBackoffStaysDegraded() = testApplication {
+        val server = server()
+        server.poll()
+        source.failure = FetchResult.Failed(message = "boom", minWaitMs = 1_000)
+        server.whilePolling {
+            val health = health()
+            assertEquals("degraded", health.status)
+            assertEquals(now + 1_000, health.nextPollAt)
+        }
     }
 }

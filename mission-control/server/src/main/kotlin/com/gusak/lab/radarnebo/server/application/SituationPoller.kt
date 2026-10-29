@@ -40,6 +40,16 @@ class SituationPoller(
 
     suspend fun run() {
         log.info("Serving alerts from {}, polled every {}", source.description, source.pollInterval)
+        try {
+            pollForever()
+        } catch (t: Throwable) {
+            // An Error ends the loop for good; say so in /health right away rather than only once the data is stale.
+            if (t !is CancellationException) status = status.copy(lastError = "Poller stopped (${t::class.simpleName})")
+            throw t
+        }
+    }
+
+    private suspend fun pollForever() {
         while (currentCoroutineContext().isActive) {
             val waitMs = try {
                 pollOnce()

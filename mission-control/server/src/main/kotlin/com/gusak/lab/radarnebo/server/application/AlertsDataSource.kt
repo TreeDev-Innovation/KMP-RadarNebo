@@ -58,6 +58,12 @@ interface AlertsDataSource : AutoCloseable {
     val requestsInLastMinute: Int get() = 0
     val requestsTotal: Long get() = 0
 
+    /** Upstream outcomes since start, the early warning for a block (DESIGN.md §11); zero or null for sources that make no requests. */
+    val rateLimitedTotal: Long get() = 0
+    val rejectedTotal: Long get() = 0
+    val otherFailuresTotal: Long get() = 0
+    val lastSuccessAt: Long? get() = null
+
     suspend fun fetch(lastModified: String?): FetchResult
 
     /**

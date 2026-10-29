@@ -7,7 +7,7 @@ internal object ApiTranscripts {
         GET /health
         200
         Content-Type: application/json
-        {"status":"warming_up","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"pollIntervalSeconds":15,"lastAttemptAt":null,"nextPollAt":null,"dataVersion":null,"dataConfirmedAt":null,"alerts":0,"tracks":0,"activeTracks":0,"lastError":null}
+        {"status":"warming_up","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"upstreamRateLimitedTotal":0,"upstreamRejectedTotal":0,"upstreamOtherFailuresTotal":0,"upstreamLastSuccessAt":null,"pollIntervalSeconds":15,"lastAttemptAt":null,"nextPollAt":null,"dataVersion":null,"dataConfirmedAt":null,"dataAgeSeconds":null,"alerts":0,"tracks":0,"activeTracks":0,"lastError":null}
 
         GET /v1/alerts/active.json
         503
@@ -63,7 +63,7 @@ internal object ApiTranscripts {
         GET /health
         200
         Content-Type: application/json
-        {"status":"ok","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"pollIntervalSeconds":15,"lastAttemptAt":1792405200000,"nextPollAt":null,"dataVersion":2,"dataConfirmedAt":1792405200000,"alerts":3,"tracks":2,"activeTracks":2,"lastError":null}
+        {"status":"ok","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"upstreamRateLimitedTotal":0,"upstreamRejectedTotal":0,"upstreamOtherFailuresTotal":0,"upstreamLastSuccessAt":null,"pollIntervalSeconds":15,"lastAttemptAt":1792405200000,"nextPollAt":null,"dataVersion":2,"dataConfirmedAt":1792405200000,"dataAgeSeconds":45,"alerts":3,"tracks":2,"activeTracks":2,"lastError":null}
 
         GET /v1/alerts/active.json [Origin: https://example.org]
         200
@@ -250,7 +250,7 @@ internal object ApiTranscripts {
         GET /health
         200
         Content-Type: application/json
-        {"status":"degraded","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"pollIntervalSeconds":15,"lastAttemptAt":1792407660000,"nextPollAt":null,"dataVersion":3,"dataConfirmedAt":1792407645000,"alerts":1,"tracks":2,"activeTracks":0,"lastError":"HTTP 502 from upstream"}
+        {"status":"degraded","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"upstreamRateLimitedTotal":0,"upstreamRejectedTotal":0,"upstreamOtherFailuresTotal":0,"upstreamLastSuccessAt":null,"pollIntervalSeconds":15,"lastAttemptAt":1792407660000,"nextPollAt":null,"dataVersion":3,"dataConfirmedAt":1792407645000,"dataAgeSeconds":15,"alerts":1,"tracks":2,"activeTracks":0,"lastError":"HTTP 502 from upstream"}
 
         GET /v1/alerts/active.json
         200
@@ -309,7 +309,7 @@ internal object ApiTranscripts {
         GET /v1/drones/archive.json?limit=0
         400
         Content-Type: application/json
-        {"message":"'limit' must be between 1 and 1000"}
+        {"message":"'limit' must be between 1 and 200"}
 
         GET /v1/drones/archive.json?to=soon
         400
@@ -378,6 +378,6 @@ internal object ApiTranscripts {
         GET /health
         200
         Content-Type: application/json
-        {"status":"ok","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"pollIntervalSeconds":15,"lastAttemptAt":1792404000000,"nextPollAt":null,"dataVersion":1,"dataConfirmedAt":1792404000000,"alerts":1,"tracks":1,"activeTracks":1,"lastError":null}
+        {"status":"ok","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"upstreamRateLimitedTotal":0,"upstreamRejectedTotal":0,"upstreamOtherFailuresTotal":0,"upstreamLastSuccessAt":null,"pollIntervalSeconds":15,"lastAttemptAt":1792404000000,"nextPollAt":null,"dataVersion":1,"dataConfirmedAt":1792404000000,"dataAgeSeconds":0,"alerts":1,"tracks":1,"activeTracks":1,"lastError":null}
     """.trimIndent()
 }

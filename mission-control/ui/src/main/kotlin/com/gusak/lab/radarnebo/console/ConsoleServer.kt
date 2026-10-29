@@ -80,7 +80,7 @@ class ConsoleServer(private val baseConfig: ServerConfig) {
     }
 
     /** The server's own report, as `/health` would give it; null while stopped. */
-    fun health(): Health? = components?.let { health(it.situation, it.poller, it.upstreamBudgetPerMinute) }
+    fun health(): Health? = components?.let { health(it.situation, it.poller, it.upstreamBudgetPerMinute, it.clock()) }
 
     suspend fun start(port: Int) = lock.withLock { startLocked(port) }
 

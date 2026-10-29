@@ -170,4 +170,29 @@ class AlertsInUaSourceTest {
         assertTrue("Бровари" in exchange.responseBody!!)
         assertEquals("***", exchange.requestHeaders.single { it.first == HttpHeaders.Authorization }.second, "the token is masked")
     }
+
+    @Test
+    fun upstreamOutcomesAreCountedForHealth() = runTest {
+        var call = 0
+        val engine = MockEngine {
+            when (call++) {
+                0 -> respond("", HttpStatusCode.TooManyRequests)
+                1 -> respond("", HttpStatusCode.Forbidden)
+                else -> respond(alertsJson("1100", "Броварська територіальна громада", 14, "2026-10-19T10:00:00Z"), HttpStatusCode.OK)
+            }
+        }
+        val upstream = UpstreamConfig(token = "secret")
+        val source = AlertsInUaSource(
+            upstream, HttpClient(engine) { expectSuccess = false },
+            UpstreamRateLimiter(upstream.effectivePerMinute, clock = { testScheduler.currentTime }),
+            clock = { testScheduler.currentTime },
+        )
+        repeat(2) { source.fetch(null) }
+        assertEquals(null, source.lastSuccessAt, "no success yet")
+        assertIs<FetchResult.Fresh>(source.fetch(null))
+        assertEquals(1, source.rateLimitedTotal)
+        assertEquals(1, source.rejectedTotal)
+        assertEquals(0, source.otherFailuresTotal)
+        assertEquals(testScheduler.currentTime, source.lastSuccessAt)
+    }
 }

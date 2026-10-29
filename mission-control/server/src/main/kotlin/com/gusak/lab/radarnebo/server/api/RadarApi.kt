@@ -43,6 +43,7 @@ import kotlin.time.Duration.Companion.minutes
 
 private val CLIENTS = RateLimitName("clients")
 private val HISTORY = RateLimitName("history")
+private val ARCHIVE = RateLimitName("archive")
 private const val CLIENT_AUTH = "client-key"
 
 /**
@@ -50,7 +51,7 @@ private const val CLIENT_AUTH = "client-key"
  * server's own data, RadarNebo's tracking API ([trackingRoutes]) and a health check.
  *
  * Like alerts.in.ua, clients authenticate with `Authorization: Bearer <key>` or `?token=<key>` when
- * [ClientApiConfig.keys] is set, are rate limited per IP (history separately and more strictly) and get
+ * [ClientApiConfig.keys] is set, are rate limited per IP (history and the track archive separately) and get
  * errors as `{"message": "..."}`. Clients never learn where the data comes from, apart from a `simulated`
  * flag so they can label simulated data.
  */
@@ -86,7 +87,7 @@ fun Application.radarApi(
     routing {
         // Throttled like everything else but never authenticated, so container health checks and monitors work.
         rateLimit(CLIENTS) {
-            healthRoutes(situation, poller, upstreamBudgetPerMinute)
+            healthRoutes(situation, poller, upstreamBudgetPerMinute, clock)
         }
         // The limits wrap authentication, so callers guessing keys are throttled too.
         rateLimit(CLIENTS) {
@@ -98,6 +99,11 @@ fun Application.radarApi(
         rateLimit(HISTORY) {
             clientRoute(authRequired) {
                 alertHistoryRoutes(situation, clock)
+            }
+        }
+        rateLimit(ARCHIVE) {
+            clientRoute(authRequired) {
+                trackArchiveRoutes(situation, clock)
             }
         }
     }
@@ -126,11 +132,12 @@ private fun Application.installErrorPages(log: Logger) {
     }
 }
 
-/** Per-IP limits; history has its own, stricter one. */
+/** Per-IP limits; history and the track archive have their own, stricter ones. */
 private fun Application.installRateLimits(clients: ClientApiConfig) {
     install(RateLimit) {
         register(CLIENTS) { perClientIp(clients.requestsPerMinute) }
         register(HISTORY) { perClientIp(clients.historyRequestsPerMinute) }
+        register(ARCHIVE) { perClientIp(clients.archiveRequestsPerMinute) }
     }
 }
 

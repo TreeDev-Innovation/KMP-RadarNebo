@@ -173,11 +173,11 @@ UC5 operator demos the system offline (simulation); UC6 query history.
 | 4 | Operability | Source: operator. Stimulus: changes port or data source in the console. Response: server and built-in client follow. Measure: zero manual reconfiguration. |
 
 Freshness and upstream safety conflict: faster polling breaks the rate limit. Resolved in favor of upstream safety
-(rank 1); freshness is met through `If-Modified-Since` and ETags rather than more requests.
+(rank 1); freshness is met through the server's `If-Modified-Since` polls of alerts.in.ua rather than more requests.
 
 **Constraints:** Kotlin everywhere; Compose Multiplatform; single developer; zero budget; alerts.in.ua limits.
 
-**Capacity (one line):** 50 clients × 2 req/min = 100 req/min ≈ 1.7 req/s, mostly 304s; upstream fixed at ≤ 6 req/min;
+**Capacity (one line):** 50 clients × 2 req/min = 100 req/min ≈ 1.7 req/s, small gzipped JSON answered from memory; upstream fixed at ≤ 6 req/min;
 archive ≈ 2,000 alert records/day × 1 KB ≈ 2 MB/day ≈ 60 MB/month at 30-day retention. One JVM and SQLite suffice.
 
 ## 8. Options & trade-offs
@@ -224,7 +224,7 @@ flowchart TB
   end
   db[(SQLite archive)]
   up[(alerts.in.ua)]
-  android & ios & desktop -- "HTTP JSON, bearer key, ETag" --> srv
+  android & ios & desktop -- "HTTP JSON, bearer key" --> srv
   embedded -- "HTTP localhost:port" --> srv
   ui -- "in-process: state, traffic, clients" --> srv
   srv -- Exposed --> db
@@ -281,7 +281,7 @@ sequenceDiagram
   U-->>P: 429 Retry-After: 60
   P->>P: back off (exponential, ≤ 60 s; ≤ 10 min on 429/401/403)
   Cl->>P: GET /v1/alerts/active.json
-  P-->>Cl: last known alerts (304 or 200); /health shows lastError
+  P-->>Cl: last known alerts (200); /health shows lastError
 ```
 
 ### Data
@@ -299,8 +299,9 @@ move to versioned migrations when the first column is renamed or dropped (deferr
 
 - Sync HTTP everywhere; the only async boundary is the server's internal poller.
 - Contract-first: the alerts.in.ua JSON is the contract; RadarNebo extensions live under `/v1/drones/*`.
-- Idempotency: all client calls are GETs. Conditional requests (`ETag`, `If-Modified-Since`) keep polls cheap.
-- Backpressure: upstream limiter; per-client limit on history (`HISTORY_REQUESTS_PER_MINUTE`).
+- Idempotency: all client calls are GETs. Responses are not cached (no `ETag`/`Last-Modified`): every poll gets the
+  latest data in full, answered from memory and gzipped over 1 KB; `X-Data-Age-Seconds` tells its age.
+- Backpressure: upstream limiter; per-client limits on history (`HISTORY_REQUESTS_PER_MINUTE`) and the track archive (`ARCHIVE_REQUESTS_PER_MINUTE`, at most 200 tracks over 7 days per call).
 - Versioning: path prefix (`/v1`, `/v2`) as upstream does.
 
 ### Security & privacy
@@ -311,22 +312,33 @@ move to versioned migrations when the first column is renamed or dropped (deferr
 
 | Trust boundary | STRIDE concern | Mitigation |
 |---|---|---|
-| Client → server | Spoofing (no key), DoS | Bearer keys when exposed; per-IP rate limits, applied before the key check; gzip and 304s |
+| Client → server | Spoofing (no key), DoS | Bearer keys when exposed; per-IP rate limits, applied before the key check; gzip |
 | Server → alerts.in.ua | Information disclosure (token in logs) | Token masked when `LOG_HTTP=true` |
-| Server on LAN (`0.0.0.0`) | Tampering/eavesdropping over plain HTTP | Acceptable on a LAN; put a TLS reverse proxy in front before any public exposure (Q1). Behind it every client shares the proxy's IP, so the per-IP limits (120/min, history 2/min) become global: raise `CLIENT_REQUESTS_PER_MINUTE` / `HISTORY_REQUESTS_PER_MINUTE` or rate-limit at the proxy. Forwarded headers are deliberately not trusted. |
+| Internet → Caddy → server | Tampering/eavesdropping; IP spoofing to dodge limits | Public deployment (ADR-6): Caddy terminates TLS on 443 and is the only published port; the server port is unpublished, so `TRUST_PROXY_HEADERS=true` takes each client's IP from the `X-Forwarded-For` entry Caddy adds and the per-IP limits stay per client. `CLIENT_KEYS` is required there. A server run on a LAN without the proxy is plain HTTP and keeps `TRUST_PROXY_HEADERS=false`. |
 | Console's own client | Elevation via a stored key | Key copied from server config in memory, saved to the user's home only |
 
 ### Observability & reliability
 
 - SLI: freshness, `now - dataConfirmedAt` from `/health` (the board routes send it as `X-Data-Age-Seconds`); SLO: data age ≤ 60 s for 99 % of minutes while upstream is healthy.
+- `/health` reports `dataAgeSeconds` and turns `stale` when the data is older than max(3 × poll interval, 60 s) while polls succeed, or when the poller is more than two intervals overdue (dead or hung). It stays 200 in every state, so container health checks survive an upstream outage; monitors match on `"status":"ok"` instead.
 - Logs: logback, captured into the console's Logs tab. Traffic: `TrafficLog` (500 exchanges) in the console. There is no per-request access log: the full URI can carry `?token=`, and request traffic is already in `TrafficLog`; errors log the path only.
 - Degradation: on upstream failure, serve last known state and expose the error in `/health`; clients show it.
 
 ### Deployment & operations
 
 Single JVM: `./gradlew :mission-control:ui:run` (with console) or `:mission-control:server:run` (headless).
-`SingleInstance` keeps one server per machine. Backup = copy the SQLite file. Rollback = redeploy a previous commit's image (deploy workflow, `image_tag` input). CI: n/a
-today — the repository has no CI workflow; adding one is milestone M1.
+`SingleInstance` keeps one server per machine.
+
+Public deployment (ADR-6): `ci.yml` runs the JVM tests on pushes to `main` and on pull requests. `deploy.yml` tests,
+builds the fat jar, pushes a multi-arch image to Docker Hub tagged with the commit sha, scans it with Trivy, and runs
+`docker compose up --wait` on an OCI VM, then checks `https://<DOMAIN>/health` from outside. Caddy in the same compose
+project terminates TLS (Let's Encrypt over TLS-ALPN on 443). Rollback = rerun the deploy workflow with `image_tag` set to
+a previous commit's sha.
+
+Backups: the archive is derived history (45 days of alerts and tracks), not live data. SQLite runs in WAL mode, so
+committed rows can sit in the `-wal` file: take a consistent snapshot with SQLite's online backup (`sqlite3 .backup`),
+never a plain `cp` while the server runs. `docs/deployment.md` has the weekly VM cron entry and the restore
+steps; the OCI volume backup policy is the alternative.
 
 ### Technology stack
 
@@ -348,8 +360,9 @@ Ktor process; domain/application/infrastructure/api packages; ports for data sou
 *Consequences:* + simple ops; − module rules are by convention only (see fitness functions). *Alternatives:* option C.
 *Door:* two-way (packages can be extracted later).
 
-**ADR-3: Polling with conditional requests, not push** — Accepted. *Context:* freshness target 45 s, A1 scale.
-*Decision:* clients poll every 30 s (10–300 configurable) with ETags. *Consequences:* + stateless server; − up to 30 s
+**ADR-3: Polling, not push** — Accepted. *Context:* freshness target 45 s, A1 scale.
+*Decision:* clients poll every 30 s (10–300 configurable) and get full responses (conditional requests were dropped:
+the server answers from memory, so they saved little). *Consequences:* + stateless server; − up to 30 s
 extra latency. *Revisit:* Q2 yes. *Door:* two-way.
 
 **ADR-4: Optional static bearer keys** — Accepted. *Context:* LAN use, alerts.in.ua-compatible clients.
@@ -364,13 +377,20 @@ just work; − manual edits to the built-in client's server address are overwrit
 client exists to show this server). *Alternatives:* a separate Koin binding read on every request (more code, no
 gain). *Door:* two-way.
 
+**ADR-6: Public hosting behind Caddy** — Accepted. *Context:* Q1 answered: the server runs publicly on an OCI VM.
+*Decision:* Caddy, in the same compose project, terminates TLS and is the only published port; the server port stays
+unpublished, trusts Caddy's `X-Forwarded-For` (`TRUST_PROXY_HEADERS=true`) for per-IP limits, and requires
+`CLIENT_KEYS`. *Consequences:* + TLS and certificate renewal with no code; per-client rate limits behind the proxy;
+− the forwarded-header trust is safe only while nothing reaches the server around Caddy. *Alternatives:* TLS in Ktor
+(certificate handling in the app); a cloud load balancer (cost). *Door:* two-way. Closes the TLS part of Q1.
+
 **Deferred decisions:**
 
 | Decision | Trigger |
 |---|---|
 | Versioned DB migrations (e.g. Flyway) | First rename/drop of an archive column |
 | Push (SSE/WebSocket, FCM/APNs) | Q2 yes, or background proximity alerts become a Must |
-| TLS and per-client identities | Q1: server exposed beyond a LAN |
+| Per-client identities | Q1 public (TLS is settled by ADR-6): when one shared key list is no longer enough |
 | PostgreSQL | More than one server instance |
 
 ## 11. Risks, pre-mortem, fitness functions
@@ -382,7 +402,7 @@ the console's built-in client silently pointed at the wrong server and demos fai
 | Risk | Likelihood | Impact | Mitigation | Owner | Early warning |
 |---|---|---|---|---|---|
 | Predictions read as official warnings | Medium | High | In-app disclaimer; "probable" labels already shown; validation experiment (§5) | Developer | User feedback quoting predictions |
-| Upstream block or format change | Medium | High | Limiter, backoff, contract tests on the `contract` package | Developer | `/health` lastError, 401/403/429 counts |
+| Upstream block or format change | Medium | High | Limiter, backoff, contract tests on the `contract` package | Developer | `/health` `lastError`, `upstreamRateLimitedTotal` (429), `upstreamRejectedTotal` (401/403), `upstreamOtherFailuresTotal`, `upstreamLastSuccessAt` |
 | UI regressions on one platform | High | Medium | `PreviewsRenderTest`; add `:shared` tests; split large files | Developer | Bugs reported per platform |
 | Single maintainer | High | Medium | README and this document; small modules | Developer | Commit gaps |
 
@@ -411,7 +431,7 @@ Walking skeleton: done (server → API → client on three platforms, archive, c
 | M3 | Prediction replay experiment and accuracy display | Hit rate per kind published; predictions gated by it | Riskiest assumption |
 | M4 | Background proximity alerts (local notifications) | Works on Android and iOS with polling | UC3 |
 
-**Not now:** accounts and sync, push infrastructure, microservices, PostgreSQL, public hosting.
+**Not now:** accounts and sync, push infrastructure, microservices, PostgreSQL, multi-instance hosting.
 
 ## 13. Glossary
 
