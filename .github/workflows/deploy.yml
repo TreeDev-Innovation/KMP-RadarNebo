@@ -88,7 +88,8 @@ jobs:
         env:
           IMAGE_TAG: ${{ inputs.image_tag }}
         run: |
-          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{7,40}$ ]] || { echo "::error::image_tag must be a commit sha (7-40 hex chars)"; exit 1; }
+          # Images are tagged with the full sha only, so a short one would fail later, at the pull on the VM.
+          [[ "$IMAGE_TAG" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::image_tag must be a full 40-character commit sha"; exit 1; }
       - id: checkout
         name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
