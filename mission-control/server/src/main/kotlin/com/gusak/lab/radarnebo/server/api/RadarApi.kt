@@ -71,9 +71,6 @@ fun Application.radarApi(
         anyHost()
         allowMethod(HttpMethod.Get)
         allowHeader(HttpHeaders.Authorization)
-        allowHeader(HttpHeaders.IfNoneMatch)
-        allowHeader(HttpHeaders.IfModifiedSince)
-        exposeHeader(HttpHeaders.ETag)
         exposeHeader(DATA_AGE_HEADER)
     }
     install(StatusPages) {
@@ -118,7 +115,7 @@ fun Application.radarApi(
         healthRoutes(situation, poller, upstreamBudgetPerMinute)
         clientRoute(clients) {
             rateLimit(CLIENTS) {
-                alertsInUaRoutes(situation, pollInterval, clock)
+                alertsInUaRoutes(situation, clock)
                 trackingRoutes(situation, pollInterval, clock)
             }
             rateLimit(HISTORY) {

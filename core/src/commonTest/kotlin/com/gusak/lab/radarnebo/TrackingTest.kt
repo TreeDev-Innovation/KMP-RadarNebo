@@ -74,12 +74,31 @@ class TrackingTest {
     }
 
     @Test
-    fun simultaneousAlertsAndDistantAlertsSpawnSeparateTracks() {
+    fun simultaneousAlertsStartSeparateTracks() {
+        val tracker = DroneTracker()
+        tracker.update(listOf(marker("brovary", 50.6, 31.0), marker("boryspil", 50.3, 31.0)), 0)
+        assertEquals(2, tracker.snapshot().size, "every alert is its own report")
+    }
+
+    @Test
+    fun distantAlertsRaisedTogetherAreSeparateGroups() {
         val tracker = DroneTracker(maxHopKm = 120.0)
-        tracker.update(listOf(marker("a", 50.5, 30.8), marker("b", 50.45, 30.5)), 0)
-        assertEquals(2, tracker.snapshot().size)
-        tracker.update(listOf(marker("a", 50.5, 30.8), marker("b", 50.45, 30.5), marker("far", 46.48, 30.72)), minute)
-        assertEquals(3, tracker.snapshot().size, "Odesa is too far from Kyiv to be the same group")
+        tracker.update(listOf(marker("a", 50.5, 30.8), marker("far", 46.48, 30.72)), 0)
+        assertEquals(2, tracker.snapshot().size, "Odesa is too far from Kyiv to be the same group")
+    }
+
+    @Test
+    fun trendFollowsTheCourseThroughCoarsePositions() {
+        // Positions zig-zag north and south of a westward course, as raion centres do.
+        val t = track(
+            0L to GeoPoint(50.5, 32.0),
+            15 * minute to GeoPoint(50.3, 31.6),
+            30 * minute to GeoPoint(50.5, 31.2),
+            45 * minute to GeoPoint(50.3, 30.8),
+        )
+        val (heading, speed) = TrackInterpolator.trend(t.samples)!!
+        assertTrue(heading in 255.0..285.0, "westward, got $heading")
+        assertTrue(speed in 90.0..130.0, "about 115 km/h, got $speed")
     }
 
     @Test

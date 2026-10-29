@@ -1,5 +1,6 @@
 package com.gusak.lab.radarnebo.console
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -12,6 +13,8 @@ import com.gusak.lab.radarnebo.di.initKoin
 import com.gusak.lab.radarnebo.server.SingleInstance
 import com.gusak.lab.radarnebo.ui.RadarTheme
 import com.gusak.lab.radarnebo.ui.applyAppIdentity
+import com.gusak.lab.radarnebo.ui.map.LocalPinchZoom
+import com.gusak.lab.radarnebo.ui.rememberWindowPinch
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.runBlocking
 import java.io.File
@@ -53,7 +56,10 @@ fun main() {
                     clientSettings.update { it.pointedAt(running.port, server.clientKey) }
                 }
             }
-            RadarTheme { ConsoleScreen(server, logs) }
+            // Pinches over the window zoom the embedded client's map; nothing else in the console listens for them.
+            CompositionLocalProvider(LocalPinchZoom provides rememberWindowPinch(window.rootPane)) {
+                RadarTheme { ConsoleScreen(server, logs) }
+            }
         }
     }
 }

@@ -3,8 +3,8 @@ package com.gusak.lab.radarnebo.server.domain.alert
 import kotlin.time.Instant
 
 /**
- * The alerts active right now. [version] changes exactly when the content does, so it serves as the
- * client-facing ETag; [confirmedAt] is when the source last vouched for the content.
+ * The alerts active right now. [version] changes exactly when the content does; [confirmedAt] is when the
+ * source last vouched for the content.
  */
 data class AlertBoard(
     val alerts: List<AirAlert>,

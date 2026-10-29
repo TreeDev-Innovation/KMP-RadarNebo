@@ -70,6 +70,10 @@ object ThreatMapper {
         ?: listOfNotNull(alert.locationOblastUid, alert.locationUid.toIntOrNull().takeIf { alert.locationType == "oblast" })
             .firstOrNull { Regions.oblast(it) != null }
 
+    /**
+     * Where to show [alert]. Oblasts sit at their centre and named cities and hromadas at the city; raions, like
+     * any other place without coordinates, at a stable pseudo-random spot in their oblast.
+     */
     fun locate(alert: Alert): GeoPoint? {
         val oblastUid = oblastUid(alert)
         if (alert.locationType == "oblast" || oblastUid == Regions.KYIV_CITY_UID || oblastUid == Regions.SEVASTOPOL_UID) {

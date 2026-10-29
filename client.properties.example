@@ -1,0 +1,8 @@
+# Copy to client.properties (gitignored) and fill in. The build bakes these values into the client apps
+# (Android, desktop, iOS) as their default server; a server address or key set in the app's Settings wins.
+# Rebuild the app after changing this file.
+
+# The RadarNebo server the apps connect to. Leave blank for https://radar-nebo.worxbend.com.
+server.url=https://radar-nebo.worxbend.com
+# The client key the server expects (one of its CLIENT_KEYS). Leave blank if the server needs none.
+server.accessKey=

@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import com.gusak.lab.radarnebo.App
+import com.gusak.lab.radarnebo.data.ColorPalette
 import com.gusak.lab.radarnebo.data.InMemoryStorage
 import com.gusak.lab.radarnebo.data.ThemeMode
 import com.gusak.lab.radarnebo.di.isolatedKoin
@@ -35,9 +36,10 @@ class AppThemeSnapshotTest {
     /** Centre of nav item [index]: bar is 3 x 84dp items + 2 x 6dp padding, centred, 12dp above the bottom. */
     private fun navItem(index: Int) = Offset(width / 2f - 132f + 6f + 84f * index + 42f, height - 12f - 32f)
 
-    private fun render(mode: ThemeMode) {
+    private fun render(mode: ThemeMode, palette: ColorPalette = ColorPalette.Radar) {
         val storage = InMemoryStorage().apply {
             putString("theme_mode", mode.name)
+            putString("color_palette", palette.name)
             putString("favorites", """[{"id":"1","name":"Kyiv","lat":50.4501,"lon":30.5234},{"id":"2","name":"Kharkiv","lat":49.9935,"lon":36.2304}]""")
         }
         val owner = object : ViewModelStoreOwner {
@@ -62,11 +64,14 @@ class AppThemeSnapshotTest {
                 }
                 return image
             }
-            val name = mode.name.lowercase()
+            val name = mode.name.lowercase() + if (palette == ColorPalette.Radar) "" else "-" + palette.name.lowercase()
             save(frames(60), "app-$name-map.png")
             scene.sendPointerEvent(PointerEventType.Press, navItem(2))
             scene.sendPointerEvent(PointerEventType.Release, navItem(2))
             save(frames(60), "app-$name-settings.png")
+            scene.sendPointerEvent(PointerEventType.Press, navItem(1))
+            scene.sendPointerEvent(PointerEventType.Release, navItem(1))
+            save(frames(60), "app-$name-favorites.png")
             assertEquals(mode to (mode == ThemeMode.Dark), applied)
         }
         owner.viewModelStore.clear()
@@ -78,4 +83,12 @@ class AppThemeSnapshotTest {
 
     @Test
     fun lightTheme() = render(ThemeMode.Light)
+
+    @Test
+    fun otherPalettes() {
+        render(ThemeMode.Dark, ColorPalette.SmokedCopper)
+        render(ThemeMode.Light, ColorPalette.ObsidianPlum)
+        render(ThemeMode.Dark, ColorPalette.Dracula)
+        render(ThemeMode.Light, ColorPalette.BlueHonor)
+    }
 }
