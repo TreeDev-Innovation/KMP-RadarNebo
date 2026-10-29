@@ -41,24 +41,35 @@ import kotlin.time.Clock
 /**
  * A web map tile set (Web Mercator, 256 px tiles) and the credit its terms require. The street maps are Carto's
  * label-free basemaps, bundled with the app (see [bundled]) so they show offline and leave cities to the map's
- * own labels; satellite imagery comes from Esri's public service, which needs no key.
+ * own labels; satellite imagery comes from Esri's public service, which needs no key. At night (the dark theme)
+ * the satellite view shows NASA's Black Marble city lights instead, bundled too.
  */
-enum class TileSource(val maxZoom: Int, val attribution: String, private val template: String) {
+enum class TileSource(
+    val maxZoom: Int,
+    val attribution: String,
+    private val template: String,
+    /** File extension of bundled tiles. */
+    val extension: String = "png",
+    /** Photographic imagery rather than a drawn map. */
+    val isImagery: Boolean = false,
+) {
     DarkStreets(BUNDLED_MAX_ZOOM, "Map © CARTO, © OpenStreetMap contributors", "bundled:carto-dark"),
     LightStreets(BUNDLED_MAX_ZOOM, "Map © CARTO, © OpenStreetMap contributors", "bundled:carto-light"),
-    Satellite(18, "Imagery © Esri, Maxar, Earthstar Geographics", "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}");
+    Satellite(18, "Imagery © Esri, Maxar, Earthstar Geographics", "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", isImagery = true),
+    // The deepest zoom NASA GIBS serves Black Marble at (NIGHT_MAX_ZOOM in tools/download-map-tiles.py).
+    NightSatellite(8, "Imagery: NASA Black Marble, via NASA GIBS", "bundled:nasa-night", extension = "jpg", isImagery = true);
 
-    /** The resource folder (under files/map) holding this set's tiles as z/x/y.png, or null if downloaded. */
+    /** The resource folder (under files/map) holding this set's tiles as z/x/y.[extension], or null if downloaded. */
     val bundled: String? get() = template.removePrefix("bundled:").takeIf { it != template }
 
     fun url(z: Int, x: Int, y: Int) = template.replace("{z}", "$z").replace("{x}", "$x").replace("{y}", "$y")
 
     companion object {
-        /** The tiles for [background]; street maps follow the theme. Null shows no map. */
+        /** The tiles for [background]; street maps and satellite imagery follow the theme. Null shows no map. */
         fun of(background: MapBackground, dark: Boolean): TileSource? = when (background) {
             MapBackground.None -> null
             MapBackground.Streets -> if (dark) DarkStreets else LightStreets
-            MapBackground.Satellite -> Satellite
+            MapBackground.Satellite -> if (dark) NightSatellite else Satellite
         }
     }
 }
@@ -132,7 +143,7 @@ class MapTiles(
         if (bundled != null && !isBundled(key)) return null
         if (bundled == null && client == null) return null
         if (blocking && bundled != null) {
-            val image = runBlocking { readBundled(bundled, z, x, y) } ?: return null
+            val image = runBlocking { readBundled(bundled, source.extension, z, x, y) } ?: return null
             store(key, image)
             return image
         }
@@ -142,7 +153,7 @@ class MapTiles(
         scope.launch {
             val image = withContext(Dispatchers.Default) {
                 if (bundled != null) {
-                    readBundled(bundled, z, x, y)
+                    readBundled(bundled, source.extension, z, x, y)
                 } else {
                     permits.withPermit {
                         runCatching {
@@ -169,8 +180,8 @@ class MapTiles(
         while (cache.size > capacity) cache.remove(cache.keys.first())
     }
 
-    private suspend fun readBundled(directory: String, z: Int, x: Int, y: Int): ImageBitmap? =
-        runCatching { Res.readBytes("files/map/$directory/$z/$x/$y.png").decodeToImageBitmap() }.getOrNull()
+    private suspend fun readBundled(directory: String, extension: String, z: Int, x: Int, y: Int): ImageBitmap? =
+        runCatching { Res.readBytes("files/map/$directory/$z/$x/$y.$extension").decodeToImageBitmap() }.getOrNull()
 
     private fun isBundled(key: TileKey): Boolean {
         coverage?.let { return key in it }

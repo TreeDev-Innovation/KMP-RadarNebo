@@ -42,9 +42,14 @@ val dockArgs = if (System.getProperty("os.name").startsWith("Mac")) {
     emptyList()
 }
 
+// Trackpad pinch-to-zoom on the embedded client's map (shared's MacTrackpad.java) uses the JDK-internal
+// com.apple.eawt.event package.
+val macGestureExport = "--add-exports=java.desktop/com.apple.eawt.event=ALL-UNNAMED"
+
 compose.desktop {
     application {
         mainClass = "com.gusak.lab.radarnebo.console.MainKt"
+        jvmArgs(macGestureExport)
         jvmArgs(*dockArgs.toTypedArray())
 
         nativeDistributions {
@@ -70,12 +75,12 @@ tasks.withType<JavaExec>().matching { it.name in setOf("run", "hotRun", "hotDev"
     val serverDir = rootProject.file("mission-control/server")
     val serverDirArg = "-Dradarnebo.server.dir=${serverDir.absolutePath}"
     workingDir = serverDir
-    jvmArgs(serverDirArg)
-    // The Compose plugin sets up its `run` task after this and replaces its JVM arguments, so add the property back
+    jvmArgs(serverDirArg, macGestureExport)
+    // The Compose plugin sets up its `run` task after this and replaces its JVM arguments, so add them back
     // just before the task starts.
     doFirst {
         val exec = this as JavaExec
-        if (serverDirArg !in exec.jvmArgs.orEmpty()) exec.jvmArgs(serverDirArg)
+        listOf(serverDirArg, macGestureExport).filter { it !in exec.jvmArgs.orEmpty() }.forEach { exec.jvmArgs(it) }
     }
 }
 

@@ -11,6 +11,8 @@ data class SituationReport(
     val observedAt: Long,
     val alerts: List<AirAlert>,
     val observations: List<TargetObservation> = emptyList(),
+    /** The active-alerts body exactly as the source sent it, served to clients unchanged; null for the simulation. */
+    val rawAlerts: String? = null,
 )
 
 /** What one fetch from an [AlertsDataSource] produced. */

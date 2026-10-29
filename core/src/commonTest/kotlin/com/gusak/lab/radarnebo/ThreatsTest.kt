@@ -92,12 +92,16 @@ class ThreatsTest {
     @Test
     fun apiSendsBearerTokenAndHandlesStatuses() = runTest {
         var authHeader: String? = null
+        var conditional: String? = null
         var call = 0
         val engine = MockEngine { request ->
             authHeader = request.headers[HttpHeaders.Authorization]
+            conditional = request.headers[HttpHeaders.IfModifiedSince]
             when (call++) {
-                0 -> respond(sample, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
-                1 -> respond("", HttpStatusCode.NotModified)
+                0, 1 -> respond(sample, HttpStatusCode.OK, headersOf(
+                    HttpHeaders.ContentType to listOf("application/json"),
+                    HttpHeaders.LastModified to listOf("Mon, 26 Oct 2026 21:57:05 GMT"),
+                ))
                 else -> respond("""{"message":"x"}""", HttpStatusCode.Unauthorized, headersOf(HttpHeaders.ContentType, "application/json"))
             }
         }
@@ -109,7 +113,9 @@ class ThreatsTest {
         assertIs<FetchResult.Fresh>(first)
         assertEquals(3, first.alerts.size)
         assertEquals("Bearer secret", authHeader)
-        assertIs<FetchResult.NotModified>(api.activeAlerts(ServerEndpoint(RadarNeboApi.DEFAULT_SERVER_URL, "secret")))
+        // Every poll asks for the whole list, never a conditional 304.
+        assertIs<FetchResult.Fresh>(api.activeAlerts(ServerEndpoint(RadarNeboApi.DEFAULT_SERVER_URL, "secret")))
+        assertEquals(null, conditional)
         assertIs<FetchResult.Failure>(api.activeAlerts(ServerEndpoint(RadarNeboApi.DEFAULT_SERVER_URL, "secret")))
     }
 }
@@ -126,6 +132,28 @@ class LocateTest {
         val raionPoint = ThreatMapper.locate(raion)!!
         assertTrue(raionPoint != GeoPoint(49.9935, 36.2304))
         assertEquals(22, Regions.oblastAt(raionPoint))
+    }
+
+    @Test
+    fun raionsSitAtAStableSpotInTheirOblast() {
+        val bashtanka = com.gusak.lab.radarnebo.data.Alert(
+            id = 1, locationTitle = "Баштанський район", locationType = "raion", locationUid = "96",
+            locationOblast = "Миколаївська область",
+        )
+        val point = ThreatMapper.locate(bashtanka)!!
+        assertEquals(17, Regions.oblastAt(point))
+        assertEquals(point, ThreatMapper.locate(bashtanka.copy(id = 2)), "the same raion lands on the same spot")
+    }
+
+    @Test
+    fun raionsAreFoundUnderAnyOfTheirNames() {
+        // Renamed in 2024 (Новомосковський → Самарівський); alerts may use either name. Apostrophe variants match too.
+        assertEquals(Regions.raionForTitle("Самарівський район"), Regions.raionForTitle("Новомосковський район"))
+        assertEquals(Regions.raionForTitle("Кам’янець-Подільський район"), Regions.raionForTitle("Кам'янець-Подільський район"))
+        // Every raion centre lies in its own oblast.
+        com.gusak.lab.radarnebo.geo.UkraineRaions.all.filter { it.oblastUid != 29 }.forEach { raion ->
+            assertEquals(raion.oblastUid, Regions.oblastByPolygon(raion.point) ?: raion.oblastUid, raion.names.first())
+        }
     }
 
     @Test

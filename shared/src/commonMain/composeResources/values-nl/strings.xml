@@ -1,0 +1,389 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- app -->
+    <string name="app_name">RadarNebo</string>
+    <string name="app_window_requests_title">RadarNebo · Verzoeken</string>
+
+    <!-- nav -->
+    <string name="nav_map">Kaart</string>
+    <string name="nav_favorites">Favorieten</string>
+    <string name="nav_settings">Instellingen</string>
+
+    <!-- common -->
+    <string name="common_cancel">Annuleren</string>
+    <string name="common_add">Toevoegen</string>
+    <string name="common_close">Sluiten</string>
+    <string name="common_done">Klaar</string>
+    <string name="common_remove">Verwijderen</string>
+    <string name="common_name">Naam</string>
+    <string name="common_open">Openen</string>
+    <string name="common_none">(geen)</string>
+    <string name="common_error">Fout</string>
+
+    <!-- unit -->
+    <string name="unit_km">%1$d km</string>
+    <string name="unit_km_decimal">%1$s km</string>
+    <string name="unit_m">%1$d m</string>
+    <string name="unit_seconds">%1$d s</string>
+    <string name="unit_minutes">%1$d min</string>
+    <string name="unit_minutes_approx">~%1$d min</string>
+    <string name="unit_speed_approx">~%1$d km/u</string>
+    <string name="unit_speed_range">%1$d–%2$d km/u</string>
+    <string name="unit_motion">~%1$d km/u %2$s</string>
+    <string name="unit_heading">%1$s · %2$d°</string>
+    <string name="unit_ms">%1$d ms</string>
+    <string name="unit_bytes">%1$d B</string>
+    <string name="unit_kilobytes">%1$s kB</string>
+
+    <!-- time -->
+    <string name="time_just_now">zojuist</string>
+    <string name="time_minutes_ago">%1$d min geleden</string>
+    <string name="time_hours_minutes_ago">%1$d u %2$d min geleden</string>
+
+    <!-- coordinates -->
+    <string name="coordinates_lat_lon">%1$s° NB, %2$s° OL</string>
+
+    <!-- compass -->
+    <string name="compass_n">N</string>
+    <string name="compass_ne">NO</string>
+    <string name="compass_e">O</string>
+    <string name="compass_se">ZO</string>
+    <string name="compass_s">Z</string>
+    <string name="compass_sw">ZW</string>
+    <string name="compass_w">W</string>
+    <string name="compass_nw">NW</string>
+
+    <!-- level -->
+    <string name="level_red">Rood</string>
+    <string name="level_yellow">Geel</string>
+    <string name="level_red_full">Niveau rood</string>
+    <string name="level_yellow_full">Niveau geel</string>
+
+    <!-- threat -->
+    <string name="threat_drones">Drones (Shahed/UAV)</string>
+    <string name="threat_ballistic_missiles">Ballistische raketten</string>
+    <string name="threat_cruise_missiles">Kruisraketten</string>
+    <string name="threat_missiles">Raketten</string>
+    <string name="threat_guided_bombs">Geleide vliegtuigbommen</string>
+    <string name="threat_tactical_aviation">Tactische luchtvaart</string>
+    <string name="threat_strategic_aviation">Strategische luchtvaart</string>
+    <string name="threat_mig31k_departure">Opstijgen MiG-31K</string>
+    <string name="threat_air_defense">Luchtverdediging actief</string>
+    <string name="threat_unknown">Onbekende dreiging</string>
+
+    <!-- location -->
+    <string name="location_type_oblast">oblast</string>
+    <string name="location_type_raion">district</string>
+    <string name="location_type_city">stad</string>
+    <string name="location_type_hromada">gemeente</string>
+
+    <!-- kind -->
+    <string name="kind_attack_drone">Aanvalsdrone</string>
+    <string name="kind_jet_drone">Straalaangedreven aanvalsdrone</string>
+    <string name="kind_decoy_drone">Lokdrone</string>
+    <string name="kind_recon_drone">Verkenningsdrone</string>
+    <string name="kind_cruise_missile">Kruisraket</string>
+    <string name="kind_ballistic_missile">Ballistische raket</string>
+    <string name="kind_aeroballistic_missile">Aeroballistische raket</string>
+    <string name="kind_guided_bomb">Geleide vliegtuigbom</string>
+    <string name="kind_tactical_aircraft">Tactische luchtvaart</string>
+    <string name="kind_strategic_bomber">Strategische luchtvaart</string>
+    <string name="kind_mig31k">MiG-31K</string>
+    <string name="kind_air_defense">Luchtverdediging</string>
+
+    <!-- profile -->
+    <string name="profile_missile_unreported">Raket, type niet gemeld</string>
+    <string name="profile_shahed_make">HESA (Iran); in licentie gebouwd als Geran-2 in Alabuga, Rusland</string>
+    <string name="profile_shahed_role">Kamikaze-kruisvluchtmunitie, kernlading ~50 kg</string>
+    <string name="profile_gerbera_role">Lokdoel om de luchtverdediging te overbelasten; soms verkenning of een kleine lading</string>
+    <string name="profile_jet_shahed_make">HESA (Iran); in Rusland gebouwd als Geran-3</string>
+    <string name="profile_jet_shahed_role">Straalaangedreven kamikazedrone</string>
+    <string name="profile_recon_drone_role">Verkenning en artillerievuurleiding nabij het front</string>
+    <string name="profile_cruise_missile_make">Rusland; gelanceerd vanaf Tu-95MS, Kalibr vanaf schepen en onderzeeërs</string>
+    <string name="profile_cruise_missile_role">Subsonische kruisraket die laag over een kronkelende route vliegt</string>
+    <string name="profile_ballistic_missile_make">Rusland; KN-23 geleverd door Noord-Korea</string>
+    <string name="profile_ballistic_missile_role">Ballistische korteafstandsraket, minuten van lancering tot inslag</string>
+    <string name="profile_kinzhal_role">Vanuit de lucht gelanceerde aeroballistische raket, gedragen door de MiG-31K</string>
+    <string name="profile_guided_bomb_role">Glijbom die op 40–70 km van het doel door een vliegtuig wordt afgeworpen</string>
+    <string name="profile_tactical_aircraft_role">Jachtbommenwerpers die nabij het front geleide bommen en raketten afvuren</string>
+    <string name="profile_strategic_bomber_role">Langeafstandsbommenwerpers die Kh-101- en Kh-22-kruisraketten lanceren</string>
+    <string name="profile_mig31k_role">Onderschepper aangepast voor de Kinzjal; het opstijgen ervan activeert een landelijk alarm</string>
+    <string name="profile_air_defense_make">Oekraïense luchtmacht</string>
+    <string name="profile_air_defense_role">Luchtverdediging bestrijdt doelen in de buurt; blijf in de schuilplaats</string>
+    <string name="profile_unknown_role">Type dreiging niet gemeld</string>
+    <string name="profile_make_russia">Rusland</string>
+
+    <!-- favorites -->
+    <string name="favorites_title">Favoriete plekken</string>
+    <string name="favorites_subtitle">Dreigingen binnen %1$d km, of dreigingen voor de hele oblast, worden gemarkeerd.</string>
+    <string name="favorites_tip">Tip: houd de kaart ingedrukt om een punt toe te voegen.</string>
+    <string name="favorites_saved_places">OPGESLAGEN PLEKKEN</string>
+    <string name="favorites_search_placeholder">bijv. Kyiv, Lviv, Odesa</string>
+    <string name="favorites_search_city">Stad zoeken</string>
+    <string name="favorites_add_by_coordinates">Toevoegen via coördinaten</string>
+    <string name="favorites_empty_title">Nog geen favorieten</string>
+    <string name="favorites_empty_description">Voeg je huis, familie of werk toe om gewaarschuwd te worden als er een dreiging nadert.</string>
+    <string name="favorites_status_clear">Veilig</string>
+    <string name="favorites_status_region_wide">%1$s · in heel %2$s</string>
+    <string name="favorites_status_distance">%1$s · %2$d km – %3$s</string>
+    <string name="favorites_quick_add">Snel toevoegen</string>
+    <string name="favorites_latitude">Breedtegraad (44–53)</string>
+    <string name="favorites_longitude">Lengtegraad (22–41)</string>
+    <string name="favorites_default_name">Punt %1$s, %2$s</string>
+
+    <!-- settings -->
+    <string name="settings_title">Instellingen</string>
+    <string name="settings_category_appearance">Weergave</string>
+    <string name="settings_category_map">Kaart</string>
+    <string name="settings_category_targets">Doelen</string>
+    <string name="settings_category_alerts">Meldingen</string>
+    <string name="settings_category_alerts_tracking">Meldingen en tracking</string>
+    <string name="settings_category_server">Server</string>
+    <string name="settings_category_developer">Ontwikkelaar</string>
+    <string name="settings_category_about">Over</string>
+    <string name="settings_category_target_types">Doeltypen</string>
+    <string name="settings_theme">Thema</string>
+    <string name="settings_theme_description">Systeem volgt de lichte of donkere modus van je apparaat.</string>
+
+    <!-- theme -->
+    <string name="theme_system">Systeem</string>
+    <string name="theme_light">Licht</string>
+    <string name="theme_dark">Donker</string>
+
+    <!-- settings -->
+    <string name="settings_color_scheme">Kleurenschema</string>
+    <string name="settings_color_scheme_description">Kleuren van de hele app en de kaart. Elk schema heeft een lichte en een donkere variant.</string>
+
+    <!-- palette -->
+    <string name="palette_radar">Radar</string>
+    <string name="palette_nord">Nord</string>
+    <string name="palette_dracula">Dracula</string>
+    <string name="palette_solarized">Solarized</string>
+    <string name="palette_catppuccin">Catppuccin</string>
+    <string name="palette_obsidian_plum">Obsidiaanpruim</string>
+    <string name="palette_smoked_copper">Gerookt koper</string>
+    <string name="palette_blue_honor">Blue Honor</string>
+
+    <!-- settings -->
+    <string name="settings_map_background">Achtergrond</string>
+    <string name="settings_map_background_description">Wat de kaart onder de oblasten toont. Kaart- en satelliettegels komen van Esri.</string>
+
+    <!-- map -->
+    <string name="map_background_none">Geen kaart</string>
+    <string name="map_background_streets">Kaart</string>
+    <string name="map_background_satellite">Satelliet</string>
+
+    <!-- settings -->
+    <string name="settings_max_drones">Drones op de kaart</string>
+    <string name="settings_max_drones_description">Maximaal aantal drones tegelijk; minder houdt de kaart overzichtelijk en snel.</string>
+    <string name="settings_warning_radius">Waarschuwingsstraal</string>
+    <string name="settings_warning_radius_description">Dreigingen zo dicht bij een favoriete plek geven een waarschuwing.</string>
+    <string name="settings_drones_only">Alleen drones</string>
+    <string name="settings_drones_only_description">Raketten, luchtvaart en andere dreigingen verbergen.</string>
+    <string name="settings_refresh_interval">Vernieuwingsinterval</string>
+    <string name="settings_refresh_interval_description">De server ververst zijn gegevens elke 10–15 s; sneller opvragen kost alleen meer batterij.</string>
+    <string name="settings_connection">Verbinding</string>
+    <string name="settings_server_description">RadarNebo haalt meldingen en gevolgde doelen op van een RadarNebo-server, die de geschiedenis bijhoudt en de tracking doet. Draai je eigen server en vul het adres in; vraag de beheerder om een toegangssleutel als die nodig is.</string>
+    <string name="settings_server_url">Server-URL</string>
+    <string name="settings_access_key">Toegangssleutel (optioneel)</string>
+    <string name="settings_save_reconnect">Opslaan en opnieuw verbinden</string>
+    <string name="settings_request_inspector">Verzoekinspector</string>
+    <string name="settings_request_inspector_description">Elk verzoek dat de app naar de server stuurt en de JSON die terugkomt.</string>
+    <string name="settings_target_types_description">Hoe elke dreiging op de kaart wordt getekend. Rood is een melding van niveau rood, oranje een van niveau geel.</string>
+
+    <!-- map -->
+    <string name="map_cinematic_shot">SHOT %1$d/%2$d · %3$s</string>
+    <string name="map_cinematic_patrol">PATROUILLE</string>
+
+    <!-- status -->
+    <string name="status_simulated">GESIMULEERDE GEGEVENS · niet de echte situatie</string>
+    <string name="status_showing">(%1$d getoond)</string>
+    <string name="status_updated_at">bijgewerkt om %1$s</string>
+    <string name="status_reconnecting">Opnieuw verbinden…</string>
+    <string name="status_retrying_in">Nieuwe poging over %1$d s</string>
+    <string name="status_not_connected">Niet verbonden</string>
+    <string name="status_reconnect">Opnieuw verbinden</string>
+
+    <!-- server -->
+    <string name="server_state_connecting">verbinden…</string>
+    <string name="server_state_live">server live</string>
+    <string name="server_state_degraded">server actief, maar de gegevensbron faalt</string>
+    <string name="server_state_offline">geen gegevens van de server</string>
+
+    <!-- status -->
+    <string name="status_address">Adres</string>
+    <string name="status_status">Status</string>
+    <string name="status_last_data">Laatste gegevens</string>
+    <string name="status_source">Bron</string>
+    <string name="status_source_simulation">Simulatie (niet de echte situatie)</string>
+    <string name="status_upstream">Upstream</string>
+    <string name="status_upstream_value">%1$d van %2$d verzoeken in de laatste minuut</string>
+    <string name="status_polled">Opgevraagd</string>
+    <string name="status_polled_value">elke %1$d s</string>
+    <string name="status_last_poll">Laatste opvraging</string>
+    <string name="status_source_error">Bronfout</string>
+    <string name="status_server_hint">Draait de server? Start hem met ./gradlew :mission-control:server:run, of wijzig het adres in Instellingen.</string>
+    <string name="status_show_requests">Verzoeken tonen</string>
+
+    <!-- error -->
+    <string name="error_unauthorized">De server vereist een geldige toegangssleutel (401)</string>
+    <string name="error_rate_limited">Te veel verzoeken, er wordt vertraagd (429)</string>
+    <string name="error_server_starting">De server start op, nog geen gegevens (503)</string>
+    <string name="error_unexpected_response">Onverwacht antwoord %1$d</string>
+    <string name="error_network">Netwerkfout</string>
+
+    <!-- map -->
+    <string name="map_threats_near_you">Dreigingen bij je locaties</string>
+    <string name="map_proximity_region_wide">%1$s: %2$s – melding voor de hele oblast</string>
+    <string name="map_proximity_distance">%1$s: %2$s – %3$d km</string>
+    <string name="map_favorite_clear_within">Veilig binnen %1$d km</string>
+    <string name="map_favorite_hit_region_wide">%1$s – hele oblast</string>
+    <string name="map_favorite_hit_distance">%1$s – op %2$d km</string>
+
+    <!-- place -->
+    <string name="place_in_city">In %1$s</string>
+    <string name="place_near_city">Bij %1$s</string>
+    <string name="place_offset_from_city">%1$d km %2$s van %3$s</string>
+
+    <!-- map -->
+    <string name="map_warning_radius_hint_none">Dreigingen zo dicht bij een favoriete plek geven een waarschuwing. Houd de kaart ingedrukt om er een toe te voegen.</string>
+    <string name="map_warning_radius_hint_one">Je wordt gewaarschuwd als een dreiging zo dicht bij je favoriete plek komt.</string>
+    <string name="map_add_favorite_title">Deze plek aan favorieten toevoegen?</string>
+    <string name="map_outside_ukraine">Buiten Oekraïne: hier worden geen meldingen gevolgd.</string>
+    <string name="map_add_favorite_hint">Je wordt gewaarschuwd als een dreiging binnen %1$d km komt.</string>
+    <string name="map_add_to_favorites">Aan favorieten toevoegen</string>
+    <string name="map_route_stop_label">%1$d. %2$s · ~%3$d min</string>
+    <string name="map_prediction_label">%1$s · ~%2$d min</string>
+    <string name="map_attribution_carto">Kaart © CARTO, © OpenStreetMap-bijdragers</string>
+    <string name="map_attribution_esri">Beelden © Esri, Maxar, Earthstar Geographics</string>
+    <string name="map_attribution_nasa">Beelden: NASA Black Marble, via NASA GIBS</string>
+
+    <!-- cd -->
+    <string name="cd_exit_cinematic">Filmmodus verlaten</string>
+    <string name="cd_enter_cinematic">Filmmodus starten</string>
+    <string name="cd_hide_targets">Doelen verbergen</string>
+    <string name="cd_show_targets">Gevolgde doelen tonen</string>
+    <string name="cd_warning_radius">Waarschuwingsstraal, %1$d km</string>
+    <string name="cd_server_requests">Verzoeken aan de server</string>
+
+    <!-- cinematic -->
+    <string name="cinematic_threat_near">DREIGING BIJ %1$s</string>
+    <string name="cinematic_region_wide">hele oblast (%1$s)</string>
+    <string name="cinematic_distance">%1$d km – %2$s</string>
+    <string name="cinematic_favorite_clear">%1$s · VEILIG</string>
+    <string name="cinematic_no_threats_within">Geen dreigingen binnen %1$d km</string>
+    <string name="cinematic_tracking">VOLGEN · %1$s</string>
+    <string name="cinematic_overview">OEKRAÏNE · OVERZICHT</string>
+
+    <!-- targets -->
+    <string name="targets_title">Doelen</string>
+    <string name="targets_summary">%1$d actief · %2$d gevolgd</string>
+    <string name="targets_summary_hidden">%1$d verborgen</string>
+    <string name="targets_filter_active">Actief (%1$d)</string>
+    <string name="targets_filter_all">Alle (%1$d)</string>
+    <string name="targets_filter">Filter</string>
+    <string name="targets_filter_count">Filter · %1$d</string>
+    <string name="targets_all_hidden">Alle doelen hier zijn verborgen door het filter.</string>
+    <string name="targets_empty">Nog geen dronedoelen gevolgd. Doelen verschijnen wanneer op een dronemelding een tweede melding in de buurt volgt.</string>
+    <string name="targets_filter_probable">Vermoedelijke typen (%1$d)</string>
+    <string name="targets_filter_kind">%1$s (%2$d)</string>
+    <string name="targets_show_all">Alles tonen</string>
+    <string name="targets_model_probable">%1$s (vermoedelijk)</string>
+    <string name="targets_row_prediction">→ %1$s over ~%2$d min (%3$d km)</string>
+    <string name="targets_detail_title">Doel %1$s</string>
+    <string name="targets_state_active">actief</string>
+    <string name="targets_state_cleared">opgeheven</string>
+    <string name="targets_back_all">‹ Alle doelen</string>
+    <string name="targets_track_id">%1$s · spoor %2$s</string>
+    <string name="targets_stat_speed">Snelheid</string>
+    <string name="targets_stat_direction">Richting</string>
+    <string name="targets_stat_distance_flown">Afgelegde afstand</string>
+    <string name="targets_stat_tracked_for">Gevolgd sinds</string>
+    <string name="targets_stat_altitude">Hoogte (typisch voor de klasse)</string>
+    <string name="targets_altitude_approx">~%1$s</string>
+    <string name="targets_prediction">Voorspelling</string>
+    <string name="targets_prediction_eta">%1$s over ~%2$d min</string>
+    <string name="targets_prediction_detail">%1$d km verderop met ~%2$d km/u</string>
+    <string name="targets_prediction_favorite">een van je favorieten</string>
+    <string name="targets_no_settlement">Geen plaats binnen %1$d km op de huidige koers</string>
+    <string name="targets_cleared">Doel opgeheven</string>
+    <string name="targets_predicted_route">Voorspelde route</string>
+    <string name="targets_timeline">Tijdlijn</string>
+    <string name="targets_disclaimer">Posities zijn afgeleid uit gebiedsmeldingen, niet van radar. Voorspellingen gaan ervan uit dat het doel koers en snelheid aanhoudt.</string>
+    <string name="targets_stat_since">Sinds</string>
+    <string name="targets_stat_reported">Gemeld</string>
+    <string name="targets_location">Locatie</string>
+    <string name="targets_region_wide_position">Hele oblast: positie getoond in het centrum van de oblast</string>
+    <string name="targets_message">Bericht</string>
+    <string name="targets_not_tracked_yet">Nog niet gevolgd: een doel krijgt een spoor en voorspellingen zodra er in de buurt een volgende melding komt.</string>
+    <string name="targets_now">Nu · %1$s</string>
+    <string name="targets_position_interpolated">Geschat tussen meldingen</string>
+    <string name="targets_position_extrapolated">Geschat na de laatste melding</string>
+    <string name="targets_position_held">In het laatst gemelde gebied</string>
+    <string name="targets_latest_report">laatste melding</string>
+    <string name="targets_badge_active">ACTIEF</string>
+    <string name="targets_badge_cleared">OPGEHEVEN</string>
+    <string name="targets_badge_reported">GEMELD</string>
+    <string name="targets_badge_probable">VERMOEDELIJK</string>
+    <string name="targets_label_class">Klasse</string>
+    <string name="targets_label_make">Fabrikant</string>
+    <string name="targets_label_role">Rol</string>
+    <string name="targets_label_typical_speed">Typische snelheid</string>
+    <string name="targets_label_id">ID</string>
+    <string name="targets_label_alerts">Meldingen</string>
+    <string name="targets_probable_note">alerts.in.ua noemt geen modellen; afgeleid uit de dreigingsklasse en snelheid.</string>
+    <string name="targets_km_ahead">%1$d km verderop</string>
+    <string name="targets_at_time">om %1$s</string>
+
+    <!-- inspector -->
+    <string name="inspector_title">Verzoeken</string>
+    <string name="inspector_description">Elk verzoek van deze app aan de server, nieuwste eerst, met het antwoord.</string>
+    <string name="inspector_filter_by_url">Filteren op URL</string>
+    <string name="inspector_clear">Wissen</string>
+    <string name="inspector_from_clients">Van clients (%1$d)</string>
+    <string name="inspector_upstream">Upstream (%1$d)</string>
+    <string name="inspector_empty">Nog geen verzoeken.</string>
+    <string name="inspector_no_match">Geen verzoeken gevonden.</string>
+    <string name="inspector_select_hint">Selecteer een verzoek om de details te zien.</string>
+    <string name="inspector_status_error">FOUT</string>
+    <string name="inspector_back">← Verzoeken</string>
+    <string name="inspector_time">Tijd</string>
+    <string name="inspector_duration">Duur</string>
+    <string name="inspector_direction">Richting</string>
+    <string name="inspector_direction_incoming">Inkomend (een client belde)</string>
+    <string name="inspector_direction_outgoing">Uitgaand</string>
+    <string name="inspector_client">Client</string>
+    <string name="inspector_user_agent">User-agent</string>
+    <string name="inspector_content_type">Inhoudstype</string>
+    <string name="inspector_body">Body</string>
+    <string name="inspector_request_headers">Verzoekheaders</string>
+    <string name="inspector_response_headers">Antwoordheaders</string>
+    <string name="inspector_response_body">Antwoordbody</string>
+
+    <!-- plurals -->
+    <plurals name="targets_reports">
+        <item quantity="one">%1$d melding</item>
+        <item quantity="other">%1$d meldingen</item>
+    </plurals>
+    <plurals name="status_threat_count">
+        <item quantity="one">%1$d dreiging</item>
+        <item quantity="other">%1$d dreigingen</item>
+    </plurals>
+    <plurals name="status_drone_threat_count">
+        <item quantity="one">%1$d dronedreiging</item>
+        <item quantity="other">%1$d dronedreigingen</item>
+    </plurals>
+    <plurals name="map_cinematic_poi_alerts">
+        <item quantity="one">%1$d POI-MELDING</item>
+        <item quantity="other">%1$d POI-MELDINGEN</item>
+    </plurals>
+    <plurals name="cinematic_active_threats">
+        <item quantity="one">%1$d actieve dreiging</item>
+        <item quantity="other">%1$d actieve dreigingen</item>
+    </plurals>
+    <plurals name="map_warning_radius_hint_many">
+        <item quantity="one">Je wordt gewaarschuwd als een dreiging zo dicht bij een van je %1$d favoriete plekken komt.</item>
+        <item quantity="other">Je wordt gewaarschuwd als een dreiging zo dicht bij een van je %1$d favoriete plekken komt.</item>
+    </plurals>
+</resources>

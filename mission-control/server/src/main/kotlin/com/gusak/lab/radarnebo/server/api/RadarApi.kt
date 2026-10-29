@@ -74,9 +74,6 @@ fun Application.radarApi(
         anyHost()
         allowMethod(HttpMethod.Get)
         allowHeader(HttpHeaders.Authorization)
-        allowHeader(HttpHeaders.IfNoneMatch)
-        allowHeader(HttpHeaders.IfModifiedSince)
-        exposeHeader(HttpHeaders.ETag)
         exposeHeader(DATA_AGE_HEADER)
     }
     installErrorPages(LoggerFactory.getLogger("RadarApi"))
@@ -90,7 +87,7 @@ fun Application.radarApi(
         // The limits wrap authentication, so callers guessing keys are throttled too.
         rateLimit(CLIENTS) {
             clientRoute(authRequired) {
-                alertsInUaRoutes(situation, pollInterval, clock)
+                alertsInUaRoutes(situation, clock)
                 trackingRoutes(situation, pollInterval, clock)
             }
         }
