@@ -8,6 +8,7 @@ import com.gusak.lab.radarnebo.domain.ProximityHit
 import com.gusak.lab.radarnebo.domain.ThreatMapper
 import com.gusak.lab.radarnebo.domain.ThreatMarker
 import com.gusak.lab.radarnebo.tracking.DroneTrack
+import com.gusak.lab.radarnebo.tracking.TrackInterpolator
 import kotlin.time.Clock
 
 /** What the screens show, derived from the raw alerts and tracks under the current settings. */
@@ -19,7 +20,10 @@ data class ThreatPicture(
     val proximity: List<ProximityHit>,
     /** Oblast UID to whether the alert covers the whole oblast (true) or only part of it (false). */
     val alertedOblasts: Map<Int, Boolean>,
-    /** Tracks the settings show: only drones while "drones only" is on, and only kinds the target filter allows. */
+    /**
+     * Tracks the settings show: active or seen within the timeline window, only drones while "drones only" is on,
+     * and only kinds the target filter allows.
+     */
     val tracks: List<DroneTrack>,
     /** [tracks] before the target filter, for the Targets list to count and offer what is hidden. */
     val unfilteredTracks: List<DroneTrack> = tracks,
@@ -36,7 +40,11 @@ class BuildThreatPictureUseCase {
         now: Long = Clock.System.now().toEpochMilliseconds(),
     ): ThreatPicture {
         val threats = ThreatMapper.toMarkers(alerts, settings.dronesOnly)
-        val shownTracks = if (settings.dronesOnly) tracks.filter { it.type == ThreatType.Drones } else tracks
+        val since = now - settings.targetWindowMinutes * 60_000L
+        val shownTracks = tracks
+            // The server's verdict is as of its last poll; a target can go stale before the next one.
+            .map { if (it.active && !TrackInterpolator.isActive(it, now)) it.copy(active = false) else it }
+            .filter { (it.active || it.lastSeen >= since) && (!settings.dronesOnly || it.type == ThreatType.Drones) }
         return ThreatPicture(
             threats = threats,
             mapThreats = ThreatMapper.capForMap(threats, settings.maxMapMarkers),

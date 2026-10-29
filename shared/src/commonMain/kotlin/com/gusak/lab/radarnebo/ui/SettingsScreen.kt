@@ -144,6 +144,8 @@ fun SettingsScreen(
                 onCheckedChange = { v -> onChange { it.copy(dronesOnly = v) } },
             )
             SectionDivider()
+            TargetWindowSetting(settings.targetWindowMinutes, onChange = { v -> onChange { it.copy(targetWindowMinutes = v) } })
+            SectionDivider()
             SliderSetting(
                 title = "Refresh interval",
                 description = "The server refreshes its data every 10–15 s; polling faster only uses more battery.",
@@ -295,6 +297,23 @@ private fun SliderSetting(title: String, description: String, value: Int, range:
             valueRange = range.first.toFloat()..range.last.toFloat(),
         )
     }
+}
+
+/** Stops of the targets timeline slider: fine steps for the last hour, coarser ones up to [AppSettings.TARGET_WINDOW_RANGE]. */
+private val TARGET_WINDOW_STOPS = listOf(10, 15, 20, 30, 45, 60, 90, 120, 180, 240, 360, 480, 720, 960, 1200, 1500)
+
+/** The targets timeline on a stepped slider, so ten minutes and a day are both easy to pick. */
+@Composable
+private fun TargetWindowSetting(minutes: Int, onChange: (Int) -> Unit) {
+    val nearest = TARGET_WINDOW_STOPS.indices.minBy { kotlin.math.abs(TARGET_WINDOW_STOPS[it] - minutes) }
+    SliderSetting(
+        title = "Targets timeline",
+        description = "Show targets seen within this time; active ones always show.",
+        value = nearest,
+        range = TARGET_WINDOW_STOPS.indices,
+        format = { formatDuration(TARGET_WINDOW_STOPS[it]) },
+        onChange = { onChange(TARGET_WINDOW_STOPS[it]) },
+    )
 }
 
 @Composable

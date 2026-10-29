@@ -63,7 +63,7 @@ internal object ApiTranscripts {
         GET /health
         200
         Content-Type: application/json
-        {"status":"ok","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"upstreamRateLimitedTotal":0,"upstreamRejectedTotal":0,"upstreamOtherFailuresTotal":0,"upstreamLastSuccessAt":null,"pollIntervalSeconds":15,"lastAttemptAt":1792405200000,"nextPollAt":null,"dataVersion":2,"dataConfirmedAt":1792405200000,"dataAgeSeconds":45,"alerts":3,"tracks":2,"activeTracks":2,"lastError":null}
+        {"status":"ok","source":"AlertsInUa","simulated":false,"upstreamBudgetPerMinute":6,"upstreamRequestsLastMinute":0,"upstreamRequestsTotal":0,"upstreamRateLimitedTotal":0,"upstreamRejectedTotal":0,"upstreamOtherFailuresTotal":0,"upstreamLastSuccessAt":null,"pollIntervalSeconds":15,"lastAttemptAt":1792405200000,"nextPollAt":null,"dataVersion":2,"dataConfirmedAt":1792405200000,"dataAgeSeconds":45,"alerts":3,"tracks":2,"activeTracks":1,"lastError":null}
 
         GET /v1/alerts/active.json [Origin: https://example.org]
         200
@@ -199,32 +199,32 @@ internal object ApiTranscripts {
         GET /v1/drones/tracks.json
         200
         Content-Type: application/json
-        {"serverTime":1792405245000,"pollIntervalMs":15000,"lastUpstreamFetch":1792405200000,"tracks":[{"id":"trk-tn5fs0-1","type":"CruiseMissiles","level":"Red","oblastUid":22,"active":true,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":["3:cruise_missiles"],"samples":[{"t":1792404000000,"lat":49.9935,"lon":36.2304,"title":"Kharkiv","oblastUid":22,"message":"Крилаті ракети"}],"outcome":null},{"id":"trk-tn5fs0-2","type":"Drones","level":"Red","oblastUid":31,"active":true,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":["4:drones"],"samples":[{"t":1792404000000,"lat":50.511,"lon":30.7909,"title":"Brovary","oblastUid":14,"message":"Ударні БпЛА типу «Шахед»"},{"t":1792405200000,"lat":50.4501,"lon":30.5234,"title":"Kyiv City","oblastUid":31,"message":"Ударні БпЛА типу «Шахед»"}],"outcome":null}],"simulated":false}
+        {"serverTime":1792405245000,"pollIntervalMs":15000,"lastUpstreamFetch":1792405200000,"tracks":[{"id":"trk-tn5fs0-1","type":"CruiseMissiles","level":"Red","oblastUid":22,"active":false,"firstSeen":1792404000000,"lastSeen":1792404000000,"markerIds":["3:cruise_missiles"],"samples":[{"t":1792404000000,"lat":49.9935,"lon":36.2304,"title":"Kharkiv","oblastUid":22,"message":"Крилаті ракети"}],"outcome":null},{"id":"trk-tn5fs0-2","type":"Drones","level":"Red","oblastUid":31,"active":true,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":["4:drones"],"samples":[{"t":1792404000000,"lat":50.511,"lon":30.7909,"title":"Brovary","oblastUid":14,"message":"Ударні БпЛА типу «Шахед»"},{"t":1792405200000,"lat":50.4501,"lon":30.5234,"title":"Kyiv City","oblastUid":31,"message":"Ударні БпЛА типу «Шахед»"}],"outcome":null}],"simulated":false}
 
         GET /v1/drones/tracks.json?active=true
         200
         Content-Type: application/json
-        {"serverTime":1792405245000,"pollIntervalMs":15000,"lastUpstreamFetch":1792405200000,"tracks":[{"id":"trk-tn5fs0-1","type":"CruiseMissiles","level":"Red","oblastUid":22,"active":true,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":["3:cruise_missiles"],"samples":[{"t":1792404000000,"lat":49.9935,"lon":36.2304,"title":"Kharkiv","oblastUid":22,"message":"Крилаті ракети"}],"outcome":null},{"id":"trk-tn5fs0-2","type":"Drones","level":"Red","oblastUid":31,"active":true,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":["4:drones"],"samples":[{"t":1792404000000,"lat":50.511,"lon":30.7909,"title":"Brovary","oblastUid":14,"message":"Ударні БпЛА типу «Шахед»"},{"t":1792405200000,"lat":50.4501,"lon":30.5234,"title":"Kyiv City","oblastUid":31,"message":"Ударні БпЛА типу «Шахед»"}],"outcome":null}],"simulated":false}
+        {"serverTime":1792405245000,"pollIntervalMs":15000,"lastUpstreamFetch":1792405200000,"tracks":[{"id":"trk-tn5fs0-2","type":"Drones","level":"Red","oblastUid":31,"active":true,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":["4:drones"],"samples":[{"t":1792404000000,"lat":50.511,"lon":30.7909,"title":"Brovary","oblastUid":14,"message":"Ударні БпЛА типу «Шахед»"},{"t":1792405200000,"lat":50.4501,"lon":30.5234,"title":"Kyiv City","oblastUid":31,"message":"Ударні БпЛА типу «Шахед»"}],"outcome":null}],"simulated":false}
 
         GET /v1/drones/positions.json
         200
         Content-Type: application/json
-        {"at":1792405245000,"positions":[{"trackId":"trk-tn5fs0-1","lat":49.9935,"lon":36.2304,"headingDeg":null,"speedKmh":null,"mode":"Held","level":"Red"},{"trackId":"trk-tn5fs0-2","lat":50.447816,"lon":30.513369,"headingDeg":250.326001,"speedKmh":60.345033,"mode":"Extrapolated","level":"Red"}]}
+        {"at":1792405245000,"positions":[{"trackId":"trk-tn5fs0-2","lat":50.447816,"lon":30.513369,"headingDeg":250.326001,"speedKmh":60.345033,"mode":"Extrapolated","level":"Red"}]}
 
         GET /v1/drones/positions.json?at=2026-10-19T10:10:00Z
         200
         Content-Type: application/json
-        {"at":1792404600000,"positions":[{"trackId":"trk-tn5fs0-1","lat":49.9935,"lon":36.2304,"headingDeg":null,"speedKmh":null,"mode":"Held","level":"Red"},{"trackId":"trk-tn5fs0-2","lat":50.48055,"lon":30.65715,"headingDeg":250.302586,"speedKmh":60.307799,"mode":"Interpolated","level":"Red"}]}
+        {"at":1792404600000,"positions":[{"trackId":"trk-tn5fs0-2","lat":50.48055,"lon":30.65715,"headingDeg":250.302586,"speedKmh":60.307799,"mode":"Interpolated","level":"Red"}]}
 
         GET /v1/drones/tracks.json
         200
         Content-Type: application/json
-        {"serverTime":1792407645000,"pollIntervalMs":15000,"lastUpstreamFetch":1792407645000,"tracks":[{"id":"trk-tn5fs0-1","type":"CruiseMissiles","level":"Red","oblastUid":22,"active":false,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":[],"samples":[{"t":1792404000000,"lat":49.9935,"lon":36.2304,"title":"Kharkiv","oblastUid":22,"message":"Крилаті ракети"}],"outcome":null},{"id":"trk-tn5fs0-2","type":"Drones","level":"Red","oblastUid":31,"active":false,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":[],"samples":[{"t":1792404000000,"lat":50.511,"lon":30.7909,"title":"Brovary","oblastUid":14,"message":"Ударні БпЛА типу «Шахед»"},{"t":1792405200000,"lat":50.4501,"lon":30.5234,"title":"Kyiv City","oblastUid":31,"message":"Ударні БпЛА типу «Шахед»"}],"outcome":null}],"simulated":false}
+        {"serverTime":1792407645000,"pollIntervalMs":15000,"lastUpstreamFetch":1792407645000,"tracks":[{"id":"trk-tn5fs0-1","type":"CruiseMissiles","level":"Red","oblastUid":22,"active":false,"firstSeen":1792404000000,"lastSeen":1792404000000,"markerIds":[],"samples":[{"t":1792404000000,"lat":49.9935,"lon":36.2304,"title":"Kharkiv","oblastUid":22,"message":"Крилаті ракети"}],"outcome":null},{"id":"trk-tn5fs0-2","type":"Drones","level":"Red","oblastUid":31,"active":false,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":[],"samples":[{"t":1792404000000,"lat":50.511,"lon":30.7909,"title":"Brovary","oblastUid":14,"message":"Ударні БпЛА типу «Шахед»"},{"t":1792405200000,"lat":50.4501,"lon":30.5234,"title":"Kyiv City","oblastUid":31,"message":"Ударні БпЛА типу «Шахед»"}],"outcome":null}],"simulated":false}
 
         GET /v1/drones/archive.json?from=1792404000000
         200
         Content-Type: application/json
-        {"from":1792404000000,"to":1792407645000,"tracks":[{"id":"trk-tn5fs0-1","type":"CruiseMissiles","level":"Red","oblastUid":22,"active":false,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":[],"samples":[{"t":1792404000000,"lat":49.9935,"lon":36.2304,"title":"Kharkiv","oblastUid":22,"message":"Крилаті ракети"}],"outcome":null},{"id":"trk-tn5fs0-2","type":"Drones","level":"Red","oblastUid":31,"active":false,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":[],"samples":[{"t":1792404000000,"lat":50.511,"lon":30.7909,"title":"Brovary","oblastUid":14,"message":"Ударні БпЛА типу «Шахед»"},{"t":1792405200000,"lat":50.4501,"lon":30.5234,"title":"Kyiv City","oblastUid":31,"message":"Ударні БпЛА типу «Шахед»"}],"outcome":null}],"simulated":false}
+        {"from":1792404000000,"to":1792407645000,"tracks":[{"id":"trk-tn5fs0-2","type":"Drones","level":"Red","oblastUid":31,"active":false,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":[],"samples":[{"t":1792404000000,"lat":50.511,"lon":30.7909,"title":"Brovary","oblastUid":14,"message":"Ударні БпЛА типу «Шахед»"},{"t":1792405200000,"lat":50.4501,"lon":30.5234,"title":"Kyiv City","oblastUid":31,"message":"Ударні БпЛА типу «Шахед»"}],"outcome":null},{"id":"trk-tn5fs0-1","type":"CruiseMissiles","level":"Red","oblastUid":22,"active":false,"firstSeen":1792404000000,"lastSeen":1792404000000,"markerIds":[],"samples":[{"t":1792404000000,"lat":49.9935,"lon":36.2304,"title":"Kharkiv","oblastUid":22,"message":"Крилаті ракети"}],"outcome":null}],"simulated":false}
 
         GET /v1/drones/archive.json?from=2026-10-19T09:00:00Z&to=2026-10-19T12:00:00Z&type=drones&limit=5
         200
@@ -234,7 +234,7 @@ internal object ApiTranscripts {
         GET /v1/drones/archive.json?type=cruise_missiles
         200
         Content-Type: application/json
-        {"from":1792321245000,"to":1792407645000,"tracks":[{"id":"trk-tn5fs0-1","type":"CruiseMissiles","level":"Red","oblastUid":22,"active":false,"firstSeen":1792404000000,"lastSeen":1792405200000,"markerIds":[],"samples":[{"t":1792404000000,"lat":49.9935,"lon":36.2304,"title":"Kharkiv","oblastUid":22,"message":"Крилаті ракети"}],"outcome":null}],"simulated":false}
+        {"from":1792321245000,"to":1792407645000,"tracks":[{"id":"trk-tn5fs0-1","type":"CruiseMissiles","level":"Red","oblastUid":22,"active":false,"firstSeen":1792404000000,"lastSeen":1792404000000,"markerIds":[],"samples":[{"t":1792404000000,"lat":49.9935,"lon":36.2304,"title":"Kharkiv","oblastUid":22,"message":"Крилаті ракети"}],"outcome":null}],"simulated":false}
 
         GET /v1/regions/31/alerts/day_ago.json
         200

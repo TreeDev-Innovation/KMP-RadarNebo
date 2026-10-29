@@ -43,6 +43,8 @@ data class AppSettings(
     val dronesOnly: Boolean = true,
     val pollSeconds: Int = 30,
     val targetFilter: TargetFilter = TargetFilter(),
+    /** Targets last seen longer ago than this are hidden; active ones always show. */
+    val targetWindowMinutes: Int = DEFAULT_TARGET_WINDOW_MINUTES,
     val mapBackground: MapBackground = MapBackground.Streets,
 ) {
     val endpoint get() = ServerEndpoint(serverUrl.trim(), accessKey.trim())
@@ -52,6 +54,8 @@ data class AppSettings(
         val MAX_MARKERS_RANGE = 5..300
         val RADIUS_RANGE = 5..200
         val POLL_RANGE = 10..300
+        const val DEFAULT_TARGET_WINDOW_MINUTES = 60
+        val TARGET_WINDOW_RANGE = 10..25 * 60
     }
 }
 
@@ -99,6 +103,8 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
                     .mapNotNull { name -> TargetKind.entries.firstOrNull { it.name == name } }.toSet(),
                 hideProbable = storage.getString(K_HIDE_PROBABLE)?.toBooleanStrictOrNull() ?: false,
             ),
+            targetWindowMinutes = storage.getString(K_TARGET_WINDOW)?.toIntOrNull()
+                ?.coerceIn(AppSettings.TARGET_WINDOW_RANGE) ?: AppSettings.DEFAULT_TARGET_WINDOW_MINUTES,
             mapBackground = storage.getString(K_MAP_BACKGROUND)?.let { runCatching { MapBackground.valueOf(it) }.getOrNull() }
                 ?: MapBackground.Streets,
         )
@@ -116,6 +122,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
         storage.putString(K_POLL, settings.pollSeconds.toString())
         storage.putString(K_HIDDEN_KINDS, settings.targetFilter.hiddenKinds.joinToString(",") { it.name })
         storage.putString(K_HIDE_PROBABLE, settings.targetFilter.hideProbable.toString())
+        storage.putString(K_TARGET_WINDOW, settings.targetWindowMinutes.toString())
         storage.putString(K_MAP_BACKGROUND, settings.mapBackground.name)
         // An alerts.in.ua token belongs on the server, never on the device.
         storage.putString(K_LEGACY_TOKEN, null)
@@ -137,6 +144,7 @@ class SettingsRepository(private val storage: KeyValueStorage, private val defau
         const val K_POLL = "poll_seconds"
         const val K_HIDDEN_KINDS = "targets_hidden_kinds"
         const val K_HIDE_PROBABLE = "targets_hide_probable"
+        const val K_TARGET_WINDOW = "targets_window_minutes"
         const val K_MAP_BACKGROUND = "map_background"
     }
 }

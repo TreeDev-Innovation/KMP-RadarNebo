@@ -553,9 +553,8 @@ private fun Density.hitTest(
 
 private fun nowMs(clockOffsetMs: Long) = Clock.System.now().toEpochMilliseconds() + clockOffsetMs
 
-/** Interpolated positions of tracks worth drawing: active ones and those that ended moments ago. */
+/** Interpolated positions of [tracks], already narrowed to active ones and those within the targets timeline. */
 private fun trackPositions(tracks: List<DroneTrack>, now: Long): List<Pair<DroneTrack, InterpolatedPosition>> = tracks
-    .filter { TrackInterpolator.isVisible(it, now) }
     .mapNotNull { track -> TrackInterpolator.positionAt(track, now)?.let { track to it } }
 
 /**

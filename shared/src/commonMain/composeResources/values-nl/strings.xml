@@ -40,6 +40,9 @@
     <string name="time_just_now">zojuist</string>
     <string name="time_minutes_ago">%1$d min geleden</string>
     <string name="time_hours_minutes_ago">%1$d u %2$d min geleden</string>
+    <string name="duration_minutes">%1$d min</string>
+    <string name="duration_hours">%1$d u</string>
+    <string name="duration_hours_minutes">%1$d u %2$d min</string>
 
     <!-- coordinates -->
     <string name="coordinates_lat_lon">%1$s° NB, %2$s° OL</string>
@@ -181,6 +184,8 @@
     <string name="settings_warning_radius_description">Dreigingen zo dicht bij een favoriete plek geven een waarschuwing.</string>
     <string name="settings_drones_only">Alleen drones</string>
     <string name="settings_drones_only_description">Raketten, luchtvaart en andere dreigingen verbergen.</string>
+    <string name="settings_targets_timeline">Tijdlijn doelen</string>
+    <string name="settings_targets_timeline_description">Doelen tonen die binnen deze tijd zijn gezien; actieve worden altijd getoond.</string>
     <string name="settings_refresh_interval">Vernieuwingsinterval</string>
     <string name="settings_refresh_interval_description">De server ververst zijn gegevens elke 10–15 s; sneller opvragen kost alleen meer batterij.</string>
     <string name="settings_connection">Verbinding</string>

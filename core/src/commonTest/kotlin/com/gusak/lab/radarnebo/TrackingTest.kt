@@ -15,13 +15,14 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 class TrackingTest {
     private val minute = 60_000L
 
-    private fun marker(id: String, lat: Double, lon: Double, type: String = "raion") = ThreatMarker(
+    private fun marker(id: String, lat: Double, lon: Double, type: String = "raion", startedAt: Long? = null) = ThreatMarker(
         id = id, type = ThreatType.Drones, level = ThreatLevel.Red, title = id, oblastUid = 14, oblastName = "Kyiv Oblast",
-        locationType = type, point = GeoPoint(lat, lon), startedAt = null, message = null,
+        locationType = type, point = GeoPoint(lat, lon), startedAt = startedAt?.let(Instant::fromEpochMilliseconds), message = null,
     )
 
     private fun track(vararg samples: Pair<Long, GeoPoint>, active: Boolean = true) = DroneTrack(
@@ -131,5 +132,38 @@ class TrackingTest {
         tracker.update(listOf(marker("oblast", 50.3, 30.4, type = "oblast")), 0)
         assertTrue(tracker.snapshot().isEmpty())
         assertNotNull(TrackInterpolator.positionAt(track(0L to GeoPoint(1.0, 1.0)), 5))
+    }
+
+    @Test
+    fun openAlertWithNoNewReportsGoesStale() {
+        val tracker = DroneTracker()
+        tracker.update(listOf(marker("a", 50.5, 30.8, startedAt = 0)), 0)
+        // alerts.in.ua keeps listing the alert long after the group has passed.
+        tracker.update(listOf(marker("a", 50.5, 30.8, startedAt = 0)), 30 * minute)
+        assertTrue(tracker.snapshot().single().active)
+        tracker.update(listOf(marker("a", 50.5, 30.8, startedAt = 0)), 3 * 60 * minute)
+        val track = tracker.snapshot().single()
+        assertFalse(track.active, "last report was three hours ago")
+        assertEquals(0, track.lastSeen, "still listed is not a new report")
+        assertFalse(TrackInterpolator.isActive(track.copy(active = true), 3 * 60 * minute))
+    }
+
+    @Test
+    fun alertReportedLongAgoIsNeverActive() {
+        val tracker = DroneTracker(retentionMs = 60 * minute)
+        val now = 10 * 24 * 60 * minute
+        // Frontline alerts stay open for weeks; the server can start long after one was raised.
+        repeat(3) { tracker.update(listOf(marker("old", 47.6, 34.4, startedAt = 0)), now + it * minute) }
+        val track = tracker.snapshot().single()
+        assertFalse(track.active)
+        assertEquals("trk-1", track.id, "kept while its alert is open rather than restarted every update")
+    }
+
+    @Test
+    fun staleTrackIsNotContinuedByANewGroup() {
+        val tracker = DroneTracker()
+        tracker.update(listOf(marker("a", 50.5, 30.8, startedAt = 0)), 0)
+        tracker.update(listOf(marker("a", 50.5, 30.8, startedAt = 0), marker("b", 50.45, 30.5, startedAt = 2 * 60 * minute)), 2 * 60 * minute)
+        assertEquals(2, tracker.snapshot().size)
     }
 }

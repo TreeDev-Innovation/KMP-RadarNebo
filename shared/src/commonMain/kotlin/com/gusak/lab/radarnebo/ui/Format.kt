@@ -26,6 +26,13 @@ fun formatAgo(instant: Instant): String {
     }
 }
 
+/** "10 min", "1 h", "1 h 30 min". */
+fun formatDuration(minutes: Int): String = when {
+    minutes < 60 -> "$minutes min"
+    minutes % 60 == 0 -> "${minutes / 60} h"
+    else -> "${minutes / 60} h ${minutes % 60} min"
+}
+
 /** "50 m", "2 km", "1.5 km". */
 fun formatAltitude(meters: Int): String = when {
     meters < 1_000 -> "$meters m"

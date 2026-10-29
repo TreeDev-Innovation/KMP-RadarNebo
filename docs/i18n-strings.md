@@ -89,6 +89,9 @@ drift; the original literal is the reliable anchor. `shared/…/` = `shared/src/
 | `time_just_now` | shared/…/ui/Format.kt:23 | `` minutes < 1 -> "just now" `` | just now |  |
 | `time_minutes_ago` | shared/…/ui/Format.kt:24 | `` minutes < 60 -> "$minutes min ago" `` | %1$d min ago |  |
 | `time_hours_minutes_ago` | shared/…/ui/Format.kt:25 | `` else -> "${minutes / 60} h ${minutes % 60} min ago" `` | %1$d h %2$d min ago |  |
+| `duration_minutes` | shared/…/ui/Format.kt | `` minutes < 60 -> "$minutes min" `` | %1$d min | Length of the targets timeline. |
+| `duration_hours` | shared/…/ui/Format.kt | `` minutes % 60 == 0 -> "${minutes / 60} h" `` | %1$d h | Length of the targets timeline. |
+| `duration_hours_minutes` | shared/…/ui/Format.kt | `` else -> "${minutes / 60} h ${minutes % 60} min" `` | %1$d h %2$d min | Length of the targets timeline. |
 | `coordinates_lat_lon` | shared/…/ui/TargetsPanel.kt:697 | `` private fun coordinates(lat: Double, lon: Double) = "${formatCoord(lat)}° N, ${formatCoord(lon)}° E" `` | %1$s° N, %2$s° E |  |
 | `compass_n` | shared/…/ui/TargetsPanel.kt:699 | `` fun compass(deg: Double): String = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")[(((deg % 360) + 382.5) / 45).toInt() % 8] `` | N | List order in compass(): N, NE, E, SE, S, SW, W, NW. |
 | `compass_ne` | shared/…/ui/TargetsPanel.kt:699 | `` fun compass(deg: Double): String = listOf("N", "NE", "E", "SE", "S", "SW", "W", "NW")[(((deg % 360) + 382.5) / 45).toInt() % 8] `` | NE |  |
@@ -200,6 +203,8 @@ drift; the original literal is the reliable anchor. `shared/…/` = `shared/src/
 | `settings_warning_radius_description` | shared/…/ui/SettingsScreen.kt:133 | `` description = "Threats this close to a favorite place raise a warning.", `` | Threats this close to a favorite place raise a warning. |  |
 | `settings_drones_only` | shared/…/ui/SettingsScreen.kt:141 | `` title = "Drones only", `` | Drones only |  |
 | `settings_drones_only_description` | shared/…/ui/SettingsScreen.kt:142 | `` description = "Hide missiles, aviation and other threat types.", `` | Hide missiles, aviation and other threat types. |  |
+| `settings_targets_timeline` | shared/…/ui/SettingsScreen.kt | `` title = "Targets timeline", `` | Targets timeline |  |
+| `settings_targets_timeline_description` | shared/…/ui/SettingsScreen.kt | `` description = "Show targets seen within this time; active ones always show.", `` | Show targets seen within this time; active ones always show. |  |
 | `settings_refresh_interval` | shared/…/ui/SettingsScreen.kt:157 | `` title = "Refresh interval", `` | Refresh interval |  |
 | `settings_refresh_interval_description` | shared/…/ui/SettingsScreen.kt:158 | `` description = "The server refreshes its data every 10–15 s; polling faster only uses more battery.", `` | The server refreshes its data every 10–15 s; polling faster only uses more battery. |  |
 | `settings_connection` | shared/…/ui/SettingsScreen.kt:168 | `` "Connection", `` | Connection |  |

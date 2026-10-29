@@ -40,6 +40,9 @@
     <string name="time_just_now">just now</string>
     <string name="time_minutes_ago">%1$d min ago</string>
     <string name="time_hours_minutes_ago">%1$d h %2$d min ago</string>
+    <string name="duration_minutes">%1$d min</string>
+    <string name="duration_hours">%1$d h</string>
+    <string name="duration_hours_minutes">%1$d h %2$d min</string>
 
     <!-- coordinates -->
     <string name="coordinates_lat_lon">%1$s° N, %2$s° E</string>
@@ -181,6 +184,8 @@
     <string name="settings_warning_radius_description">Threats this close to a favorite place raise a warning.</string>
     <string name="settings_drones_only">Drones only</string>
     <string name="settings_drones_only_description">Hide missiles, aviation and other threat types.</string>
+    <string name="settings_targets_timeline">Targets timeline</string>
+    <string name="settings_targets_timeline_description">Show targets seen within this time; active ones always show.</string>
     <string name="settings_refresh_interval">Refresh interval</string>
     <string name="settings_refresh_interval_description">The server refreshes its data every 10–15 s; polling faster only uses more battery.</string>
     <string name="settings_connection">Connection</string>

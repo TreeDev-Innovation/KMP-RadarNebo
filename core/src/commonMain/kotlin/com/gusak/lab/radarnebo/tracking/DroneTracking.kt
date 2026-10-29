@@ -38,8 +38,14 @@ data class DroneTrack(
     val type: ThreatType = ThreatType.Drones,
     val level: ThreatLevel,
     val oblastUid: Int?,
+    /**
+     * Still in flight: an alert for it is open and its newest report is no older than the type's
+     * [TrackKinematics.staleAfterMs]. alerts.in.ua leaves alerts open for hours (frontline ones for weeks),
+     * long after the target that raised them has passed, so an open alert alone does not make a target active.
+     */
     val active: Boolean,
     val firstSeen: Long,
+    /** Time of the newest report of this target (alert or position), not of the last poll that still listed it. */
     val lastSeen: Long,
     /** Alert threat ids (`alertId:threatType`) currently attached to this track. */
     val markerIds: List<String>,
@@ -109,6 +115,11 @@ data class TrackKinematics(
     val reacquireWindowMs: Long,
     /** Dead reckoning past the newest sample stops after this long, to avoid inventing positions. */
     val maxExtrapolationMs: Long,
+    /**
+     * With no new report for this long the target is presumed gone (passed, shot down or landed), even while
+     * the alert it raised stays open: a target still flying keeps raising alerts as it crosses areas.
+     */
+    val staleAfterMs: Long = maxOf(reacquireWindowMs, maxExtrapolationMs),
 ) {
     companion object {
         /**
@@ -116,13 +127,13 @@ data class TrackKinematics(
          * the alerts.in.ua archive, a 45 min re-acquire window links the most reports while courses stay coherent;
          * at 60 min unrelated groups start being chained into tracks that turn back on themselves.
          */
-        val Drones = TrackKinematics(220.0, 120.0, 45 * 60_000L, 30 * 60_000L)
+        val Drones = TrackKinematics(220.0, 120.0, 45 * 60_000L, 30 * 60_000L, staleAfterMs = 60 * 60_000L)
 
         /** Jet Shaheds (Geran-3) fly at 350-550 km/h; they come as drone alerts, recognised by the alert text. */
-        val JetDrones = TrackKinematics(600.0, 120.0, 15 * 60_000L, 10 * 60_000L)
+        val JetDrones = TrackKinematics(600.0, 120.0, 15 * 60_000L, 10 * 60_000L, staleAfterMs = 20 * 60_000L)
 
         /** Cruise missiles fly at 700-950 km/h and cross an oblast in minutes, so reports are further apart. */
-        val CruiseMissiles = TrackKinematics(1_000.0, 300.0, 10 * 60_000L, 5 * 60_000L)
+        val CruiseMissiles = TrackKinematics(1_000.0, 300.0, 10 * 60_000L, 5 * 60_000L, staleAfterMs = 15 * 60_000L)
 
         /**
          * Guided bombs (KAB with UMPK kits) glide 40-70 km in a few minutes. Alerts are raised for the target,
@@ -137,6 +148,9 @@ data class TrackKinematics(
          * the launch publishes their tracks.
          */
         val BallisticMissiles = TrackKinematics(12_000.0, 0.0, 0L, 30_000L)
+
+        fun of(type: ThreatType, kind: TargetKind): TrackKinematics? =
+            if (type == ThreatType.Drones && kind == TargetKind.JetDrone) JetDrones else of(type)
 
         fun of(type: ThreatType): TrackKinematics? = when (type) {
             ThreatType.Drones -> Drones
@@ -160,7 +174,10 @@ object TrackInterpolator {
     const val MAX_EXTRAPOLATION_MS = 30 * 60_000L
 
     /** Tracks worth drawing at [t]: active ones and those that ended less than their extrapolation limit ago. */
-    fun isVisible(track: DroneTrack, t: Long) = track.active || t - track.lastSeen <= TrackKinematics.of(track).maxExtrapolationMs
+    fun isVisible(track: DroneTrack, t: Long) = isActive(track, t) || t - track.lastSeen <= TrackKinematics.of(track).maxExtrapolationMs
+
+    /** [DroneTrack.active], rechecked at [t]: a track the server called active goes stale between polls too. */
+    fun isActive(track: DroneTrack, t: Long) = track.active && t - track.lastSeen <= TrackKinematics.of(track).staleAfterMs
 
     /**
      * Linear interpolation between the two samples surrounding [t]. Past the newest sample an active
@@ -271,6 +288,10 @@ object TrackInterpolator {
  * is still open or ended within the type's re-acquire window; otherwise it starts a track. A track stays open
  * while any of its alerts is, takes at most one alert per update, and alerts appearing together always start
  * separate tracks. Region-wide (oblast) alerts carry no useful position and are not tracked.
+ *
+ * A track is active while one of its alerts is open and its newest report (the threat's `started_at`, not
+ * the poll that still lists it) is within the kind's [TrackKinematics.staleAfterMs]; a stale track is kept
+ * while its alerts stay open, so they don't restart it, but is not continued by new alerts.
  * [maxHopKm] and [reacquireWindowMs] tune drones; missiles use [TrackKinematics.CruiseMissiles].
  */
 class DroneTracker(
@@ -288,18 +309,23 @@ class DroneTracker(
         var level: ThreatLevel,
         var oblastUid: Int?,
         val firstSeen: Long,
+        /** Newest report time; see [DroneTrack.lastSeen]. */
         var lastSeen: Long,
         val markerIds: MutableSet<String>,
         val samples: ArrayDeque<TrackSample>,
     ) {
-        val active get() = markerIds.isNotEmpty()
+        private val staleAfterMs = (TrackKinematics.of(type, kind) ?: TrackKinematics.Drones).staleAfterMs
+
+        fun isActive(nowMs: Long) = markerIds.isNotEmpty() && nowMs - lastSeen <= staleAfterMs
     }
 
     private val tracks = LinkedHashMap<String, MutableTrack>()
     private val markerToTrack = HashMap<String, String>()
     private var sequence = 0L
+    private var lastUpdateMs = 0L
 
     fun update(markers: List<ThreatMarker>, nowMs: Long) {
+        lastUpdateMs = nowMs
         val tracked = markers.filter { TrackKinematics.of(it.type) != null && !it.isRegionWide }
         val currentIds = tracked.mapTo(HashSet()) { it.id }
 
@@ -311,7 +337,8 @@ class DroneTracker(
         tracked.sortedBy { observedAt(it, nowMs) }.forEach { marker ->
             val existing = markerToTrack[marker.id]?.let(tracks::get)
             if (existing != null) {
-                existing.lastSeen = nowMs
+                // Still listed says nothing new; only a newer report time from alerts.in.ua does.
+                marker.startedAt?.let { existing.lastSeen = maxOf(existing.lastSeen, observedAt(marker, nowMs)) }
                 existing.markerIds += marker.id
                 return@forEach
             }
@@ -319,21 +346,22 @@ class DroneTracker(
             val t = observedAt(marker, nowMs)
             val track = nearestTrack(marker, kind, t, nowMs, absorbed)
             when {
-                track == null -> startTrack(marker, kind, t, nowMs)
+                track == null -> absorbed += startTrack(marker, kind, t, nowMs).id
                 // Re-alerted in the same area: the group is still here, which says nothing about movement.
-                GeoMath.distanceKm(track.samples.last().point, marker.point) < SAME_PLACE_KM -> track.attach(marker, nowMs)
+                GeoMath.distanceKm(track.samples.last().point, marker.point) < SAME_PLACE_KM -> track.attach(marker, t)
                 else -> {
                     val last = track.samples.last()
                     track.samples.addLast(sample(marker, t.coerceIn(last.t + 1, maxOf(nowMs, last.t + 1))))
                     while (track.samples.size > maxSamples) track.samples.removeFirst()
                     track.oblastUid = marker.oblastUid
-                    track.attach(marker, nowMs)
+                    track.attach(marker, t)
                 }
             }
             track?.let { absorbed += it.id }
         }
 
-        tracks.values.removeAll { !it.active && nowMs - it.lastSeen > retentionMs }
+        // Stale tracks whose alerts are still open stay, so those alerts don't start new tracks every update.
+        tracks.values.removeAll { it.markerIds.isEmpty() && nowMs - it.lastSeen > retentionMs }
     }
 
     private fun nearestTrack(marker: ThreatMarker, kind: TargetKind, t: Long, nowMs: Long, absorbed: Set<String>): MutableTrack? {
@@ -352,34 +380,38 @@ class DroneTracker(
             .asSequence()
             .filter { it.type == marker.type && it.kind == kind }
             // Tracks born in this same update are excluded: simultaneous alerts are separate groups.
-            .filter { it.id !in absorbed && it.firstSeen < nowMs }
-            .filter { it.active || nowMs - it.lastSeen <= reacquireMs }
+            .filter { it.id !in absorbed }
+            .filter { it.isActive(nowMs) || nowMs - it.lastSeen <= reacquireMs }
             .map { it to GeoMath.distanceKm(it.samples.last().point, marker.point) }
             .filter { (track, km) -> km <= hopKm && km <= reachableKm(maxSpeedKmh, t - track.samples.last().t) }
             .minByOrNull { it.second }
             ?.first
     }
 
-    private fun MutableTrack.attach(marker: ThreatMarker, nowMs: Long) {
+    /** [reportedAt] is when alerts.in.ua reported [marker]. */
+    private fun MutableTrack.attach(marker: ThreatMarker, reportedAt: Long) {
         level = marker.level
-        lastSeen = nowMs
+        lastSeen = maxOf(lastSeen, reportedAt)
         markerIds += marker.id
         markerToTrack[marker.id] = id
     }
 
-    private fun startTrack(marker: ThreatMarker, kind: TargetKind, t: Long, nowMs: Long) {
+    private fun startTrack(marker: ThreatMarker, kind: TargetKind, t: Long, nowMs: Long): MutableTrack {
         val id = "$idPrefix${++sequence}"
-        tracks[id] = MutableTrack(
+        return MutableTrack(
             id = id,
             type = marker.type,
             kind = kind,
             level = marker.level,
             oblastUid = marker.oblastUid,
             firstSeen = nowMs,
-            lastSeen = nowMs,
+            lastSeen = t,
             markerIds = mutableSetOf(),
             samples = ArrayDeque(listOf(sample(marker, t))),
-        ).apply { attach(marker, nowMs) }
+        ).also {
+            tracks[id] = it
+            it.attach(marker, t)
+        }
     }
 
     private fun sample(marker: ThreatMarker, t: Long) =
@@ -397,13 +429,14 @@ class DroneTracker(
             maxSpeedKmh * SPEED_TOLERANCE * elapsedMs.coerceAtLeast(0) / 3_600_000.0 + TIMING_SLACK_KM
     }
 
-    fun snapshot(): List<DroneTrack> = tracks.values.map {
+    /** Tracks as of [nowMs], by default the latest [update]. */
+    fun snapshot(nowMs: Long = lastUpdateMs): List<DroneTrack> = tracks.values.map {
         DroneTrack(
             id = it.id,
             type = it.type,
             level = it.level,
             oblastUid = it.oblastUid,
-            active = it.active,
+            active = it.isActive(nowMs),
             firstSeen = it.firstSeen,
             lastSeen = it.lastSeen,
             markerIds = it.markerIds.toList(),
