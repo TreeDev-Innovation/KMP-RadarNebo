@@ -15,7 +15,16 @@ builds and pushes `<DOCKERHUB_USERNAME>/radarnebo-server:<commit sha>` for amd64
 `mission-control/server/Dockerfile`, scans both pushed architectures with Trivy (fails on fixable HIGH/CRITICAL), moves
 `:latest` to that image (runs on `main` only, so pull request deploys never touch it), copies
 `mission-control/server/docker-compose.yaml` to `~/docker-deployments/apps/radarnebo/radarnebo-server` on the VM over
-SSH, and runs `docker compose up -d --wait`, so a container that doesn't turn healthy fails the deploy.
+SSH, writes the image and secrets to `.env` beside it, and runs `docker compose up -d --wait`, so a container that
+doesn't turn healthy fails the deploy. It then removes this app's unused images (nothing else on the shared VM) and
+fetches `https://<DOMAIN>/health` from the runner, so a broken proxy, certificate, DNS record or firewall fails it too.
+
+Rollback: Actions → Deploy → Run workflow with `image_tag=<previous good commit sha>` (the full sha the image was
+pushed under). It skips tests, build and scan and deploys that image. The VM keeps `.env` next to
+`docker-compose.yaml` (mode 600), so `docker compose ps`, `logs` and `up -d` also work by hand there.
+
+A pull request deploy stays live until the pull request loses the `deploy` label or is closed unmerged (main is then
+redeployed), or until main deploys again.
 
 Secrets it needs: `DOCKERHUB_USERNAME`, `DOCKERHUB_PASSWORD`, `SSH_HOST`, `SSH_USERNAME`, `SSH_KEY`, `SSH_PORT`,
 `SSH_HOST_FINGERPRINT`, `ALERTS_IN_UA_API_KEY` (the server's `ALERTS_API_TOKEN`; empty runs the simulation) and
