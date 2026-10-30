@@ -22,6 +22,11 @@ updates:
     groups:
       docker:
         patterns: ["*"]
+    # Dependabot can't tell LTS from non-LTS JDKs, and a non-LTS image stops getting OS patches once it's EOL
+    # (24-jre failed the Trivy scan). Move between LTS releases by hand; digest refreshes still come through.
+    ignore:
+      - dependency-name: eclipse-temurin
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker-compose
     directory: /mission-control/server
     schedule:

@@ -1,6 +1,6 @@
 # The fat jar is built outside Docker (`./gradlew :mission-control:server:buildFatJar`): Gradle configures every
 # module, Android included, so building it here would need the Android SDK in the image.
-FROM eclipse-temurin:24-jre@sha256:8cb2387a28af84cf0db0948d9c67d4480192f4e567027a3963f145d218e8b4f2
+FROM eclipse-temurin:21-jre@sha256:0b99b3376fbb50dbf9c0af8535fdd5b8eb0d3fdfc8b1e4967f383b6919f6901a
 
 # The deploy prunes old images by this label, leaving other apps on the VM alone.
 LABEL org.opencontainers.image.title=radarnebo-server
